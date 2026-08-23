@@ -2,37 +2,46 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Position Size Calculator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        html, body { overflow-x: hidden; }
         body { 
             font-family: 'Inter', sans-serif; 
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             min-height: 100vh;
+            min-height: 100dvh;
+        }
+        #navDrawer { width: min(15rem, 60vw); max-width: 60vw; }
+        @media (max-width: 640px) {
+            .super-input { font-size: 1.05rem !important; padding: 0.55rem !important; }
+            .risk-input { font-size: 1.2rem !important; }
         }
         .super-input { 
             background-color: #ffffff !important;
             color: #000000 !important;
             font-weight: 800 !important;
-            border-radius: 0.5rem;
-            padding: 0.75rem;
+            border-radius: 0.45rem;
+            padding: 0.45rem 0.5rem;
             width: 100%;
-            font-size: 1.25rem; 
+            font-size: 1.05rem; 
             border: 2px solid transparent;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
             text-align: center;
             text-transform: uppercase;
         }
         .super-input:focus {
             outline: none;
             border-color: #3b82f6;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
         }
         .trigger-input {
-            font-size: 0.875rem;
-            padding: 0.5rem;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.4rem;
             background-color: #1e293b !important;
             color: #ffffff !important;
             font-weight: 700 !important;
@@ -40,10 +49,9 @@
             text-align: center;
         }
         .risk-input {
-            font-size: 1.5rem;
+            font-size: 1.1rem;
             text-align: center;
-            padding-left: 0.75rem;
-            padding-right: 0.75rem;
+            padding: 0.3rem 0.5rem;
         }
         .glass-card {
             background: rgba(30, 41, 59, 0.75);
@@ -113,248 +121,365 @@
         .font-mono-num {
             font-family: 'JetBrains Mono', monospace;
         }
+        .table-row-long {
+            border: 1.5px solid rgba(16, 185, 129, 0.7) !important;
+            background: linear-gradient(90deg, rgba(6, 78, 59, 0.55) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+            box-shadow: 0 0 14px rgba(16, 185, 129, 0.28);
+        }
+        .table-row-short {
+            border: 1.5px solid rgba(239, 68, 68, 0.7) !important;
+            background: linear-gradient(90deg, rgba(127, 29, 29, 0.55) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.28);
+        }
+        .table-row-wait {
+            opacity: 0.58;
+            filter: grayscale(70%);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .nav-link-active {
+            background: rgba(59, 130, 246, 0.18);
+            border-color: rgba(96, 165, 250, 0.45);
+            color: #fff;
+        }
+        .hamburger-drawer {
+            transform: translateX(-105%);
+            transition: transform 0.22s ease-out;
+        }
+        .hamburger-drawer.open {
+            transform: translateX(0);
+        }
+        input[type="checkbox"].trade-check {
+            accent-color: #22d3ee;
+            width: 0.95rem;
+            height: 0.95rem;
+            cursor: pointer;
+        }
+        @keyframes jumpDot {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+            40% { transform: translateY(-4px); opacity: 1; }
+        }
+        .stream-dot {
+            display: inline-block;
+            font-weight: 900;
+            font-family: monospace;
+            letter-spacing: 1px;
+        }
+        .dot-1 { animation: jumpDot 1.2s infinite ease-in-out; }
+        .dot-2 { animation: jumpDot 1.2s infinite ease-in-out 0.2s; }
+        .dot-3 { animation: jumpDot 1.2s infinite ease-in-out 0.4s; }
+        .modal-overlay-pad {
+            padding-top: 7vh;
+            padding-bottom: 7vh;
+        }
     </style>
 </head>
-<body class="min-h-screen p-4 text-gray-100 flex flex-col items-center">
+<body class="min-h-screen p-3 sm:p-4 text-gray-100 flex flex-col items-center">
 
+    <!-- Hamburger Backdrop -->
+    <div id="navBackdrop" class="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm hidden" onclick="closeNavMenu()"></div>
+    <!-- Hamburger Drawer -->
+    <aside id="navDrawer" class="hamburger-drawer fixed top-0 left-0 z-[70] h-full glass-modal border-r border-white/10 shadow-2xl flex flex-col">
+        <div class="px-4 py-4 border-b border-white/10 flex items-center justify-between">
+            <span class="text-sm font-black uppercase tracking-tight text-white">Menu</span>
+            <button onclick="closeNavMenu()" class="text-gray-400 hover:text-white text-xl leading-none font-bold">&times;</button>
+        </div>
+        <nav class="p-3 space-y-1.5 flex-1">
+            <button id="navLinkScanner" onclick="navigateTo('scanner')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold nav-link-active">📊 Scanner</button>
+            <button id="navLinkTrades" onclick="navigateTo('active-trades')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">
+                📋 Active Trades <span id="navTradesBadge" class="ml-1 text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30">0</span>
+            </button>
+            <button id="navLinkBuilder" onclick="navigateTo('manual-builder')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">🛠 Order Builder</button>
+            <button id="navLinkSettings" onclick="navigateTo('settings')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">⚙ Settings</button>
+        </nav>
+        <div class="p-4 border-t border-white/10 space-y-2">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Market Breadth</div>
+            <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
+                <button id="menuRegimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding</button>
+                <button id="menuRegimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- PAGE 1: SCANNER -->
+    <div id="page-scanner" class="w-full flex flex-col items-center">
     <!-- Main Container -->
-    <div class="glass-card rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden ring-1 ring-white/10 mb-4 relative">
-        <!-- Top Status & Market Timer -->
-        <div class="absolute top-4 right-4 flex items-center gap-3">
-            <div id="liveStatusIndicator" class="hidden items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[10px] font-mono font-bold">
-                <span class="relative flex h-2 w-2">
-                    <span id="liveStatusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span id="liveStatusDot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span id="liveStatusText" class="text-emerald-400 uppercase">LIVE</span>
+    <div class="glass-card rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden ring-1 ring-white/10 mb-3 relative">
+        <!-- Compact Header -->
+        <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+                <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
+                <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
             </div>
-            <div class="text-[10px] font-mono text-gray-400 font-bold bg-slate-950/60 px-2 py-0.5 rounded-full border border-white/10">
-                CLOSE: <span id="countdown" class="text-gray-300">CLOSED</span>
-            </div>
-        </div>
-
-        <!-- Header -->
-        <div class="bg-slate-900/60 p-6 border-b border-white/10 text-center">
-            <h1 class="text-2xl font-black tracking-tight text-white uppercase">Position Size Calculator</h1>
-            
-            <!-- Global Market Regime Switcher Pill -->
-            <div class="mt-4 flex flex-col sm:flex-row items-center justify-center gap-2">
-                <span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Market Breadth:</span>
-                <div class="inline-flex rounded-lg bg-slate-950/80 p-1 border border-white/10 shadow-inner">
-                    <button id="regimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow-sm">
-                        <span class="h-2 w-2 rounded-full bg-emerald-300"></span>
-                        <span>Expanding (8 &gt; 20 EMA)</span>
-                    </button>
-                    <button id="regimeDecliningBtn" onclick="setGlobalRegime('declining')" class="px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 text-gray-400 hover:text-white">
-                        <span class="h-2 w-2 rounded-full bg-amber-400"></span>
-                        <span>Declining (8 &lt; 20 EMA)</span>
-                    </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+                <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
+                    <span class="relative flex h-1.5 w-1.5">
+                        <span id="liveStatusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span id="liveStatusDot" class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
+                    <span id="liveStatusText" class="text-emerald-400 uppercase">LIVE</span>
                 </div>
-            </div>
-        </div>
-
-        <!-- Settings Toggle -->
-        <div class="p-2 bg-blue-900/10 border-b border-blue-500/20 text-center">
-            <span class="text-[10px] font-bold text-blue-300 uppercase cursor-pointer hover:text-white flex justify-center items-center gap-1" onclick="toggleSettingsPanel()">
-                <span>⚙</span> SETTINGS &amp; API CONFIG
-            </span>
-        </div>
-        
-        <div id="settingsPanel" class="hidden p-4 bg-slate-900/60 border-b border-white/5 animate-fade-in">
-            <div class="flex flex-col gap-4">
-                <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
-                    <div class="flex flex-col gap-2">
-                        <select id="apiProvider" class="bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold">
-                            <option value="finnhub">Finnhub</option>
-                            <option value="twelvedata">Twelve Data</option>
-                            <option value="stockdata">StockData.org</option>
-                        </select>
-                        <div class="flex gap-2">
-                            <input type="password" id="apiKeyInput" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
-                            <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="grid grid-cols-2 gap-4 border-t border-white/5 pt-2">
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
-                        <input type="number" id="slippageValue" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00">
-                    </div>
-                    
-                    <div class="space-y-1">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase">Interface Options</label>
-                        <div class="flex flex-col gap-2 pt-1">
-                            <label id="liveUpdateContainer" class="flex items-center gap-2 cursor-pointer transition-opacity">
-                                <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
-                                <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
-                                <span class="text-xs text-gray-300">Show Focus Button</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="showVoiceSetting" class="custom-checkbox" onchange="updateUIControls()">
-                                <span class="text-xs text-gray-300">Show Voice Button</span>
-                            </label>
-                        </div>
-                    </div>
+                <div class="text-[9px] font-mono text-gray-400 font-bold bg-slate-950/60 px-1.5 py-0.5 rounded-full border border-white/10">
+                    <span id="countdown" class="text-gray-300">CLOSED</span>
                 </div>
             </div>
         </div>
 
         <!-- Inputs Section -->
-        <div class="p-6 space-y-6">
-            <div class="space-y-2 flex flex-col items-center">
-                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
-                <div class="w-full max-w-xs">
+        <div class="p-3 space-y-3">
+            <div id="scannerCollapsedBar" class="hidden flex items-center justify-between gap-2 bg-slate-900/50 border border-white/10 rounded-lg px-2.5 py-1.5">
+                <span id="scannerCollapsedText" class="text-[10px] font-mono-num text-gray-300 truncate"></span>
+                <button onclick="setScannerCollapsed(false)" class="text-[10px] font-bold text-blue-300 uppercase shrink-0">Expand</button>
+            </div>
+            <div id="scannerFormBody">
+            <div class="space-y-0.5 flex flex-col items-center">
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
+                <div class="w-full max-w-[140px]">
                     <input type="number" id="riskValue" class="super-input risk-input" placeholder="500" value="500">
                 </div>
             </div>
 
-            <div class="space-y-2">
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
                     <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
                 </div>
                 
                 <!-- Dynamic Grid -->
-                <div class="grid grid-cols-2 gap-3" id="inputGrid">
+                <div class="grid grid-cols-2 gap-2" id="inputGrid">
                     <!-- Tickers 0 - 5 -->
-                    <div class="flex flex-col gap-2 ticker-group" id="group-0">
+                    <div class="flex flex-col gap-1.5 ticker-group" id="group-0">
                         <input type="text" class="super-input ticker-input" data-idx="0" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="0" placeholder="Trigger $">
                     </div>
-                    <div class="flex flex-col gap-2 ticker-group" id="group-1">
+                    <div class="flex flex-col gap-1.5 ticker-group" id="group-1">
                         <input type="text" class="super-input ticker-input" data-idx="1" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="1" placeholder="Trigger $">
                     </div>
-                    <div class="flex flex-col gap-2 ticker-group hidden" id="group-2">
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-2">
                         <input type="text" class="super-input ticker-input" data-idx="2" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="2" placeholder="Trigger $">
                     </div>
-                    <div class="flex flex-col gap-2 ticker-group hidden" id="group-3">
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-3">
                         <input type="text" class="super-input ticker-input" data-idx="3" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="3" placeholder="Trigger $">
                     </div>
-                    <div class="flex flex-col gap-2 ticker-group hidden" id="group-4">
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-4">
                         <input type="text" class="super-input ticker-input" data-idx="4" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="4" placeholder="Trigger $">
                     </div>
-                    <div class="flex flex-col gap-2 ticker-group hidden" id="group-5">
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-5">
                         <input type="text" class="super-input ticker-input" data-idx="5" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="5" placeholder="Trigger $">
                     </div>
                 </div>
 
                 <!-- Add Row Button -->
-                <div class="flex justify-center mt-2">
-                    <button id="addRowBtn" onclick="addMoreRows()" class="text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-4 py-2 rounded-full font-bold transition-all">
+                <div class="flex justify-center pt-0.5">
+                    <button id="addRowBtn" onclick="addMoreRows()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3.5 py-1 rounded-full font-bold transition-all">
                         + ADD ROW
                     </button>
                 </div>
             </div>
 
-            <button onclick="calculateAll()" id="calcBtn" class="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-4 rounded-xl font-black text-2xl shadow-lg shadow-blue-900/50 transition-all active:scale-95 uppercase tracking-wide">
+            <button onclick="calculateAll()" id="calcBtn" class="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2.5 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
                 CALCULATE
             </button>
             
             <p id="errorMsg" class="text-red-400 font-bold text-sm text-center bg-red-900/20 py-2 rounded hidden"></p>
+            </div><!-- /scannerFormBody -->
         </div>
     </div>
 
     <!-- UI Controls Toolbar -->
-    <div class="w-full max-w-2xl flex justify-between items-center mb-3 gap-2" id="uiControls">
-        <!-- Active Trades Modal Opener -->
-        <button onclick="openActiveTradesModal()" class="bg-slate-800/90 text-emerald-300 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-emerald-950/60 transition-all flex items-center gap-1.5 shadow-sm">
-            <span>📋</span> Active Trades <span id="activeTradesCountBadge" class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.2 rounded-full border border-emerald-500/40">0</span>
-        </button>
-
-        <div class="flex items-center gap-2">
-            <!-- View Mode Toggle (Cards vs Table) -->
-            <button id="viewToggleBtn" onclick="toggleViewMode()" class="bg-slate-800 text-gray-300 border border-slate-600 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-all flex items-center gap-1.5">
-                <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table View</span>
+    <div class="w-full max-w-2xl flex flex-wrap justify-between items-center mb-2 gap-2" id="uiControls">
+        <div id="batchActions" class="hidden flex flex-wrap items-center gap-1.5">
+            <span class="text-[10px] font-bold text-cyan-300">✓ <span id="batchSelectedCount">0</span> selected</span>
+            <button onclick="openBatchReviewDrawer()" class="bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Export CSV</button>
+            <button onclick="logSelectedTrades()" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Log Trades</button>
+        </div>
+        <div></div>
+        <div class="flex items-center gap-1.5">
+            <button id="viewToggleBtn" onclick="toggleViewMode()" class="bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
             </button>
-            
-            <button id="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-all flex items-center gap-1.5">
-                <span>👁</span> Focus
+            <button id="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                👁 Focus
             </button>
-            <button id="voiceBtn" onclick="toggleVoice()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-all flex items-center gap-1.5">
-                <span>🔊</span> Voice
+            <button id="voiceBtn" onclick="toggleVoice()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                🔊 Voice
             </button>
         </div>
     </div>
 
     <!-- Results Container -->
-    <div id="resultsContainer" class="w-full max-w-2xl space-y-4 pb-12"></div>
+    <div id="resultsContainer" class="w-full max-w-2xl space-y-2 pb-24"></div>
+    </div><!-- /page-scanner -->
+
+    <!-- PAGE 4: SETTINGS -->
+    <div id="page-settings" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Settings</h2>
+                </div>
+                <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+            </div>
+            <div class="p-3 space-y-4 text-sm">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
+                    <select id="apiProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold">
+                        <option value="finnhub">Finnhub</option>
+                        <option value="twelvedata">Twelve Data</option>
+                        <option value="stockdata">StockData.org</option>
+                    </select>
+                    <div class="flex gap-2">
+                        <input type="password" id="apiKeyInput" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                        <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
+                    <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
+                        <button id="regimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding (8&gt;20)</button>
+                        <button id="regimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining (8&lt;20)</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <label class="text-[9px] text-gray-500 uppercase">Expanding uses
+                            <select id="regimeExpandingStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                        </label>
+                        <label class="text-[9px] text-gray-500 uppercase">Declining uses
+                            <select id="regimeDecliningStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                        </label>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
+                        <input type="number" id="slippageValue" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
+                    </div>
+                    <div class="space-y-1.5 pt-1">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase block">Interface</label>
+                        <label id="liveUpdateContainer" class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
+                            <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
+                            <span class="text-xs text-gray-300">Show Focus Button</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showVoiceSetting" class="custom-checkbox" onchange="updateUIControls()">
+                            <span class="text-xs text-gray-300">Show Voice Button</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="collapseAfterCalcSetting" class="custom-checkbox" onchange="saveCollapseAfterCalc()">
+                            <span class="text-xs text-gray-300">Collapse inputs after Calculate</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="border-t border-white/10 pt-3 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">Custom Exit Strategies</label>
+                        <button onclick="addBlankStrategy()" class="text-[10px] font-bold text-blue-300 uppercase">+ New</button>
+                    </div>
+                    <div id="strategyEditorList" class="space-y-2"></div>
+                </div>
+
+                <div class="border-t border-white/10 pt-3 space-y-2">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block">Data Backup &amp; Transfer</label>
+                    <div class="flex gap-2">
+                        <button onclick="exportSettingsJson()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                            <span>💾</span> Export Backup (.json)
+                        </button>
+                        <button onclick="document.getElementById('importBackupFileInput').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                            <span>📥</span> Import Backup (.json)
+                        </button>
+                        <input type="file" id="importBackupFileInput" accept=".json" class="hidden" onchange="importSettingsJson(event)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAGE 2: ACTIVE TRADES -->
+    <div id="page-active-trades" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Active Trades</h2>
+                    <span id="activeTradesCountBadge" class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/40">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="refreshActiveTradesPrices()" id="refreshActiveTradesBtn" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-2.5 py-1 rounded-md font-bold transition-all">🔄 Refresh Prices</button>
+                    <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+                </div>
+            </div>
+            <div id="activeTradesPageList" class="p-3 space-y-2 min-h-[40vh]"></div>
+        </div>
+    </div>
+
+    <!-- PAGE 3: MANUAL ORDER BUILDER -->
+    <div id="page-manual-builder" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Order Builder</h2>
+                </div>
+                <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+            </div>
+            <div class="p-3 space-y-3">
+                <p class="text-[11px] text-gray-400">Build TWS exit baskets for fills entered outside the scanner. Same Option 1 / Option 2 math and CSV format.</p>
+                <div id="builderRows" class="space-y-2"></div>
+                <button onclick="addBuilderRow()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="downloadBuilderCombinedCSV()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
+                    <button onclick="logAllBuilderTrades()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold">💾 Log All</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ======================================================== -->
     <!-- STRATEGY ORDERS POPUP MODAL (Glassmorphism)              -->
     <!-- ======================================================== -->
-    <div id="strategyModalOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-4 animate-fade-in" onclick="handleModalBackdropClick(event)">
-        <div class="glass-modal w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col" onclick="event.stopPropagation()">
+    <div id="strategyModalOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleModalBackdropClick(event)">
+        <div class="glass-modal w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
             <!-- Modal Header -->
-            <div class="bg-slate-900/80 px-5 py-4 border-b border-white/10 flex justify-between items-center">
+            <div class="bg-slate-900/80 px-4 py-2.5 border-b border-white/10 flex justify-between items-center">
                 <div class="flex items-center gap-3">
-                    <span id="modalTickerBadge" class="text-2xl font-black text-white font-mono-num">AAPL</span>
+                    <span id="modalTickerBadge" class="text-xl font-black text-white font-mono-num">AAPL</span>
                     <span id="modalSetupBadge" class="text-xs font-black px-2.5 py-1 rounded-full uppercase">LONG</span>
                 </div>
                 <button onclick="closeStrategyModal()" class="text-gray-400 hover:text-white text-xl font-bold p-1 leading-none transition-colors">&times;</button>
             </div>
 
             <!-- Modal Body (Scrollable) -->
-            <div class="p-5 overflow-y-auto space-y-5 text-sm">
-                <!-- Editable Parameters Grid -->
-                <div class="bg-slate-900/40 p-3.5 rounded-xl border border-white/5 space-y-3">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex justify-between">
-                        <span>Fill &amp; Execution Parameters</span>
-                        <span class="text-gray-500">Live Recalculation</span>
+            <div class="p-3 overflow-y-auto space-y-3 text-sm">
+                <div class="bg-slate-900/40 p-2.5 rounded-xl border border-white/5 space-y-2">
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <label class="text-[9px] text-gray-400 font-bold uppercase">Entry
+                            <input type="number" step="0.01" id="modalEntryPrice" class="w-full bg-slate-800 text-white font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
+                        <label class="text-[9px] text-gray-400 font-bold uppercase">Shares
+                            <input type="number" step="1" id="modalShares" class="w-full bg-slate-800 text-cyan-300 font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
+                        <label class="text-[9px] text-gray-400 font-bold uppercase" id="modalStopLabel">Stop
+                            <input type="number" step="0.01" id="modalStopPrice" class="w-full bg-slate-800 text-red-300 font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
                     </div>
-                    
-                    <div class="grid grid-cols-3 gap-2.5">
-                        <div>
-                            <label class="text-[9px] text-gray-400 font-bold uppercase block mb-1">Fill / Entry ($)</label>
-                            <input type="number" step="0.01" id="modalEntryPrice" class="w-full bg-slate-800 text-white font-mono-num font-bold text-sm px-2.5 py-1.5 rounded border border-slate-600 text-center focus:border-blue-500 outline-none" oninput="recalcModalOrders()">
-                        </div>
-                        <div>
-                            <label class="text-[9px] text-gray-400 font-bold uppercase block mb-1">Shares Filled</label>
-                            <input type="number" step="1" id="modalShares" class="w-full bg-slate-800 text-white font-mono-num font-bold text-sm px-2.5 py-1.5 rounded border border-slate-600 text-center focus:border-blue-500 outline-none" oninput="recalcModalOrders()">
-                        </div>
-                        <div>
-                            <label class="text-[9px] text-gray-400 font-bold uppercase block mb-1" id="modalStopLabel">Stop (LOD - 0.01)</label>
-                            <input type="number" step="0.01" id="modalStopPrice" class="w-full bg-slate-800 text-red-300 font-mono-num font-bold text-sm px-2.5 py-1.5 rounded border border-slate-600 text-center focus:border-red-500 outline-none" oninput="recalcModalOrders()">
-                        </div>
-                    </div>
-
-                    <!-- Calculated Risk Breakdown Bar -->
-                    <div class="pt-2 border-t border-white/5 flex justify-between text-xs font-mono-num">
-                        <span class="text-gray-400">Risk/Share: <strong id="modalRiskPerShare" class="text-white">$0.00</strong></span>
-                        <span class="text-gray-400">Total Risk: <strong id="modalTotalRisk" class="text-red-400">-$0.00</strong></span>
-                        <span class="text-gray-400" id="modalRefBound">LOD: <strong id="modalRefBoundVal" class="text-gray-300">$0.00</strong></span>
+                    <div class="flex justify-between text-[10px] font-mono-num text-gray-400">
+                        <span>R/sh <strong id="modalRiskPerShare" class="text-white">$0.00</strong></span>
+                        <span>Risk <strong id="modalTotalRisk" class="text-red-400">-$0.00</strong></span>
+                        <span id="modalRefBound">LOD <strong id="modalRefBoundVal" class="text-gray-300">$0.00</strong></span>
                     </div>
                 </div>
 
-                <!-- Strategy Regime Selection (For Longs) -->
-                <div id="modalLongStrategySection" class="space-y-3">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Strategy Regime (Exit Rule)</div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button id="modalOpt1Btn" onclick="setModalOption(1)" class="p-2.5 rounded-xl border text-left transition-all border-emerald-500/40 bg-emerald-950/40 text-white">
-                            <div class="flex items-center gap-1.5">
-                                <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
-                                <span class="text-xs font-black">Option 1 (Expanding)</span>
-                            </div>
-                            <div class="text-[10px] text-gray-300 mt-1">100% Position @ 1:6 TP</div>
-                        </button>
-                        
-                        <button id="modalOpt2Btn" onclick="setModalOption(2)" class="p-2.5 rounded-xl border text-left transition-all border-white/10 bg-slate-900/40 text-gray-400 hover:text-white">
-                            <div class="flex items-center gap-1.5">
-                                <span class="h-2 w-2 rounded-full bg-amber-400"></span>
-                                <span class="text-xs font-black">Option 2 (Declining)</span>
-                            </div>
-                            <div class="text-[10px] text-gray-300 mt-1">60% @ 1:6 TP + 40% @ 1:1 TP</div>
-                        </button>
-                    </div>
+                <div id="modalLongStrategySection" class="space-y-1.5">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Exit strategy</div>
+                    <select id="modalStrategySelect" onchange="onModalStrategyChange()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600"></select>
                 </div>
 
                 <!-- Generated Orders Panel -->
@@ -380,7 +505,7 @@
             </div>
 
             <!-- Modal Footer / Actions -->
-            <div class="bg-slate-900/80 px-5 py-3.5 border-t border-white/10 flex flex-wrap gap-2 justify-between items-center">
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row flex-wrap gap-2 justify-between items-stretch sm:items-center">
                 <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
                     <span>📥</span> Download TWS Basket (.csv)
                 </button>
@@ -400,7 +525,7 @@
     <!-- ======================================================== -->
     <!-- ACTIVE TRADES DRAWER / MODAL                             -->
     <!-- ======================================================== -->
-    <div id="activeTradesModalOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-4 animate-fade-in" onclick="handleActiveTradesBackdropClick(event)">
+    <div id="activeTradesModalOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleActiveTradesBackdropClick(event)">
         <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
             <div class="bg-slate-900/80 px-5 py-4 border-b border-white/10 flex justify-between items-center">
                 <div class="flex items-center gap-2.5">
@@ -419,6 +544,26 @@
             <div class="bg-slate-900/80 px-5 py-3 border-t border-white/10 flex justify-between items-center text-xs text-gray-400">
                 <span>Trades are saved locally in your browser.</span>
                 <button onclick="closeActiveTradesModal()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-1.5 rounded-lg font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BATCH REVIEW DRAWER -->
+    <div id="batchReviewOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
+        <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10 flex justify-between items-center">
+                <h2 class="text-sm font-black uppercase text-white">Batch Review → 1 TWS CSV</h2>
+                <button onclick="closeBatchReviewDrawer()" class="text-gray-400 hover:text-white text-xl font-bold leading-none">&times;</button>
+            </div>
+            <div id="batchReviewList" class="p-3 overflow-y-auto space-y-2 flex-1 text-sm"></div>
+            <div id="batchPreviewBox" class="hidden mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2.5">
+                <div class="text-[10px] font-bold text-cyan-300 uppercase mb-1">CSV Preview</div>
+                <div id="batchPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-1 max-h-40 overflow-y-auto"></div>
+            </div>
+            <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+                <button onclick="toggleBatchPreview()" class="text-[11px] font-bold text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg">Preview CSV</button>
+                <button onclick="downloadBatchCombinedCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
             </div>
         </div>
     </div>
@@ -445,6 +590,41 @@
 
         let globalMarketRegime = localStorage.getItem('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
         let currentViewMode = localStorage.getItem('preferredViewMode') || 'cards'; // 'cards' | 'table'
+        let currentPage = 'scanner';
+        let selectedTickers = new Set();
+        let lastRenderedSnapshot = [];
+        let builderRowId = 0;
+        let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
+        let isStreamingLive = false;
+
+        const DEFAULT_STRATEGIES = [
+            { id: 'opt1', name: 'Option 1 · 100% @ 1:6', builtIn: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] },
+            { id: 'opt2', name: 'Option 2 · 40% @ 1:1 + 60% @ 1:6', builtIn: true, legs: [
+                { pct: 40, rr: 1, stopMode: 'fixed' },
+                { pct: 60, rr: 6, stopMode: 'fixed' }
+            ] },
+            { id: 'short16', name: 'Short · 100% @ 1:6', builtIn: true, short: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] }
+        ];
+        let customStrategies = [];
+        let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
+        try {
+            const savedS = localStorage.getItem('customStrategies');
+            if (savedS) customStrategies = JSON.parse(savedS);
+            const savedMap = localStorage.getItem('regimeStrategyMap');
+            if (savedMap) regimeStrategyMap = { ...regimeStrategyMap, ...JSON.parse(savedMap) };
+        } catch (e) {}
+
+        function allStrategies() {
+            const safeCustom = Array.isArray(customStrategies) ? customStrategies : [];
+            return DEFAULT_STRATEGIES.concat(safeCustom);
+        }
+        function getStrategyById(id) {
+            return allStrategies().find(s => s.id === id) || DEFAULT_STRATEGIES[0];
+        }
+        function defaultStrategyId(isLong) {
+            if (!isLong) return 'short16';
+            return globalMarketRegime === 'declining' ? (regimeStrategyMap.declining || 'opt2') : (regimeStrategyMap.expanding || 'opt1');
+        }
 
         let isFocusMode = false;
         let isVoiceEnabled = false;
@@ -458,7 +638,7 @@
             shares: 0,
             stopPrice: 0,
             refBound: 0, // LOD for long, HOD for short
-            option: 1 // 1 or 2
+            strategyId: 'opt1'
         };
 
         // Active Trades Log
@@ -501,8 +681,38 @@
             document.getElementById('showFocusSetting').checked = showFocus;
             document.getElementById('showVoiceSetting').checked = showVoice;
             document.getElementById('liveUpdateSetting').checked = liveUpdateEnabled;
+            const collapseEl = document.getElementById('collapseAfterCalcSetting');
+            if (collapseEl) collapseEl.checked = collapseAfterCalc;
             
             updateUIControls();
+            refreshStrategySelects();
+            renderStrategyEditor();
+            applyScannerCollapsed();
+        }
+
+        function saveCollapseAfterCalc() {
+            collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
+            localStorage.setItem('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
+        }
+
+        function setScannerCollapsed(on) {
+            const bar = document.getElementById('scannerCollapsedBar');
+            const body = document.getElementById('scannerFormBody');
+            if (!bar || !body) return;
+            if (on) {
+                const tickers = Array.from(document.querySelectorAll('.ticker-input')).map(i => i.value.trim().toUpperCase()).filter(Boolean);
+                document.getElementById('scannerCollapsedText').innerText = tickers.join('  ·  ') || 'Scanner collapsed';
+                bar.classList.remove('hidden');
+                bar.classList.add('flex');
+                body.classList.add('hidden');
+            } else {
+                bar.classList.add('hidden');
+                bar.classList.remove('flex');
+                body.classList.remove('hidden');
+            }
+        }
+        function applyScannerCollapsed() {
+            if (!collapseAfterCalc) setScannerCollapsed(false);
         }
 
         function saveLiveUpdateSetting() {
@@ -511,20 +721,61 @@
             updateTopStatus();
         }
 
+        function styleRegimePair(expBtn, decBtn, regime) {
+            if (!expBtn || !decBtn) return;
+            const on = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold bg-emerald-600 text-white shadow-sm';
+            const off = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold text-gray-400 hover:text-white';
+            const onDec = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold bg-amber-600 text-white shadow-sm';
+            if (regime === 'expanding') {
+                expBtn.className = on;
+                decBtn.className = off;
+            } else {
+                expBtn.className = off;
+                decBtn.className = onDec;
+            }
+        }
+
         function setGlobalRegime(regime, save = true) {
             globalMarketRegime = regime;
             if (save) localStorage.setItem('globalMarketRegime', regime);
+            styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
+            styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
+        }
 
-            const expBtn = document.getElementById('regimeExpandingBtn');
-            const decBtn = document.getElementById('regimeDecliningBtn');
-
-            if (regime === 'expanding') {
-                expBtn.className = 'px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 bg-emerald-600 text-white shadow-sm';
-                decBtn.className = 'px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 text-gray-400 hover:text-white';
-            } else {
-                expBtn.className = 'px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 text-gray-400 hover:text-white';
-                decBtn.className = 'px-3 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 bg-amber-600 text-white shadow-sm';
+        function openNavMenu() {
+            document.getElementById('navDrawer').classList.add('open');
+            document.getElementById('navBackdrop').classList.remove('hidden');
+        }
+        function closeNavMenu() {
+            document.getElementById('navDrawer').classList.remove('open');
+            document.getElementById('navBackdrop').classList.add('hidden');
+        }
+        function navigateTo(page) {
+            currentPage = page;
+            document.getElementById('page-scanner').classList.toggle('hidden', page !== 'scanner');
+            document.getElementById('page-active-trades').classList.toggle('hidden', page !== 'active-trades');
+            document.getElementById('page-manual-builder').classList.toggle('hidden', page !== 'manual-builder');
+            document.getElementById('page-settings').classList.toggle('hidden', page !== 'settings');
+            ['navLinkScanner','navLinkTrades','navLinkBuilder','navLinkSettings'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.remove('nav-link-active');
+                el.classList.add('text-gray-300');
+            });
+            const map = { scanner: 'navLinkScanner', 'active-trades': 'navLinkTrades', 'manual-builder': 'navLinkBuilder', settings: 'navLinkSettings' };
+            const active = document.getElementById(map[page]);
+            if (active) {
+                active.classList.add('nav-link-active');
+                active.classList.remove('text-gray-300');
             }
+            closeNavMenu();
+            if (page === 'active-trades') renderActiveTradesPage();
+            if (page === 'manual-builder' && document.getElementById('builderRows').children.length === 0) addBuilderRow();
+            if (page === 'settings') { refreshStrategySelects(); renderStrategyEditor(); }
+        }
+
+        function toggleSettingsPanel() {
+            navigateTo('settings');
         }
 
         function toggleViewMode() {
@@ -544,10 +795,10 @@
             const text = document.getElementById('viewToggleText');
             if (currentViewMode === 'cards') {
                 icon.innerText = '📑';
-                text.innerText = 'Table View';
+                text.innerText = 'Table';
             } else {
                 icon.innerText = '📊';
-                text.innerText = 'Cards View';
+                text.innerText = 'Cards';
             }
         }
 
@@ -587,6 +838,18 @@
             } else {
                 ind.classList.add('hidden');
                 ind.classList.remove('flex');
+            }
+        }
+
+        function setCalcBtnStreaming(on) {
+            const btn = document.getElementById('calcBtn');
+            isStreamingLive = !!on;
+            if (on) {
+                btn.innerHTML = 'STREAMING<span class="stream-dot dot-1">.</span><span class="stream-dot dot-2">.</span><span class="stream-dot dot-3">.</span>';
+                btn.classList.add('is-streaming');
+            } else {
+                btn.innerText = 'CALCULATE';
+                btn.classList.remove('is-streaming');
             }
         }
 
@@ -680,10 +943,6 @@
                 localStorage.setItem(config.storageKey, key);
                 alert('API Key Saved'); 
             }
-        }
-
-        function toggleSettingsPanel() {
-            document.getElementById('settingsPanel').classList.toggle('hidden');
         }
 
         function toggleFocusMode() {
@@ -891,6 +1150,7 @@
                 } catch (e) {}
             }
             realtimeSocket = null;
+            setCalcBtnStreaming(false);
             updateTopStatus();
         }
 
@@ -901,6 +1161,7 @@
                 if (data) return { ...task, data, success: true };
                 return { ...task, error: 'Waiting for live quote...', success: false };
             });
+            lastRenderedSnapshot = results;
 
             if (currentViewMode === 'table') {
                 renderTableContainer(results, riskVal, slippageVal, container);
@@ -955,6 +1216,7 @@
 
             realtimeSocket.onopen = () => {
                 reconnectAttempts = 0;
+                setCalcBtnStreaming(true);
                 updateTopStatus();
                 if (provider === 'finnhub') {
                     realtimeTasks.forEach(t => {
@@ -1019,6 +1281,7 @@
             };
 
             realtimeSocket.onclose = () => {
+                setCalcBtnStreaming(false);
                 updateTopStatus('reconnecting');
                 if (liveUpdateEnabled && realtimeTasks.length > 0) {
                     const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
@@ -1043,7 +1306,7 @@
             if (config.needsKey && !apiKey) {
                 errorMsg.innerText = "Please set API Key in Settings.";
                 errorMsg.classList.remove('hidden');
-                document.getElementById('settingsPanel').classList.remove('hidden');
+                navigateTo('settings');
                 return;
             }
 
@@ -1066,12 +1329,14 @@
 
             // Handle WebSocket stream for supported providers when live update is active
             if (config.supportsWs && liveUpdateEnabled) {
-                btn.innerText = 'STREAMING...';
+                setCalcBtnStreaming(true);
                 startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
+                if (collapseAfterCalc) setScannerCollapsed(true);
                 return;
             }
 
             disconnectWebSocket();
+            setCalcBtnStreaming(false);
             btn.innerText = 'FETCHING...';
             const startTime = performance.now();
 
@@ -1090,6 +1355,7 @@
                 const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
 
                 realtimeTasks = tasks;
+                lastRenderedSnapshot = results;
                 results.forEach(r => {
                     if (r.success) realtimeQuotes[r.ticker] = r.data;
                 });
@@ -1119,7 +1385,8 @@
                 errorMsg.innerText = "Critical Error: " + e.message;
                 errorMsg.classList.remove('hidden');
             } finally {
-                btn.innerText = 'CALCULATE';
+                setCalcBtnStreaming(false);
+                if (collapseAfterCalc) setScannerCollapsed(true);
             }
         }
 
@@ -1156,60 +1423,53 @@
             const askText = (ask && ask > 0) ? `$${ask.toFixed(2)}` : '--';
             
             const cardId = `card-${ticker}`;
+            const checked = selectedTickers.has(ticker) ? 'checked' : '';
             const html = `
-                <div id="${cardId}" class="glass-card rounded-xl p-5 animate-fade-in ${statusClass}">
-                    <div class="flex justify-between items-start mb-2 pb-2 border-b border-white/5">
-                        <div class="text-left">
-                            <h2 class="text-3xl font-black text-white tracking-tight leading-none">${ticker}</h2>
-                            <div class="text-xs font-black ${typeColor} mt-1.5 leading-none uppercase">${setupType}</div>
+                <div id="${cardId}" class="glass-card rounded-xl px-3 py-2 animate-fade-in ${statusClass}">
+                    <div class="flex items-start justify-between gap-2 mb-1.5">
+                        <div class="flex items-start gap-2 min-w-0">
+                            <input type="checkbox" class="trade-check mt-1" ${checked} onchange="toggleTickerSelect('${ticker}', this.checked)" title="Select for batch CSV">
+                            <div>
+                                <h2 class="text-xl font-black text-white tracking-tight leading-none">${ticker}</h2>
+                                <div class="text-[10px] font-black ${typeColor} mt-1 leading-none uppercase">${setupType}</div>
+                            </div>
                         </div>
-                        
-                        <div class="text-center">
-                            ${trigger !== null && trigger !== undefined && !isNaN(trigger) 
-                                ? `<div class="text-[11px] font-mono-num font-bold text-gray-300 bg-slate-900/60 px-2.5 py-1 rounded-full border border-white/10">Trigger: $${trigger.toFixed(2)}</div>` 
-                                : ''}
+                        ${trigger !== null && trigger !== undefined && !isNaN(trigger)
+                            ? `<div class="text-center self-center">
+                                <div class="text-[8px] font-bold text-gray-500 uppercase leading-none">Trigger</div>
+                                <div class="text-[10px] font-mono-num font-bold text-gray-200 bg-slate-900/60 px-1.5 py-0.5 rounded-full border border-white/10 mt-0.5">$${trigger.toFixed(2)}</div>
+                               </div>`
+                            : ''}
+                        <div class="self-center text-right font-mono-num text-[9px] leading-tight text-gray-400 px-0.5">
+                            <div>H <span class="text-gray-200">${h.toFixed(2)}</span></div>
+                            <div>L <span class="text-gray-200">${l.toFixed(2)}</span></div>
                         </div>
-                        
                         <div class="text-right">
-                            <div class="text-2xl font-black text-blue-400 leading-none font-mono-num">$${c.toFixed(2)}</div>
-                            <div class="text-[10px] ${isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold font-mono-num mt-1">
-                                ${changePct > 0 ? '+' : ''}${changePct}%
+                            <div class="text-xl font-black text-blue-400 leading-none font-mono-num">$${c.toFixed(2)}</div>
+                            <div class="text-[9px] font-mono-num mt-0.5">
+                                <span class="${isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold">${changePct > 0 ? '+' : ''}${changePct}%</span>
+                                <span class="text-gray-500 mx-0.5">·</span>
+                                <span class="text-blue-300">B ${bidText}</span>
+                                <span class="text-indigo-300 ml-1">A ${askText}</span>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Bid / Ask & High / Low Meta Bar -->
-                    <div class="flex justify-between items-center text-[10px] text-gray-400 font-mono-num mb-3 px-1">
-                        <div class="flex items-center gap-2">
-                            <span>B: <strong class="text-blue-300">${bidText}</strong></span>
-                            <span class="text-gray-600">|</span>
-                            <span>A: <strong class="text-indigo-300">${askText}</strong></span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span>H: <strong class="text-gray-300">${h.toFixed(2)}</strong></span>
-                            <span class="text-gray-600">|</span>
-                            <span>L: <strong class="text-gray-300">${l.toFixed(2)}</strong></span>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3 mb-3">
-                        <div class="bg-slate-900/50 rounded-lg p-2.5 text-center border border-white/5 copy-hover transition-colors group" onclick="copyToClipboard('${shares}', this)">
-                            <div class="text-[9px] text-gray-400 uppercase font-bold group-hover:text-blue-300">Shares (Click to Copy)</div>
-                            <div class="text-2xl font-mono-num font-black text-white relative mt-0.5">
+                    <div class="flex items-stretch gap-1.5">
+                        <button data-action="open-exit-orders" data-ticker="${ticker}" data-long="${isGreenDay}" data-price="${c}" data-shares="${shares}" data-stop="${stopPrice}" data-ref="${isGreenDay ? l : h}" class="shrink-0 w-[4.4rem] ${isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1">
+                            Exit<br>Orders
+                        </button>
+                        <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" onclick="copyToClipboard('${shares}', this)">
+                            <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
+                            <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
                                 <span class="share-val">${shares.toLocaleString()}</span>
-                                <span class="copy-msg absolute inset-0 text-emerald-400 text-xs flex items-center justify-center opacity-0">COPIED!</span>
+                                <span class="copy-msg absolute inset-0 text-emerald-400 text-[10px] flex items-center justify-center opacity-0">COPIED!</span>
                             </div>
                         </div>
-                        <div class="bg-slate-900/30 rounded-lg p-2.5 text-center border border-white/5">
-                            <div class="text-[9px] text-gray-500 uppercase font-bold">${isGreenDay ? 'Stop (LOD - 0.01)' : 'Stop (HOD + 0.01)'}</div>
-                            <div class="text-xl font-mono-num font-bold text-red-400/90 mt-1">${stopPrice.toFixed(2)}</div>
+                        <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
+                            <div class="text-[8px] text-gray-500 uppercase font-bold">Stop</div>
+                            <div class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${stopPrice.toFixed(2)}</div>
                         </div>
                     </div>
-
-                    <!-- Strategy Orders Button -->
-                    <button onclick="openStrategyModal('${ticker}', ${isGreenDay}, ${c}, ${shares}, ${stopPrice}, ${isGreenDay ? l : h})" class="w-full ${isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60' : 'bg-rose-950/60 border-rose-500/40 text-rose-300 hover:bg-rose-900/60'} border py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm">
-                        <span>📋</span> Strategy Orders (TWS Basket)
-                    </button>
                 </div>
             `;
             
@@ -1221,80 +1481,70 @@
         function renderTableContainer(results, risk, slippage, container) {
             const validResults = results.filter(r => r.success);
             const errorResults = results.filter(r => !r.success);
+            const wrap = document.createElement('div');
+            wrap.className = 'space-y-1.5';
 
-            if (validResults.length > 0) {
-                let rowsHtml = '';
-                validResults.forEach(item => {
-                    const { c, h, l, pc, bid, ask } = item.data;
-                    const { ticker, trigger } = item;
-                    const isGreenDay = c > pc;
-                    const setupType = isGreenDay ? "LONG" : "SHORT";
-                    const typeColor = isGreenDay ? "text-emerald-400" : "text-rose-400";
-                    const stopPrice = isGreenDay ? (l - 0.01) : (h + 0.01);
-                    
-                    let riskPerShare = isGreenDay ? (c - stopPrice) : (stopPrice - c);
-                    riskPerShare += slippage; 
-                    let shares = (riskPerShare > 0) ? Math.floor(risk / riskPerShare) : 0;
+            validResults.forEach(item => {
+                const { c, h, l, pc, bid, ask } = item.data;
+                const { ticker, trigger } = item;
+                const isGreenDay = c > pc;
+                const setupType = isGreenDay ? "LONG" : "SHORT";
+                const typeColor = isGreenDay ? "text-emerald-400" : "text-rose-400";
+                const stopPrice = isGreenDay ? (l - 0.01) : (h + 0.01);
+                let riskPerShare = isGreenDay ? (c - stopPrice) : (stopPrice - c);
+                riskPerShare += slippage;
+                let shares = (riskPerShare > 0) ? Math.floor(risk / riskPerShare) : 0;
 
-                    let rowClass = "border-b border-white/5 hover:bg-slate-800/40 transition-colors";
-                    if (trigger !== null && trigger !== undefined && !isNaN(trigger)) {
-                        const active = isTriggerActive(item.data, trigger, isGreenDay);
-                        if (active) {
-                            rowClass += isGreenDay ? " bg-emerald-950/30 text-emerald-200" : " bg-red-950/30 text-red-200";
-                        }
+                let rowClass = "table-row-wait";
+                if (trigger !== null && trigger !== undefined && !isNaN(trigger)) {
+                    if (isTriggerActive(item.data, trigger, isGreenDay)) {
+                        rowClass = isGreenDay ? "table-row-long" : "table-row-short";
                     }
+                } else {
+                    rowClass = "";
+                }
 
-                    const bidText = (bid && bid > 0) ? `$${bid.toFixed(2)}` : '--';
-                    const askText = (ask && ask > 0) ? `$${ask.toFixed(2)}` : '--';
+                const bidText = (bid && bid > 0) ? bid.toFixed(2) : '--';
+                const askText = (ask && ask > 0) ? ask.toFixed(2) : '--';
+                const checked = selectedTickers.has(ticker) ? 'checked' : '';
 
-                    rowsHtml += `
-                        <tr class="${rowClass}">
-                            <td class="py-3 px-3 font-mono-num font-black text-white text-base">${ticker}</td>
-                            <td class="py-3 px-2 font-black text-xs ${typeColor}">${setupType}</td>
-                            <td class="py-3 px-2 font-mono-num font-bold text-blue-400">$${c.toFixed(2)}</td>
-                            <td class="py-3 px-2 font-mono-num text-[11px] text-gray-300">${bidText} / ${askText}</td>
-                            <td class="py-3 px-2 font-mono-num text-[11px] text-gray-400">${h.toFixed(2)} / ${l.toFixed(2)}</td>
-                            <td class="py-3 px-2 font-mono-num text-xs text-gray-300">${trigger ? '$' + trigger.toFixed(2) : '--'}</td>
-                            <td class="py-3 px-2 font-mono-num font-bold text-white copy-hover rounded cursor-pointer" onclick="copyToClipboard('${shares}', this)" title="Click to copy">${shares.toLocaleString()}</td>
-                            <td class="py-3 px-2 font-mono-num text-xs text-red-400 font-bold">$${stopPrice.toFixed(2)}</td>
-                            <td class="py-3 px-3 text-right">
-                                <button onclick="openStrategyModal('${ticker}', ${isGreenDay}, ${c}, ${shares}, ${stopPrice}, ${isGreenDay ? l : h})" class="px-2.5 py-1 text-[10px] font-bold uppercase rounded ${isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40 hover:bg-rose-900'}">
-                                    Orders
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-
-                const tableHtml = `
-                    <div class="glass-card rounded-xl overflow-hidden animate-fade-in">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr class="bg-slate-900/80 border-b border-white/10 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                        <th class="py-3 px-3">Ticker</th>
-                                        <th class="py-3 px-2">Side</th>
-                                        <th class="py-3 px-2">Price</th>
-                                        <th class="py-3 px-2">Bid / Ask</th>
-                                        <th class="py-3 px-2">H / L</th>
-                                        <th class="py-3 px-2">Trigger</th>
-                                        <th class="py-3 px-2">Shares</th>
-                                        <th class="py-3 px-2">Stop</th>
-                                        <th class="py-3 px-3 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${rowsHtml}
-                                </tbody>
-                            </table>
+                const row = document.createElement('div');
+                row.className = `rounded-lg px-2.5 py-2 animate-fade-in ${rowClass}`;
+                row.innerHTML = `
+                    <div class="flex items-center gap-1.5">
+                        <input type="checkbox" class="trade-check shrink-0" ${checked} onchange="toggleTickerSelect('${ticker}', this.checked)">
+                        <div class="w-[54px] shrink-0">
+                            <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${ticker}</div>
+                            <div class="text-[9px] font-black ${typeColor} uppercase mt-0.5">${setupType}</div>
                         </div>
+                        <div class="shrink-0">
+                            <div class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${c.toFixed(2)}</div>
+                            <div class="text-[8px] text-gray-400 font-mono-num mt-0.5">B ${bidText} A ${askText}</div>
+                        </div>
+                        <div class="shrink-0 text-[8px] font-mono-num text-gray-500 leading-tight w-[46px]">
+                            <div>H ${h.toFixed(2)}</div>
+                            <div>L ${l.toFixed(2)}</div>
+                        </div>
+                        <div class="shrink-0 text-center w-[52px]">
+                            <div class="text-[7px] text-gray-500 uppercase font-bold leading-none">Trigger</div>
+                            <div class="text-[10px] font-mono-num font-bold text-gray-200">${trigger ? '$'+trigger.toFixed(2) : '--'}</div>
+                        </div>
+                        <button class="ml-auto shrink-0 w-[48px] text-center copy-hover rounded-md bg-slate-950/40 py-0.5" onclick="copyToClipboard('${shares}', this)" title="Copy shares">
+                            <div class="text-[8px] text-cyan-500 uppercase font-bold leading-none">Sh</div>
+                            <span class="share-val block text-lg font-black font-mono-num text-cyan-300 leading-none">${shares.toLocaleString()}</span>
+                            <span class="copy-msg hidden text-[9px] text-emerald-400">OK</span>
+                        </button>
+                        <div class="shrink-0 w-[48px] text-right">
+                            <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
+                            <div class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${stopPrice.toFixed(2)}</div>
+                        </div>
+                        <button data-action="open-exit-orders" data-ticker="${ticker}" data-long="${isGreenDay}" data-price="${c}" data-shares="${shares}" data-stop="${stopPrice}" data-ref="${isGreenDay ? l : h}" class="shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}">Ord</button>
                     </div>
                 `;
-                const div = document.createElement('div');
-                div.innerHTML = tableHtml;
-                container.appendChild(div);
-            }
+                wrap.appendChild(row);
+            });
 
+            if (validResults.length) container.appendChild(wrap);
             errorResults.forEach(res => renderError(res, container));
         }
 
@@ -1305,11 +1555,11 @@
                 const msgSpan = element.querySelector('.copy-msg');
                 if (valSpan && msgSpan) {
                     valSpan.classList.add('opacity-0');
-                    msgSpan.classList.remove('opacity-0');
+                    msgSpan.classList.remove('opacity-0', 'hidden');
                     msgSpan.classList.add('copy-feedback');
                     setTimeout(() => {
                         valSpan.classList.remove('opacity-0');
-                        msgSpan.classList.add('opacity-0');
+                        msgSpan.classList.add('opacity-0', 'hidden');
                         msgSpan.classList.remove('copy-feedback');
                     }, 1000);
                 } else {
@@ -1334,72 +1584,88 @@
         // STRATEGY ORDERS MODAL ENGINE (PURE EXIT OCA BRACKETS)
         // ========================================================
         function openStrategyModal(ticker, isLong, entryPrice, shares, stopPrice, refBound) {
+            const overlay = document.getElementById('strategyModalOverlay');
+            if (!overlay) return;
+            overlay.classList.remove('hidden');
+            overlay.style.display = 'flex';
+
             currentModalState = {
-                ticker: ticker.toUpperCase(),
-                isLong: isLong,
+                ticker: String(ticker).toUpperCase(),
+                isLong: !!isLong,
                 entryPrice: parseFloat(entryPrice) || 0,
                 shares: parseInt(shares) || 0,
                 stopPrice: parseFloat(stopPrice) || 0,
                 refBound: parseFloat(refBound) || 0,
-                option: (globalMarketRegime === 'declining') ? 2 : 1
+                strategyId: defaultStrategyId(!!isLong)
             };
 
-            document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
-            const setupBadge = document.getElementById('modalSetupBadge');
-            if (isLong) {
-                setupBadge.innerText = 'LONG';
-                setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+            try {
+                document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
+                const setupBadge = document.getElementById('modalSetupBadge');
+                if (currentModalState.isLong) {
+                    setupBadge.innerText = 'LONG';
+                    setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                    document.getElementById('modalRefBound').innerHTML = `LOD <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
+                } else {
+                    setupBadge.innerText = 'SHORT';
+                    setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                    document.getElementById('modalRefBound').innerHTML = `HOD <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
+                }
+
+                const modalInputs = {
+                    modalEntryPrice: document.getElementById('modalEntryPrice'),
+                    modalShares: document.getElementById('modalShares'),
+                    modalStopPrice: document.getElementById('modalStopPrice')
+                };
+                for (const [id, el] of Object.entries(modalInputs)) {
+                    if (!el) console.error(`openStrategyModal: missing #${id}`);
+                }
+                if (modalInputs.modalEntryPrice) modalInputs.modalEntryPrice.value = currentModalState.entryPrice.toFixed(2);
+                if (modalInputs.modalShares) modalInputs.modalShares.value = currentModalState.shares;
+                if (modalInputs.modalStopPrice) modalInputs.modalStopPrice.value = currentModalState.stopPrice.toFixed(2);
+
+                fillStrategySelect(document.getElementById('modalStrategySelect'), currentModalState.strategyId, currentModalState.isLong);
                 document.getElementById('modalLongStrategySection').classList.remove('hidden');
-                document.getElementById('modalStopLabel').innerText = 'Stop (LOD - 0.01)';
-                document.getElementById('modalRefBound').innerHTML = `LOD: <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
-            } else {
-                setupBadge.innerText = 'SHORT';
-                setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30';
-                document.getElementById('modalLongStrategySection').classList.add('hidden');
-                document.getElementById('modalStopLabel').innerText = 'Stop (HOD + 0.01)';
-                document.getElementById('modalRefBound').innerHTML = `HOD: <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
+                recalcModalOrders();
+            } catch (err) {
+                console.error('openStrategyModal error:', err);
+                const errText = (err && (err.message || String(err))) ? String(err.message || err).slice(0, 120) : 'unknown';
+                const cardsContainer = document.getElementById('modalOrdersCardsContainer');
+                if (cardsContainer) {
+                    cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">Unable to calculate orders: ${errText}</div>`;
+                }
             }
-
-            document.getElementById('modalEntryPrice').value = currentModalState.entryPrice.toFixed(2);
-            document.getElementById('modalShares').value = currentModalState.shares;
-            document.getElementById('modalStopPrice').value = currentModalState.stopPrice.toFixed(2);
-
-            setModalOption(currentModalState.option, false);
-            recalcModalOrders();
-
-            document.getElementById('strategyModalOverlay').classList.remove('hidden');
         }
 
         function closeStrategyModal() {
-            document.getElementById('strategyModalOverlay').classList.add('hidden');
+            const overlay = document.getElementById('strategyModalOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }
         }
 
         function handleModalBackdropClick(e) {
             if (e.target.id === 'strategyModalOverlay') closeStrategyModal();
         }
 
-        function setModalOption(optionNum, shouldRecalc = true) {
-            currentModalState.option = optionNum;
-            const opt1Btn = document.getElementById('modalOpt1Btn');
-            const opt2Btn = document.getElementById('modalOpt2Btn');
-
-            if (optionNum === 1) {
-                opt1Btn.className = 'p-2.5 rounded-xl border text-left transition-all border-emerald-500/50 bg-emerald-950/50 text-white shadow-sm';
-                opt2Btn.className = 'p-2.5 rounded-xl border text-left transition-all border-white/10 bg-slate-900/40 text-gray-400 hover:text-white';
-            } else {
-                opt1Btn.className = 'p-2.5 rounded-xl border text-left transition-all border-white/10 bg-slate-900/40 text-gray-400 hover:text-white';
-                opt2Btn.className = 'p-2.5 rounded-xl border text-left transition-all border-amber-500/50 bg-amber-950/50 text-white shadow-sm';
-            }
-
-            if (shouldRecalc) recalcModalOrders();
+        function onModalStrategyChange() {
+            const sel = document.getElementById('modalStrategySelect');
+            if (!sel) return;
+            currentModalState.strategyId = sel.value;
+            recalcModalOrders();
         }
 
         function recalcModalOrders() {
-            const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
-            const shares = parseInt(document.getElementById('modalShares').value) || 0;
-            const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
+            const entryEl = document.getElementById('modalEntryPrice');
+            const sharesEl = document.getElementById('modalShares');
+            const stopEl = document.getElementById('modalStopPrice');
+            const entry = entryEl ? (parseFloat(entryEl.value) || 0) : currentModalState.entryPrice;
+            const shares = sharesEl ? (parseInt(sharesEl.value) || 0) : currentModalState.shares;
+            const stop = stopEl ? (parseFloat(stopEl.value) || 0) : currentModalState.stopPrice;
             const isLong = currentModalState.isLong;
-            const option = currentModalState.option;
+            const strategySel = document.getElementById('modalStrategySelect');
+            const strategyId = (strategySel && strategySel.value) || currentModalState.strategyId;
 
             const riskPerShare = isLong ? (entry - stop) : (stop - entry);
             const totalRisk = riskPerShare > 0 ? (riskPerShare * shares) : 0;
@@ -1410,139 +1676,24 @@
             const cardsContainer = document.getElementById('modalOrdersCardsContainer');
             const ruleText = document.getElementById('modalStrategyRuleText');
 
-            if (riskPerShare <= 0 || shares <= 0) {
-                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">Please enter valid Entry, Shares, and Stop prices (Entry must be > Stop for Longs, or < Stop for Shorts).</div>`;
+            const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) {
+                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
                 return;
             }
-
-            let cardsHtml = '';
-
-            if (isLong) {
-                if (option === 1) {
-                    // Long Option 1: 100% position @ 1:6 TP
-                    const targetPrice = entry + (6 * riskPerShare);
-                    const targetProfit = totalRisk * 6;
-                    ruleText.innerText = "Exit at the 5th day (no breakeven stop). Full 1:6 RR target.";
-
-                    cardsHtml = `
-                        <!-- Stop Loss Leg -->
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-red-500/20 flex justify-between items-center">
-                            <div>
-                                <div class="text-[10px] text-red-400 font-bold uppercase tracking-wider">Stop Loss (OCA Group: ${currentModalState.ticker}_OCA)</div>
-                                <div class="text-sm font-black text-white">SELL ${shares.toLocaleString()} @ STOP $${stop.toFixed(2)}</div>
-                                <div class="text-[10px] text-gray-400">Risk: -$${totalRisk.toFixed(2)}</div>
-                            </div>
-                            <button onclick="copySingleValue('${stop.toFixed(2)}', this)" class="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold transition-all">
-                                Copy Stop
-                            </button>
-                        </div>
-
-                        <!-- Take Profit Leg -->
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-emerald-500/20 flex justify-between items-center">
-                            <div>
-                                <div class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Take Profit 1:6 RR (OCA Group: ${currentModalState.ticker}_OCA)</div>
-                                <div class="text-sm font-black text-white">SELL ${shares.toLocaleString()} @ LMT $${targetPrice.toFixed(2)}</div>
-                                <div class="text-[10px] text-emerald-400">Profit: +$${targetProfit.toFixed(2)} (+6R)</div>
-                            </div>
-                            <button onclick="copySingleValue('${targetPrice.toFixed(2)}', this)" class="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded text-xs font-bold transition-all">
-                                Copy Target
-                            </button>
-                        </div>
-                    `;
-                } else {
-                    // Long Option 2: 60/40 Split
-                    const tp1Shares = Math.round(shares * 0.40);
-                    const tp2Shares = shares - tp1Shares;
-                    const tp1Price = entry + (1 * riskPerShare);
-                    const tp2Price = entry + (6 * riskPerShare);
-                    const tp1Profit = tp1Shares * riskPerShare * 1;
-                    const tp2Profit = tp2Shares * riskPerShare * 6;
-                    const combinedProfit = tp1Profit + tp2Profit;
-
-                    ruleText.innerText = "Exit at the 5th day (no breakeven stop). 40% partial @ 1:1 RR, 60% remainder @ 1:6 RR.";
-
-                    cardsHtml = `
-                        <!-- Bracket A (40% Partial) -->
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-amber-500/20 space-y-2">
-                            <div class="flex justify-between items-center">
-                                <span class="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Bracket 1 (40% Position - ${tp1Shares} Shares)</span>
-                                <span class="text-[9px] text-gray-400 font-mono">OCA Group: ${currentModalState.ticker}_OCA_40</span>
-                            </div>
-                            <div class="flex justify-between items-center text-xs">
-                                <div>
-                                    <div class="text-white font-bold">SELL ${tp1Shares} @ STOP $${stop.toFixed(2)}</div>
-                                    <div class="text-emerald-400 font-bold">SELL ${tp1Shares} @ LMT $${tp1Price.toFixed(2)} (1:1 RR)</div>
-                                </div>
-                                <div class="flex gap-1.5">
-                                    <button onclick="copySingleValue('${stop.toFixed(2)}', this)" class="bg-slate-800 hover:bg-slate-700 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
-                                    <button onclick="copySingleValue('${tp1Price.toFixed(2)}', this)" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP 1:1</button>
-                                </div>
-                            </div>
-                            <div class="text-[10px] text-gray-400 flex justify-between pt-1 border-t border-white/5">
-                                <span>Risk: -$${(tp1Shares * riskPerShare).toFixed(2)}</span>
-                                <span class="text-emerald-400">TP1 Profit: +$${tp1Profit.toFixed(2)}</span>
-                            </div>
-                        </div>
-
-                        <!-- Bracket B (60% Runner) -->
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-emerald-500/20 space-y-2">
-                            <div class="flex justify-between items-center">
-                                <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Bracket 2 (60% Runner - ${tp2Shares} Shares)</span>
-                                <span class="text-[9px] text-gray-400 font-mono">OCA Group: ${currentModalState.ticker}_OCA_60</span>
-                            </div>
-                            <div class="flex justify-between items-center text-xs">
-                                <div>
-                                    <div class="text-white font-bold">SELL ${tp2Shares} @ STOP $${stop.toFixed(2)}</div>
-                                    <div class="text-emerald-400 font-bold">SELL ${tp2Shares} @ LMT $${tp2Price.toFixed(2)} (1:6 RR)</div>
-                                </div>
-                                <div class="flex gap-1.5">
-                                    <button onclick="copySingleValue('${stop.toFixed(2)}', this)" class="bg-slate-800 hover:bg-slate-700 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
-                                    <button onclick="copySingleValue('${tp2Price.toFixed(2)}', this)" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP 1:6</button>
-                                </div>
-                            </div>
-                            <div class="text-[10px] text-gray-400 flex justify-between pt-1 border-t border-white/5">
-                                <span>Risk: -$${(tp2Shares * riskPerShare).toFixed(2)}</span>
-                                <span class="text-emerald-400">TP2 Profit: +$${tp2Profit.toFixed(2)}</span>
-                            </div>
-                        </div>
-
-                        <div class="text-right text-[11px] font-bold text-emerald-400">
-                            Combined Target Profit: +$${combinedProfit.toFixed(2)}
-                        </div>
-                    `;
-                }
-            } else {
-                // Short Position Strategy Orders
-                const targetPrice = entry - (6 * riskPerShare);
-                const targetProfit = totalRisk * 6;
-                ruleText.innerText = "Short Exit Rule: Stop at HOD + $0.01. Fixed 1:6 RR profit target.";
-
-                cardsHtml = `
-                    <div class="bg-slate-900/60 p-3 rounded-xl border border-red-500/20 flex justify-between items-center">
-                        <div>
-                            <div class="text-[10px] text-red-400 font-bold uppercase tracking-wider">Stop Loss (OCA Group: ${currentModalState.ticker}_SHORT_OCA)</div>
-                            <div class="text-sm font-black text-white">BUY ${shares.toLocaleString()} @ STOP $${stop.toFixed(2)}</div>
-                            <div class="text-[10px] text-gray-400">Risk: -$${totalRisk.toFixed(2)}</div>
-                        </div>
-                        <button onclick="copySingleValue('${stop.toFixed(2)}', this)" class="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-500/30 px-2.5 py-1 rounded text-xs font-bold transition-all">
-                            Copy Stop
-                        </button>
+            ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + 'Exit at the 5th day. TIF GTC.';
+            cardsContainer.innerHTML = built.preview.map(p => `
+                <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
+                        <div class="text-xs font-black text-white">STP $${p.stop.toFixed(2)} <span class="text-gray-500">+</span> LMT $${p.tp.toFixed(2)} <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span></div>
                     </div>
-
-                    <div class="bg-slate-900/60 p-3 rounded-xl border border-emerald-500/20 flex justify-between items-center">
-                        <div>
-                            <div class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Take Profit 1:6 RR (OCA Group: ${currentModalState.ticker}_SHORT_OCA)</div>
-                            <div class="text-sm font-black text-white">BUY ${shares.toLocaleString()} @ LMT $${targetPrice.toFixed(2)}</div>
-                            <div class="text-[10px] text-emerald-400">Profit: +$${targetProfit.toFixed(2)} (+6R)</div>
-                        </div>
-                        <button onclick="copySingleValue('${targetPrice.toFixed(2)}', this)" class="bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded text-xs font-bold transition-all">
-                            Copy Target
-                        </button>
+                    <div class="flex gap-1">
+                        <button onclick="copySingleValue('${p.stop.toFixed(2)}', this)" class="bg-slate-800 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
+                        <button onclick="copySingleValue('${p.tp.toFixed(2)}', this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
                     </div>
-                `;
-            }
-
-            cardsContainer.innerHTML = cardsHtml;
+                </div>
+            `).join('');
         }
 
         function copySingleValue(val, btnElement) {
@@ -1559,99 +1710,367 @@
             const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
             const ticker = currentModalState.ticker;
             const isLong = currentModalState.isLong;
-            const option = currentModalState.option;
-
-            const riskPerShare = isLong ? (entry - stop) : (stop - entry);
-            let summary = '';
-
-            if (isLong) {
-                if (option === 1) {
-                    const tp = (entry + 6 * riskPerShare).toFixed(2);
-                    summary = `[IBKR LONG OCA] ${ticker} | Shares: ${shares} | Entry: $${entry.toFixed(2)} | STOP: $${stop.toFixed(2)} | TP (1:6): $${tp} | Exit: Day 5`;
-                } else {
-                    const tp1Shares = Math.round(shares * 0.40);
-                    const tp2Shares = shares - tp1Shares;
-                    const tp1 = (entry + 1 * riskPerShare).toFixed(2);
-                    const tp2 = (entry + 6 * riskPerShare).toFixed(2);
-                    summary = `[IBKR LONG 60/40 OCA] ${ticker} | Total: ${shares} shs | Entry: $${entry.toFixed(2)} | Stop: $${stop.toFixed(2)} | Bracket 1 (40%): ${tp1Shares} shs @ TP $${tp1} | Bracket 2 (60%): ${tp2Shares} shs @ TP $${tp2} | Exit: Day 5`;
-                }
-            } else {
-                const tp = (entry - 6 * riskPerShare).toFixed(2);
-                summary = `[IBKR SHORT OCA] ${ticker} | Shares: ${shares} | Entry: $${entry.toFixed(2)} | STOP: $${stop.toFixed(2)} | TP (1:6): $${tp}`;
-            }
-
-            navigator.clipboard.writeText(summary).then(() => {
-                alert('Order summary copied to clipboard!');
-            });
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) { alert(built.error); return; }
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)} (${p.rr}R)`).join(' | ');
+            const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
+            navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
         }
 
         // ========================================================
         // TWS BASKETTRADER CSV GENERATOR (PURE EXIT OCA)
         // ========================================================
+        const TWS_CSV_HEADERS = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OCA_Group"];
+
+        function splitSharesByPct(total, pcts) {
+            const raw = pcts.map(p => (total * p) / 100);
+            const floors = raw.map(v => Math.floor(v));
+            let leftover = total - floors.reduce((a, b) => a + b, 0);
+            const order = raw.map((v, i) => ({ i, frac: v - floors[i] })).sort((a, b) => b.frac - a.frac);
+            for (let k = 0; k < leftover; k++) floors[order[k % order.length].i] += 1;
+            return floors;
+        }
+
+        function stopPriceForLeg(isLong, entry, origStop, stopMode) {
+            if (stopMode === 'breakeven') return Number(entry.toFixed(2));
+            if (typeof stopMode === 'string' && stopMode.startsWith('plus')) {
+                const r = parseFloat(stopMode.replace('plus', '')) || 0;
+                const rps = Math.abs(entry - origStop);
+                return Number((isLong ? entry + r * rps : entry - r * rps).toFixed(2));
+            }
+            return origStop;
+        }
+
+        function validateTradeParams(isLong, entry, shares, stop) {
+            if (!shares || shares <= 0) return 'Shares must be > 0';
+            if (!entry || entry <= 0) return 'Entry must be > 0';
+            if (!stop || stop <= 0) return 'Stop must be > 0';
+            if (isLong && !(entry > stop)) return 'Long: entry must be above stop';
+            if (!isLong && !(stop > entry)) return 'Short: stop must be above entry';
+            return null;
+        }
+
+        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId) {
+            const err = validateTradeParams(isLong, entry, shares, stop);
+            if (err) return { ok: false, error: err, rows: [], preview: [] };
+            const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
+            const rps = isLong ? (entry - stop) : (stop - entry);
+            const action = isLong ? 'SELL' : 'BUY';
+            const pcts = strat.legs.map(l => Number(l.pct) || 0);
+            const qtys = splitSharesByPct(shares, pcts);
+            const rows = [];
+            const preview = [];
+            strat.legs.forEach((leg, i) => {
+                const qty = qtys[i];
+                if (!qty) return;
+                const tp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const stp = stopPriceForLeg(isLong, entry, stop, leg.stopMode || 'fixed');
+                const oca = `${ticker}_${strat.id}_L${i + 1}`;
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stp.toFixed(2), ticker, oca]);
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), "0", ticker, oca]);
+                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode: leg.stopMode || 'fixed' });
+            });
+            if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
+            return { ok: true, error: null, rows, preview, strategy: strat, rps };
+        }
+
+        function appendExitOcaRows(rows, ticker, isLong, entry, shares, stop, strategyId) {
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) return false;
+            built.rows.forEach(r => rows.push(r));
+            return true;
+        }
+
+        function triggerCsvDownload(filename, rows) {
+            const csvContent = [TWS_CSV_HEADERS.join(","), ...rows.map(r => r.join(","))].join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
         function downloadTWSBasketCSV() {
             const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
             const shares = parseInt(document.getElementById('modalShares').value) || 0;
             const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
             const ticker = currentModalState.ticker;
             const isLong = currentModalState.isLong;
-            const option = currentModalState.option;
-
-            const riskPerShare = isLong ? (entry - stop) : (stop - entry);
-            if (riskPerShare <= 0 || shares <= 0) {
-                alert('Please enter valid order parameters before downloading.');
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) {
+                alert(built.error);
                 return;
             }
+            triggerCsvDownload(`${ticker}_TWS_Exit_Basket.csv`, built.rows);
+        }
 
-            // Standard TWS BasketTrader CSV Header
-            const headers = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OCA_Group"];
-            const rows = [];
+        function snapshotTradeFromItem(item, risk, slippage) {
+            if (!item || !item.success || !item.data) return null;
+            const { c, h, l, pc } = item.data;
+            const isLong = c > pc;
+            const stopPrice = isLong ? (l - 0.01) : (h + 0.01);
+            let rps = isLong ? (c - stopPrice) : (stopPrice - c);
+            rps += slippage;
+            const shares = rps > 0 ? Math.floor(risk / rps) : 0;
+            return {
+                ticker: item.ticker,
+                isLong,
+                entry: c,
+                shares,
+                stop: stopPrice,
+                refBound: isLong ? l : h,
+                strategyId: defaultStrategyId(isLong)
+            };
+        }
 
-            if (isLong) {
-                if (option === 1) {
-                    const tpPrice = (entry + 6 * riskPerShare).toFixed(2);
-                    const ocaGroup = `${ticker}_OCA`;
-                    // Row 1: Stop Loss
-                    rows.push(["SELL", shares, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stop.toFixed(2), ticker, ocaGroup]);
-                    // Row 2: Limit Take Profit
-                    rows.push(["SELL", shares, ticker, "STK", "SMART", "USD", "GTC", "LMT", tpPrice, "0", ticker, ocaGroup]);
-                } else {
-                    const tp1Shares = Math.round(shares * 0.40);
-                    const tp2Shares = shares - tp1Shares;
-                    const tp1Price = (entry + 1 * riskPerShare).toFixed(2);
-                    const tp2Price = (entry + 6 * riskPerShare).toFixed(2);
-                    
-                    // Bracket A (40% Position)
-                    const oca40 = `${ticker}_OCA_40`;
-                    rows.push(["SELL", tp1Shares, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stop.toFixed(2), ticker, oca40]);
-                    rows.push(["SELL", tp1Shares, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp1Price, "0", ticker, oca40]);
-                    
-                    // Bracket B (60% Position)
-                    const oca60 = `${ticker}_OCA_60`;
-                    rows.push(["SELL", tp2Shares, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stop.toFixed(2), ticker, oca60]);
-                    rows.push(["SELL", tp2Shares, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp2Price, "0", ticker, oca60]);
-                }
-            } else {
-                // Short Exit OCA
-                const tpPrice = (entry - 6 * riskPerShare).toFixed(2);
-                const ocaShort = `${ticker}_SHORT_OCA`;
-                rows.push(["BUY", shares, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stop.toFixed(2), ticker, ocaShort]);
-                rows.push(["BUY", shares, ticker, "STK", "SMART", "USD", "GTC", "LMT", tpPrice, "0", ticker, ocaShort]);
+        function toggleTickerSelect(ticker, checked) {
+            if (checked) selectedTickers.add(ticker);
+            else selectedTickers.delete(ticker);
+            updateBatchBar();
+        }
+
+        function updateBatchBar() {
+            const bar = document.getElementById('batchActions');
+            const n = selectedTickers.size;
+            document.getElementById('batchSelectedCount').innerText = n;
+            if (n > 0) bar.classList.remove('hidden');
+            else bar.classList.add('hidden');
+        }
+
+        function openBatchReviewDrawer() {
+            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+            const list = document.getElementById('batchReviewList');
+            list.innerHTML = '';
+            const trades = lastRenderedSnapshot
+                .map(item => snapshotTradeFromItem(item, risk, slippage))
+                .filter(t => t && selectedTickers.has(t.ticker));
+            if (!trades.length) {
+                list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
+                document.getElementById('batchReviewOverlay').classList.remove('hidden');
+                return;
             }
+            trades.forEach((t, idx) => {
+                list.insertAdjacentHTML('beforeend', `
+                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2.5 batch-row" data-ticker="${t.ticker}" data-long="${t.isLong}">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <div class="flex items-center gap-2">
+                                <span class="font-black font-mono-num text-white">${t.ticker}</span>
+                                <span class="text-[10px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</span>
+                            </div>
+                            <select class="batch-option bg-slate-800 text-white text-[10px] font-bold rounded px-1.5 py-0.5 border border-slate-600"></select>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <label class="text-[9px] text-gray-500 uppercase">Entry<input type="number" step="0.01" class="batch-entry w-full bg-slate-800 text-white text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
+                            <label class="text-[9px] text-gray-500 uppercase">Shares<input type="number" step="1" class="batch-shares w-full bg-slate-800 text-cyan-300 text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.shares}"></label>
+                            <label class="text-[9px] text-gray-500 uppercase">Stop<input type="number" step="0.01" class="batch-stop w-full bg-slate-800 text-red-300 text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
+                        </div>
+                    </div>
+                `);
+            });
+            document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
+                const isLong = el.dataset.long === 'true';
+                const t = trades.find(x => x.ticker === el.dataset.ticker);
+                fillStrategySelect(el.querySelector('.batch-option'), t ? t.strategyId : defaultStrategyId(isLong), isLong);
+            });
+            const prev = document.getElementById('batchPreviewBox');
+            const val = document.getElementById('batchValidationMsg');
+            if (prev) prev.classList.add('hidden');
+            if (val) { val.classList.add('hidden'); val.innerText = ''; }
+            const overlay = document.getElementById('batchReviewOverlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.style.display = 'flex';
+            }
+        }
 
-            const csvContent = [
-                headers.join(","),
-                ...rows.map(r => r.join(","))
-            ].join("\n");
+        function closeBatchReviewDrawer() {
+            const overlay = document.getElementById('batchReviewOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }
+        }
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `${ticker}_TWS_Exit_Basket.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+        function collectBatchTradesFromDom() {
+            const trades = [];
+            const errors = [];
+            document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
+                const ticker = el.dataset.ticker;
+                const isLong = el.dataset.long === 'true';
+                const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
+                const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
+                const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
+                const strategyId = (el.querySelector('.batch-option') || {}).value || defaultStrategyId(isLong);
+                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+                if (!built.ok) errors.push(`${ticker}: ${built.error}`);
+                else trades.push({ ticker, isLong, entry, shares, stop, strategyId, built });
+            });
+            return { trades, errors };
+        }
+
+        function showBatchValidation(errors) {
+            const el = document.getElementById('batchValidationMsg');
+            if (!el) return !errors.length;
+            if (errors.length) {
+                el.classList.remove('hidden');
+                el.innerText = errors.join(' · ');
+                return false;
+            }
+            el.classList.add('hidden');
+            el.innerText = '';
+            return true;
+        }
+
+        function toggleBatchPreview() {
+            const box = document.getElementById('batchPreviewBox');
+            const body = document.getElementById('batchPreviewBody');
+            if (box.classList.contains('hidden')) {
+                const { trades, errors } = collectBatchTradesFromDom();
+                if (!showBatchValidation(errors) || !trades.length) return;
+                body.innerHTML = trades.flatMap(t => t.built.preview.map(p =>
+                    `<div class="flex justify-between gap-2"><span class="text-white font-bold">${p.ticker}</span><span>${p.action} ${p.qty}</span><span class="text-red-300">STP ${p.stop.toFixed(2)}</span><span class="text-emerald-300">LMT ${p.tp.toFixed(2)}</span><span class="text-gray-500">${p.oca}</span></div>`
+                )).join('');
+                box.classList.remove('hidden');
+            } else {
+                box.classList.add('hidden');
+            }
+        }
+
+        function downloadBatchCombinedCSV() {
+            const { trades, errors } = collectBatchTradesFromDom();
+            if (!showBatchValidation(errors) || !trades.length) {
+                if (!errors.length) alert('No valid trades to export.');
+                return;
+            }
+            const rows = [];
+            trades.forEach(t => t.built.rows.forEach(r => rows.push(r)));
+            triggerCsvDownload('Batch_TWS_Exit_Basket.csv', rows);
+        }
+
+        function selectedSnapshotTrades() {
+            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+            return lastRenderedSnapshot
+                .map(item => snapshotTradeFromItem(item, risk, slippage))
+                .filter(t => t && selectedTickers.has(t.ticker));
+        }
+
+        function logTradeRecord(t) {
+            const rps = t.isLong ? (t.entry - t.stop) : (t.stop - t.entry);
+            const strat = getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
+            const tps = (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
+            activeTradesLog.unshift({
+                id: Date.now() + Math.random(),
+                ticker: t.ticker,
+                side: t.isLong ? 'LONG' : 'SHORT',
+                entryDate: new Date().toISOString().split('T')[0],
+                entryPrice: t.entry,
+                shares: t.shares,
+                stopPrice: t.stop,
+                regime: strat.name,
+                tp1: tps[0] || null,
+                tp2: tps[tps.length - 1] || null,
+                status: 'ACTIVE'
+            });
+        }
+
+        function logSelectedTrades() {
+            const trades = selectedSnapshotTrades();
+            if (!trades.length) { alert('Select one or more tickers first.'); return; }
+            trades.forEach(logTradeRecord);
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            alert(`Logged ${trades.length} trade(s) to Active Trades.`);
+        }
+
+        function addBuilderRow(prefill) {
+            const id = ++builderRowId;
+            const p = prefill || {};
+            const wrap = document.getElementById('builderRows');
+            const div = document.createElement('div');
+            div.className = 'bg-slate-900/50 border border-white/10 rounded-lg p-2 builder-row';
+            div.dataset.id = id;
+            const isLong = p.isLong !== false;
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase">Trade #${id}</span>
+                    <button onclick="this.closest('.builder-row').remove()" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
+                </div>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" value="${p.ticker||''}" placeholder="TICK"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Side<select class="b-side w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5">${isLong?'<option value="long" selected>LONG</option><option value="short">SHORT</option>':'<option value="long">LONG</option><option value="short" selected>SHORT</option>'}</select></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Strategy<select class="b-opt w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5"></select></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.entry||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.shares||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5" value="${p.stop||''}"></label>
+                </div>
+                <div class="b-preview mt-1 text-[9px] font-mono-num text-gray-400"></div>
+            `;
+            wrap.appendChild(div);
+            fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+            const refresh = () => refreshBuilderPreview(div);
+            div.querySelectorAll('input,select').forEach(el => el.addEventListener('input', refresh));
+            div.querySelector('.b-side').addEventListener('change', () => {
+                fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                refresh();
+            });
+            refresh();
+        }
+
+        function refreshBuilderPreview(el) {
+            const isLong = el.querySelector('.b-side').value === 'long';
+            const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
+            const shares = parseInt(el.querySelector('.b-shares').value) || 0;
+            const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
+            const strategyId = el.querySelector('.b-opt').value;
+            const box = el.querySelector('.b-preview');
+            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId);
+            if (!built.ok) { box.innerText = built.error; return; }
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ');
+        }
+
+        function collectBuilderTrades() {
+            const out = [];
+            document.querySelectorAll('#builderRows .builder-row').forEach(el => {
+                const ticker = (el.querySelector('.b-ticker').value || '').trim().toUpperCase();
+                const isLong = el.querySelector('.b-side').value === 'long';
+                const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
+                const shares = parseInt(el.querySelector('.b-shares').value) || 0;
+                const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
+                const strategyId = el.querySelector('.b-opt').value;
+                if (ticker && shares > 0 && entry > 0 && stop > 0) out.push({ ticker, isLong, entry, shares, stop, strategyId });
+            });
+            return out;
+        }
+
+        function downloadBuilderCombinedCSV() {
+            const trades = collectBuilderTrades();
+            const rows = [];
+            const errors = [];
+            trades.forEach(t => {
+                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId);
+                if (!built.ok) errors.push(`${t.ticker}: ${built.error}`);
+                else built.rows.forEach(r => rows.push(r));
+            });
+            if (errors.length) { alert(errors.join('\n')); return; }
+            if (!rows.length) { alert('Add at least one complete trade.'); return; }
+            triggerCsvDownload('Manual_TWS_Exit_Basket.csv', rows);
+        }
+
+        function logAllBuilderTrades() {
+            const trades = collectBuilderTrades();
+            if (!trades.length) { alert('Add at least one complete trade.'); return; }
+            trades.forEach(logTradeRecord);
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            alert(`Logged ${trades.length} trade(s) to Active Trades.`);
         }
 
         // ========================================================
@@ -1663,32 +2082,110 @@
             const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
             const ticker = currentModalState.ticker;
             const isLong = currentModalState.isLong;
-            const option = currentModalState.option;
-
-            const riskPerShare = isLong ? (entry - stop) : (stop - entry);
-            if (riskPerShare <= 0 || shares <= 0) {
-                alert('Please enter valid order parameters before logging.');
-                return;
-            }
-
-            const newTrade = {
-                id: Date.now(),
-                ticker: ticker,
-                side: isLong ? 'LONG' : 'SHORT',
-                entryDate: new Date().toISOString().split('T')[0],
-                entryPrice: entry,
-                shares: shares,
-                stopPrice: stop,
-                regime: isLong ? (option === 1 ? 'Expanding (1:6)' : 'Declining (60/40)') : 'Short (1:6)',
-                tp1: isLong ? (option === 2 ? (entry + 1 * riskPerShare) : null) : null,
-                tp2: isLong ? (entry + 6 * riskPerShare) : (entry - 6 * riskPerShare),
-                status: 'ACTIVE'
-            };
-
-            activeTradesLog.unshift(newTrade);
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const err = validateTradeParams(isLong, entry, shares, stop);
+            if (err) { alert(err); return; }
+            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId });
             saveActiveTradesLog();
             updateActiveTradesCountBadge();
             alert(`Trade for ${ticker} logged successfully in Active Trades!`);
+        }
+
+        function fillStrategySelect(sel, selectedId, isLong) {
+            if (!sel) return;
+            const list = allStrategies().filter(s => isLong ? !s.short : true);
+            sel.innerHTML = list.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${s.name}</option>`).join('');
+            if (selectedId && !list.some(s => s.id === selectedId) && list[0]) sel.value = list[0].id;
+        }
+
+        function refreshStrategySelects() {
+            fillStrategySelect(document.getElementById('regimeExpandingStrategy'), regimeStrategyMap.expanding, true);
+            fillStrategySelect(document.getElementById('regimeDecliningStrategy'), regimeStrategyMap.declining, true);
+        }
+
+        function saveRegimeStrategyMap() {
+            const a = document.getElementById('regimeExpandingStrategy');
+            const b = document.getElementById('regimeDecliningStrategy');
+            if (a) regimeStrategyMap.expanding = a.value;
+            if (b) regimeStrategyMap.declining = b.value;
+            localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+        }
+
+        function persistCustomStrategies() {
+            localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+            refreshStrategySelects();
+        }
+
+        function addBlankStrategy() {
+            customStrategies.push({
+                id: 's' + Date.now(),
+                name: 'New strategy',
+                builtIn: false,
+                legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }]
+            });
+            persistCustomStrategies();
+            renderStrategyEditor();
+        }
+
+        function renderStrategyEditor() {
+            const box = document.getElementById('strategyEditorList');
+            if (!box) return;
+            const renderOne = (s, locked) => {
+                const legs = (s.legs || []).map((l, i) => `
+                    <div class="grid grid-cols-3 gap-1">
+                        <input type="number" ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="pct" value="${l.pct}" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600" placeholder="%">
+                        <input type="number" step="0.1" ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="rr" value="${l.rr}" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600" placeholder="R">
+                        <select ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="stopMode" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600">
+                            <option value="fixed" ${l.stopMode==='fixed'?'selected':''}>Stop fixed</option>
+                            <option value="breakeven" ${l.stopMode==='breakeven'?'selected':''}>Stop → BE</option>
+                            <option value="plus1" ${l.stopMode==='plus1'?'selected':''}>Stop → +1R</option>
+                        </select>
+                    </div>`).join('');
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 space-y-1.5" data-sid="${s.id}">
+                    <div class="flex items-center gap-2">
+                        <input ${locked?'disabled':''} class="flex-1 bg-slate-800 text-white text-xs font-bold rounded px-2 py-1 border border-slate-600 strat-name" value="${s.name.replace(/"/g,'&quot;')}">
+                        ${locked ? '<span class="text-[9px] text-gray-500 uppercase">Built-in</span>' :
+                            `<button onclick="addStrategyLeg('${s.id}')" class="text-[10px] text-blue-300 font-bold">+ Leg</button>
+                             <button onclick="deleteStrategy('${s.id}')" class="text-[10px] text-red-400 font-bold">Del</button>`}
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 text-[8px] text-gray-500 uppercase font-bold"><span>% of pos</span><span>TP (R)</span><span>Stop after</span></div>
+                    ${legs}
+                </div>`;
+            };
+            box.innerHTML = DEFAULT_STRATEGIES.filter(s => !s.short).map(s => renderOne(s, true)).join('') +
+                customStrategies.map(s => renderOne(s, false)).join('');
+            box.querySelectorAll('input,select').forEach(el => {
+                if (el.disabled) return;
+                el.addEventListener('change', onStrategyFieldChange);
+                el.addEventListener('input', onStrategyFieldChange);
+            });
+        }
+
+        function onStrategyFieldChange(e) {
+            const el = e.target;
+            const sid = el.dataset.sid || el.closest('[data-sid]')?.dataset.sid;
+            const s = customStrategies.find(x => x.id === sid);
+            if (!s) return;
+            if (el.classList.contains('strat-name')) { s.name = el.value; persistCustomStrategies(); return; }
+            const i = parseInt(el.dataset.leg);
+            if (Number.isNaN(i) || !s.legs[i]) return;
+            if (el.dataset.k === 'pct' || el.dataset.k === 'rr') s.legs[i][el.dataset.k] = parseFloat(el.value) || 0;
+            else s.legs[i][el.dataset.k] = el.value;
+            persistCustomStrategies();
+        }
+
+        function addStrategyLeg(id) {
+            const s = customStrategies.find(x => x.id === id);
+            if (!s) return;
+            s.legs.push({ pct: 0, rr: 2, stopMode: 'fixed' });
+            persistCustomStrategies();
+            renderStrategyEditor();
+        }
+
+        function deleteStrategy(id) {
+            customStrategies = customStrategies.filter(s => s.id !== id);
+            persistCustomStrategies();
+            renderStrategyEditor();
         }
 
         function saveActiveTradesLog() {
@@ -1697,7 +2194,29 @@
 
         function updateActiveTradesCountBadge() {
             const count = activeTradesLog.filter(t => t.status === 'ACTIVE').length;
-            document.getElementById('activeTradesCountBadge').innerText = count;
+            const a = document.getElementById('activeTradesCountBadge');
+            const b = document.getElementById('navTradesBadge');
+            if (a) a.innerText = count;
+            if (b) b.innerText = count;
+        }
+
+        // Official NYSE Market Holidays (2024 - 2030)
+        const NYSE_HOLIDAYS = new Set([
+            '2024-01-01', '2024-01-15', '2024-02-19', '2024-03-29', '2024-05-27', '2024-06-19', '2024-07-04', '2024-09-02', '2024-11-28', '2024-12-25',
+            '2025-01-01', '2025-01-20', '2025-02-17', '2025-04-18', '2025-05-26', '2025-06-19', '2025-07-04', '2025-09-01', '2025-11-27', '2025-12-25',
+            '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+            '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
+            '2028-01-17', '2028-02-21', '2028-04-14', '2028-05-29', '2028-06-19', '2028-07-04', '2028-09-04', '2028-11-23', '2028-12-25',
+            '2029-01-01', '2029-01-15', '2029-02-19', '2029-03-30', '2029-05-28', '2029-06-19', '2029-07-04', '2029-09-03', '2029-11-22', '2029-12-25',
+            '2030-01-01', '2030-01-21', '2030-02-18', '2030-04-19', '2030-05-27', '2030-06-19', '2030-07-04', '2030-09-02', '2030-11-28', '2030-12-25'
+        ]);
+
+        function isNYSEMarketOpenDay(dateObj) {
+            const day = dateObj.getDay();
+            if (day === 0 || day === 6) return false;
+            const iso = dateObj.toISOString().split('T')[0];
+            if (NYSE_HOLIDAYS.has(iso)) return false;
+            return true;
         }
 
         function calculateMarketDaysElapsed(startDateStr) {
@@ -1707,16 +2226,247 @@
             let cur = new Date(start);
             while (cur < now) {
                 cur.setDate(cur.getDate() + 1);
-                const day = cur.getDay();
-                if (day !== 0 && day !== 6 && cur <= now) {
+                if (isNYSEMarketOpenDay(cur) && cur <= now) {
                     count++;
                 }
             }
             return count;
         }
 
+        let activeTradesPriceCache = {};
+
+        function getTradePrice(ticker) {
+            if (activeTradesPriceCache[ticker]) return activeTradesPriceCache[ticker];
+            if (realtimeQuotes[ticker] && realtimeQuotes[ticker].c) return realtimeQuotes[ticker].c;
+            return null;
+        }
+
+        function getPnlBadgeHtml(trade) {
+            const curPrice = getTradePrice(trade.ticker);
+            if (!curPrice) return `<span class="text-[9px] text-gray-500 font-mono">No live quote</span>`;
+            const isLong = trade.side === 'LONG';
+            const rps = isLong ? Math.abs(trade.entryPrice - trade.stopPrice) : Math.abs(trade.stopPrice - trade.entryPrice);
+            const rMult = rps > 0 ? (isLong ? (curPrice - trade.entryPrice) / rps : (trade.entryPrice - curPrice) / rps) : 0;
+            const pnlDollars = (isLong ? (curPrice - trade.entryPrice) : (trade.entryPrice - curPrice)) * trade.shares;
+
+            let statusTag = '';
+            if (isLong) {
+                if (curPrice <= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice >= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP2 HIT</span>`;
+                else if (trade.tp1 && curPrice >= trade.tp1) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-950 text-amber-300 border border-amber-500/40">⭐ TP1 HIT</span>`;
+            } else {
+                if (curPrice >= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice <= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP HIT</span>`;
+            }
+
+            const rText = `${rMult >= 0 ? '+' : ''}${rMult.toFixed(2)}R`;
+            const dollarText = `${pnlDollars >= 0 ? '+$' : '-$'}${Math.abs(pnlDollars).toFixed(0)}`;
+            const rClass = rMult >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+            return `
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] font-mono-num text-gray-300">Px: <strong class="text-blue-300">$${curPrice.toFixed(2)}</strong></span>
+                    <span class="text-[10px] font-mono-num font-bold ${rClass}">${rText} (${dollarText})</span>
+                    ${statusTag}
+                </div>
+            `;
+        }
+
+        async function refreshActiveTradesPrices() {
+            const btn = document.getElementById('refreshActiveTradesBtn');
+            if (btn) btn.innerText = 'Refreshing...';
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+
+            try {
+                const promises = activeTrades.map(async t => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey);
+                        if (data && data.c) activeTradesPriceCache[t.ticker] = data.c;
+                    } catch (e) {}
+                });
+                await Promise.all(promises);
+                renderActiveTradesPage();
+            } catch (e) {
+            } finally {
+                if (btn) btn.innerText = '🔄 Refresh Prices';
+            }
+        }
+
+        function getTradeProgressBarHtml(trade) {
+            const curPrice = getTradePrice(trade.ticker);
+            const isLong = trade.side === 'LONG';
+            const entry = Number(trade.entryPrice);
+            const stop = Number(trade.stopPrice);
+            const target = Number(trade.tp2 || (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry)));
+
+            if (!curPrice) {
+                return `
+                    <div class="space-y-1 pt-1.5 border-t border-white/5">
+                        <div class="flex justify-between text-[8px] font-mono text-gray-500 font-bold uppercase">
+                            <span>🛑 Stop: $${stop.toFixed(2)}</span>
+                            <span>Entry: $${entry.toFixed(2)}</span>
+                            <span>🎯 Target: $${target.toFixed(2)}</span>
+                        </div>
+                        <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5 relative">
+                            <div class="bg-blue-500/30 h-full rounded-full" style="width: 15%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let pct = 0;
+            if (isLong) {
+                const totalRange = target - stop;
+                if (totalRange > 0) pct = ((curPrice - stop) / totalRange) * 100;
+            } else {
+                const totalRange = stop - target;
+                if (totalRange > 0) pct = ((stop - curPrice) / totalRange) * 100;
+            }
+
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            const isNearStop = clampedPct < 15;
+            const isHitTarget = clampedPct >= 100;
+            const barColor = isNearStop ? 'bg-rose-500' : (isHitTarget ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-gradient-to-r from-rose-500 via-blue-500 to-emerald-400');
+
+            return `
+                <div class="space-y-1 pt-1.5 border-t border-white/5">
+                    <div class="flex justify-between text-[8px] font-mono font-bold">
+                        <span class="text-red-400">🛑 Stop $${stop.toFixed(2)}</span>
+                        <span class="text-gray-400">Entry $${entry.toFixed(2)}</span>
+                        <span class="text-emerald-400">🎯 Target $${target.toFixed(2)}</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-white/10 relative p-0.5 shadow-inner">
+                        <div class="${barColor} h-full rounded-full transition-all duration-500" style="width: ${clampedPct.toFixed(1)}%"></div>
+                    </div>
+                    <div class="flex justify-between text-[8px] font-mono text-gray-400">
+                        <span>To Stop: <strong class="${isNearStop ? 'text-red-400 font-bold' : 'text-gray-300'}">$${Math.abs(curPrice - stop).toFixed(2)}</strong></span>
+                        <span>Progress: <strong class="${isHitTarget ? 'text-emerald-400 font-bold' : 'text-cyan-300 font-bold'}">${clampedPct.toFixed(0)}%</strong></span>
+                        <span>To Target: <strong class="${isHitTarget ? 'text-emerald-400 font-bold' : 'text-emerald-300'}">$${Math.abs(target - curPrice).toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function tradeCardHtml(trade) {
+            const dayCount = calculateMarketDaysElapsed(trade.entryDate);
+            const isLong = trade.side === 'LONG';
+            const isDay5 = dayCount >= 5;
+            const pnlHtml = getPnlBadgeHtml(trade);
+            const progressHtml = getTradeProgressBarHtml(trade);
+
+            return `
+                <div class="bg-slate-900/60 p-3 rounded-xl border border-white/10 space-y-2 font-mono-num">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-lg font-black text-white">${trade.ticker}</span>
+                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                            <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${trade.regime}</span>
+                        </div>
+                        <span class="text-[11px] font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
+                            Day ${dayCount} of 5 ${isDay5 ? '· EXIT TODAY' : ''}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">$${Number(trade.stopPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${trade.tp1 ? `$${Number(trade.tp1).toFixed(2)} / $${Number(trade.tp2).toFixed(2)}` : `$${Number(trade.tp2).toFixed(2)}`}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${trade.entryDate}</span></div>
+                    </div>
+                    ${progressHtml}
+                    <div class="flex justify-between items-center pt-1 border-t border-white/5">
+                        <div>${pnlHtml}</div>
+                        <button onclick="deleteTrade(${trade.id})" class="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded hover:bg-red-950/40 transition-colors">Close / Remove</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderActiveTradesPage() {
+            const container = document.getElementById('activeTradesPageList');
+            if (!container) return;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            if (!activeTrades.length) {
+                container.innerHTML = `<div class="p-8 text-center text-gray-400 space-y-2">
+                    <div class="font-bold text-white">No active logged trades</div>
+                    <div class="text-xs text-gray-500">Log a trade from Strategy Orders, Order Builder, or Batch Export.</div>
+                </div>`;
+                return;
+            }
+            container.innerHTML = activeTrades.map(tradeCardHtml).join('');
+        }
+
+        function exportSettingsJson() {
+            const backupData = {
+                version: 1,
+                exportDate: new Date().toISOString(),
+                customStrategies,
+                regimeStrategyMap,
+                activeTradesLog,
+                globalMarketRegime,
+                riskValue: localStorage.getItem('riskValue'),
+                slippageValue: localStorage.getItem('slippageValue'),
+                selectedProvider: localStorage.getItem('selectedProvider'),
+                collapseAfterCalc: localStorage.getItem('collapseAfterCalc'),
+                preferredViewMode: localStorage.getItem('preferredViewMode')
+            };
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `PositionCalc_Backup_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function importSettingsJson(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (data.customStrategies) {
+                        customStrategies = data.customStrategies;
+                        localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+                    }
+                    if (data.regimeStrategyMap) {
+                        regimeStrategyMap = data.regimeStrategyMap;
+                        localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+                    }
+                    if (data.activeTradesLog) {
+                        activeTradesLog = data.activeTradesLog;
+                        localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+                    }
+                    if (data.globalMarketRegime) {
+                        globalMarketRegime = data.globalMarketRegime;
+                        localStorage.setItem('globalMarketRegime', globalMarketRegime);
+                    }
+                    if (data.riskValue) localStorage.setItem('riskValue', data.riskValue);
+                    if (data.slippageValue) localStorage.setItem('slippageValue', data.slippageValue);
+                    if (data.selectedProvider) localStorage.setItem('selectedProvider', data.selectedProvider);
+                    if (data.collapseAfterCalc) localStorage.setItem('collapseAfterCalc', data.collapseAfterCalc);
+                    if (data.preferredViewMode) localStorage.setItem('preferredViewMode', data.preferredViewMode);
+
+                    loadSettings();
+                    alert('Settings and Active Trades restored successfully!');
+                    navigateTo('scanner');
+                } catch (err) {
+                    alert('Invalid backup JSON file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
         function openActiveTradesModal() {
+            navigateTo('active-trades');
             const container = document.getElementById('activeTradesListContainer');
+            if (!container) return;
             const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
 
             if (activeTrades.length === 0) {
@@ -1796,7 +2546,9 @@
                 activeTradesLog = activeTradesLog.filter(t => t.id !== id);
                 saveActiveTradesLog();
                 updateActiveTradesCountBadge();
-                openActiveTradesModal();
+                renderActiveTradesPage();
+                const leftover = document.getElementById('activeTradesListContainer');
+                if (leftover) leftover.innerHTML = activeTradesLog.filter(t => t.status === 'ACTIVE').map(tradeCardHtml).join('') || leftover.innerHTML;
             }
         }
 
@@ -1805,7 +2557,24 @@
             if (e.key === 'Escape') {
                 closeStrategyModal();
                 closeActiveTradesModal();
+                closeBatchReviewDrawer();
+                closeNavMenu();
             }
+        });
+
+        // Open Strategy Orders modal on pointerdown to beat live DOM re-renders
+        document.addEventListener('pointerdown', (e) => {
+            const btn = e.target.closest('[data-action="open-exit-orders"]');
+            if (!btn) return;
+            e.stopPropagation();
+            openStrategyModal(
+                btn.dataset.ticker,
+                btn.dataset.long === 'true',
+                parseFloat(btn.dataset.price),
+                parseInt(btn.dataset.shares),
+                parseFloat(btn.dataset.stop),
+                parseFloat(btn.dataset.ref)
+            );
         });
 
         loadSettings();
