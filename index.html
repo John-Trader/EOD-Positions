@@ -551,19 +551,19 @@
     <!-- BATCH REVIEW DRAWER -->
     <div id="batchReviewOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
         <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
-            <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10 flex justify-between items-center">
-                <h2 class="text-sm font-black uppercase text-white">Batch Review → 1 TWS CSV</h2>
-                <button onclick="closeBatchReviewDrawer()" class="text-gray-400 hover:text-white text-xl font-bold leading-none">&times;</button>
+            <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10 flex justify-between items-center gap-2">
+                <h2 class="text-sm font-black uppercase text-white shrink-0">Batch Review → 1 TWS CSV</h2>
+                <select id="batchGlobalStrategy" onchange="onBatchGlobalStrategyChange(this)" class="bg-slate-800 text-white text-[10px] font-bold rounded px-1.5 py-0.5 border border-slate-600 min-w-0"></select>
+                <button onclick="closeBatchReviewDrawer()" class="text-gray-400 hover:text-white text-xl font-bold leading-none shrink-0">&times;</button>
             </div>
-            <div id="batchReviewList" class="p-3 overflow-y-auto space-y-2 flex-1 text-sm"></div>
-            <div id="batchPreviewBox" class="hidden mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2.5">
+            <div id="batchReviewList" class="p-3 overflow-y-auto space-y-1.5 flex-1 text-sm"></div>
+            <div id="batchPreviewBox" class="mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2">
                 <div class="text-[10px] font-bold text-cyan-300 uppercase mb-1">CSV Preview</div>
-                <div id="batchPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-1 max-h-40 overflow-y-auto"></div>
+                <div id="batchPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-0.5 max-h-[60vh] overflow-y-auto"></div>
             </div>
             <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
-            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-                <button onclick="toggleBatchPreview()" class="text-[11px] font-bold text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg">Preview CSV</button>
-                <button onclick="downloadBatchCombinedCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-2">
+                <button onclick="downloadBatchCombinedCSV()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
             </div>
         </div>
     </div>
@@ -581,6 +581,7 @@
         let realtimeSocket = null;
         let realtimeTasks = [];
         let realtimeQuotes = {};
+        let realtimeQuoteErrors = {};
         let reconnectTimeout = null;
         let reconnectAttempts = 0;
 
@@ -630,6 +631,9 @@
         let isVoiceEnabled = false;
         let visibleCount = 2;
 
+        // Batch review custom TP overrides (ticker -> number[])
+        let batchCustomTps = {};
+
         // Current active modal data
         let currentModalState = {
             ticker: '',
@@ -638,7 +642,8 @@
             shares: 0,
             stopPrice: 0,
             refBound: 0, // LOD for long, HOD for short
-            strategyId: 'opt1'
+            strategyId: 'opt1',
+            customTps: []
         };
 
         // Active Trades Log
@@ -1088,9 +1093,9 @@
         async function fetchTickerData(ticker, provider, apiKey) {
             if (provider === 'twelvedata') {
                 const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${ticker}&apikey=${apiKey}`);
-                if (!quote.ok) throw new Error("API Error");
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d = await quote.json();
-                if (d.code) throw new Error(d.message);
+                if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
                 const bid = d.bid ? parseFloat(d.bid) : null;
                 const ask = d.ask ? parseFloat(d.ask) : null;
                 return { 
@@ -1105,7 +1110,7 @@
                 const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 const d = await quote.json();
-                if (d.c === 0 && d.d === null) throw new Error("Invalid Ticker");
+                if (d.c === 0 && d.d === null) throw new Error(`Invalid Ticker: ${ticker}`);
                 const bid = (d.b && d.b > 0) ? parseFloat(d.b) : null;
                 const ask = (d.a && d.a > 0) ? parseFloat(d.a) : null;
                 return { 
@@ -1119,9 +1124,9 @@
             } else if (provider === 'stockdata') {
                 const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${apiKey}`);
                 if (quote.status === 429) throw new Error("Rate Limit");
-                if (!quote.ok) throw new Error("API Error");
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d_res = await quote.json();
-                if (!d_res.data || !d_res.data.length) throw new Error("Invalid Ticker");
+                if (!d_res.data || !d_res.data.length) throw new Error(`Invalid Ticker: ${ticker}`);
                 const d = d_res.data[0];
                 const bid = (d.bid && d.bid > 0) ? Number(d.bid) : null;
                 const ask = (d.ask && d.ask > 0) ? Number(d.ask) : null;
@@ -1150,6 +1155,7 @@
                 } catch (e) {}
             }
             realtimeSocket = null;
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
         }
@@ -1159,6 +1165,8 @@
             const results = realtimeTasks.map(task => {
                 const data = realtimeQuotes[task.ticker];
                 if (data) return { ...task, data, success: true };
+                const err = realtimeQuoteErrors[task.ticker];
+                if (err) return { ...task, error: err, success: false };
                 return { ...task, error: 'Waiting for live quote...', success: false };
             });
             lastRenderedSnapshot = results;
@@ -1181,23 +1189,28 @@
         async function startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container) {
             disconnectWebSocket();
             realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+            Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
 
-            // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose)
-            try {
-                const promises = realtimeTasks.map(t => fetchTickerData(t.ticker, provider, apiKey));
-                const results = await Promise.all(promises);
-                realtimeTasks.forEach((t, idx) => {
-                    realtimeQuotes[t.ticker] = results[idx];
-                });
-                renderRealtimeSnapshot(container, riskVal, slippageVal);
-            } catch (e) {
-                console.warn("Baseline REST fetch failed before WS:", e);
-                renderError({ ticker: "System", error: "Failed to fetch baseline data" }, container);
-                return;
+            // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
+            let anySuccess = false;
+            const fetchPromises = realtimeTasks.map(async (t) => {
+                try {
+                    const data = await fetchTickerData(t.ticker, provider, apiKey);
+                    realtimeQuotes[t.ticker] = data;
+                    anySuccess = true;
+                } catch (e) {
+                    console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
+                    realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                }
+            });
+            await Promise.all(fetchPromises);
+            renderRealtimeSnapshot(container, riskVal, slippageVal);
+
+            // 2. Open WebSocket with Auto-Reconnect only if at least one baseline succeeded
+            if (anySuccess) {
+                connectSocket(provider, apiKey, riskVal, slippageVal, container);
             }
-
-            // 2. Open WebSocket with Auto-Reconnect
-            connectSocket(provider, apiKey, riskVal, slippageVal, container);
         }
 
         function connectSocket(provider, apiKey, riskVal, slippageVal, container) {
@@ -1218,17 +1231,19 @@
                 reconnectAttempts = 0;
                 setCalcBtnStreaming(true);
                 updateTopStatus();
+                const validTasks = realtimeTasks.filter(t => realtimeQuotes[t.ticker]);
                 if (provider === 'finnhub') {
-                    realtimeTasks.forEach(t => {
+                    validTasks.forEach(t => {
                         realtimeSocket.send(JSON.stringify({ 'type': 'subscribe', 'symbol': t.ticker }));
                     });
                 } else if (provider === 'twelvedata') {
-                    realtimeSocket.send(JSON.stringify({
-                        "action": "subscribe",
-                        "params": {
-                            "symbols": realtimeTasks.map(t => t.ticker).join(',')
-                        }
-                    }));
+                    const symbols = validTasks.map(t => t.ticker).join(',');
+                    if (symbols) {
+                        realtimeSocket.send(JSON.stringify({
+                            "action": "subscribe",
+                            "params": { "symbols": symbols }
+                        }));
+                    }
                 }
             };
 
@@ -1283,7 +1298,7 @@
             realtimeSocket.onclose = () => {
                 setCalcBtnStreaming(false);
                 updateTopStatus('reconnecting');
-                if (liveUpdateEnabled && realtimeTasks.length > 0) {
+                if (liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0) {
                     const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
                     reconnectAttempts++;
                     reconnectTimeout = setTimeout(() => {
@@ -1376,9 +1391,10 @@
                     cards.forEach(card => card.style.display = 'none');
                 }
 
+                const successCount = results.filter(r => r.success).length;
                 const metricDiv = document.createElement('div');
                 metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
-                metricDiv.innerText = `Fetched ${results.length} tickers in ${fetchTime}s`;
+                metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
                 container.appendChild(metricDiv);
 
             } catch (e) {
@@ -1571,11 +1587,29 @@
         }
 
         function renderError(item, container) {
+            const { ticker, trigger, error } = item;
             const div = document.createElement('div');
-            div.className = "bg-red-900/20 border border-red-500/30 rounded-xl p-4 flex justify-between items-center";
+            div.id = `card-${ticker || 'error'}`;
+            div.className = "glass-card rounded-xl px-3 py-2 animate-fade-in border-rose-500/40 bg-rose-950/30";
             div.innerHTML = `
-                <div class="font-bold text-red-400">${item.ticker}</div>
-                <div class="text-xs text-red-300">${item.error}</div>
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                    <div class="flex items-start gap-2 min-w-0">
+                        <div class="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-black shrink-0">!</div>
+                        <div>
+                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${ticker}</h2>
+                            <div class="text-[10px] font-black text-rose-400/80 mt-1 leading-none uppercase">ERROR</div>
+                        </div>
+                    </div>
+                    ${trigger !== null && trigger !== undefined && !isNaN(trigger)
+                        ? `<div class="text-center self-center">
+                            <div class="text-[8px] font-bold text-rose-300/70 uppercase leading-none">Trigger</div>
+                            <div class="text-[10px] font-mono-num font-bold text-rose-200 bg-rose-950/50 px-1.5 py-0.5 rounded-full border border-rose-500/20 mt-0.5">$${trigger.toFixed(2)}</div>
+                           </div>`
+                        : ''}
+                    <div class="self-center text-right max-w-[140px]">
+                        <div class="text-[10px] font-bold text-rose-200 leading-tight">${error}</div>
+                    </div>
+                </div>
             `;
             container.appendChild(div);
         }
@@ -1596,7 +1630,8 @@
                 shares: parseInt(shares) || 0,
                 stopPrice: parseFloat(stopPrice) || 0,
                 refBound: parseFloat(refBound) || 0,
-                strategyId: defaultStrategyId(!!isLong)
+                strategyId: defaultStrategyId(!!isLong),
+                customTps: []
             };
 
             try {
@@ -1653,6 +1688,7 @@
             const sel = document.getElementById('modalStrategySelect');
             if (!sel) return;
             currentModalState.strategyId = sel.value;
+            currentModalState.customTps = [];
             recalcModalOrders();
         }
 
@@ -1676,21 +1712,26 @@
             const cardsContainer = document.getElementById('modalOrdersCardsContainer');
             const ruleText = document.getElementById('modalStrategyRuleText');
 
-            const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId);
+            const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId, currentModalState.customTps);
             if (!built.ok) {
                 cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
                 return;
             }
             ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + 'Exit at the 5th day. TIF GTC.';
-            cardsContainer.innerHTML = built.preview.map(p => `
+            cardsContainer.innerHTML = built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
                         <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
-                        <div class="text-xs font-black text-white">STP $${p.stop.toFixed(2)} <span class="text-gray-500">+</span> LMT $${p.tp.toFixed(2)} <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span></div>
+                        <div class="text-xs font-black text-white">
+                            STP $${p.stop.toFixed(2)}
+                            <span class="text-gray-500">+</span>
+                            LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${i})">
+                            <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span>
+                        </div>
                     </div>
                     <div class="flex gap-1">
                         <button onclick="copySingleValue('${p.stop.toFixed(2)}', this)" class="bg-slate-800 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
-                        <button onclick="copySingleValue('${p.tp.toFixed(2)}', this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
+                        <button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
                     </div>
                 </div>
             `).join('');
@@ -1704,6 +1745,31 @@
             });
         }
 
+        function onModalTpInput(el, i) {
+            const v = parseFloat(el.value);
+            if (!isNaN(v) && v > 0) {
+                currentModalState.customTps[i] = v;
+            } else {
+                currentModalState.customTps[i] = null;
+            }
+        }
+
+        function copyModalTp(i, btn) {
+            const el = document.getElementById(`modal-tp-${i}`);
+            const val = el ? el.value : '';
+            if (val) copySingleValue(val, btn);
+        }
+
+        function readCustomTpsFromDom() {
+            const tps = [];
+            document.querySelectorAll('#modalOrdersCardsContainer input[data-leg-idx]').forEach(el => {
+                const i = parseInt(el.dataset.legIdx);
+                const v = parseFloat(el.value);
+                tps[i] = (!isNaN(v) && v > 0) ? v : null;
+            });
+            return tps;
+        }
+
         function copyModalSummary() {
             const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
             const shares = parseInt(document.getElementById('modalShares').value) || 0;
@@ -1711,7 +1777,8 @@
             const ticker = currentModalState.ticker;
             const isLong = currentModalState.isLong;
             const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) { alert(built.error); return; }
             const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)} (${p.rr}R)`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
@@ -1721,7 +1788,7 @@
         // ========================================================
         // TWS BASKETTRADER CSV GENERATOR (PURE EXIT OCA)
         // ========================================================
-        const TWS_CSV_HEADERS = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OCA_Group"];
+        const TWS_CSV_HEADERS = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OcaGroup"];
 
         function splitSharesByPct(total, pcts) {
             const raw = pcts.map(p => (total * p) / 100);
@@ -1751,7 +1818,7 @@
             return null;
         }
 
-        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId) {
+        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps) {
             const err = validateTradeParams(isLong, entry, shares, stop);
             if (err) return { ok: false, error: err, rows: [], preview: [] };
             const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
@@ -1764,11 +1831,13 @@
             strat.legs.forEach((leg, i) => {
                 const qty = qtys[i];
                 if (!qty) return;
-                const tp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
+                const tp = customTp || defaultTp;
                 const stp = stopPriceForLeg(isLong, entry, stop, leg.stopMode || 'fixed');
                 const oca = `${ticker}_${strat.id}_L${i + 1}`;
-                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", "0", stp.toFixed(2), ticker, oca]);
-                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), "0", ticker, oca]);
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", '', stp.toFixed(2), ticker, oca]);
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
                 preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode: leg.stopMode || 'fixed' });
             });
             if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
@@ -1802,7 +1871,8 @@
             const ticker = currentModalState.ticker;
             const isLong = currentModalState.isLong;
             const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) {
                 alert(built.error);
                 return;
@@ -1843,51 +1913,87 @@
             else bar.classList.add('hidden');
         }
 
+        // ========================================================
+        // BATCH REVIEW TP HELPERS & HANDLERS
+        // ========================================================
+        function onBatchInput(el) {
+            renderBatchPreview();
+        }
+
+        function onBatchPreviewTpInput(el) {
+            const ticker = el.dataset.ticker;
+            const i = parseInt(el.dataset.legIdx);
+            const v = parseFloat(el.value);
+            if (!batchCustomTps[ticker]) batchCustomTps[ticker] = [];
+            batchCustomTps[ticker][i] = (!isNaN(v) && v > 0) ? v : null;
+        }
+
+        function onBatchGlobalStrategyChange(el) {
+            batchCustomTps = {};
+            renderBatchPreview();
+        }
+
+        function renderBatchPreview() {
+            const body = document.getElementById('batchPreviewBody');
+            if (!body) return;
+            const { trades, errors } = collectBatchTradesFromDom();
+            showBatchValidation(errors);
+            if (!trades.length) {
+                body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-2">No valid trades to preview.</div>';
+                return;
+            }
+            body.innerHTML = trades.flatMap(t => t.built.preview.map((p, i) => `
+                <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
+                    <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
+                    <span class="w-14 text-center">${p.action} ${p.qty}</span>
+                    <span class="text-red-300 w-16 text-center">STP ${p.stop.toFixed(2)}</span>
+                    <span class="text-emerald-300 w-20 text-center">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
+                    <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
+                </div>
+            `)).join('');
+        }
+
         function openBatchReviewDrawer() {
             const risk = parseFloat(document.getElementById('riskValue').value) || 500;
             const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
             const list = document.getElementById('batchReviewList');
             list.innerHTML = '';
+            batchCustomTps = {};
             const trades = lastRenderedSnapshot
                 .map(item => snapshotTradeFromItem(item, risk, slippage))
                 .filter(t => t && selectedTickers.has(t.ticker));
+            const isAllLong = trades.length > 0 && trades.every(t => t.isLong);
+            const globalStrategySel = document.getElementById('batchGlobalStrategy');
+            if (globalStrategySel) fillStrategySelect(globalStrategySel, defaultStrategyId(isAllLong), isAllLong);
             if (!trades.length) {
                 list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
                 document.getElementById('batchReviewOverlay').classList.remove('hidden');
+                renderBatchPreview();
                 return;
             }
             trades.forEach((t, idx) => {
                 list.insertAdjacentHTML('beforeend', `
-                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2.5 batch-row" data-ticker="${t.ticker}" data-long="${t.isLong}">
-                        <div class="flex items-center justify-between mb-1.5">
-                            <div class="flex items-center gap-2">
-                                <span class="font-black font-mono-num text-white">${t.ticker}</span>
-                                <span class="text-[10px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</span>
-                            </div>
-                            <select class="batch-option bg-slate-800 text-white text-[10px] font-bold rounded px-1.5 py-0.5 border border-slate-600"></select>
+                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${t.isLong}">
+                        <div class="shrink-0 w-14 leading-none">
+                            <div class="font-black font-mono-num text-white text-sm">${t.ticker}</div>
+                            <div class="text-[9px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</div>
                         </div>
-                        <div class="grid grid-cols-3 gap-1.5">
-                            <label class="text-[9px] text-gray-500 uppercase">Entry<input type="number" step="0.01" class="batch-entry w-full bg-slate-800 text-white text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
-                            <label class="text-[9px] text-gray-500 uppercase">Shares<input type="number" step="1" class="batch-shares w-full bg-slate-800 text-cyan-300 text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.shares}"></label>
-                            <label class="text-[9px] text-gray-500 uppercase">Stop<input type="number" step="0.01" class="batch-stop w-full bg-slate-800 text-red-300 text-xs font-mono-num font-bold rounded px-1.5 py-1 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
+                        <div class="grid grid-cols-3 gap-1 flex-1 min-w-0">
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.shares}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
                         </div>
                     </div>
                 `);
             });
-            document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
-                const isLong = el.dataset.long === 'true';
-                const t = trades.find(x => x.ticker === el.dataset.ticker);
-                fillStrategySelect(el.querySelector('.batch-option'), t ? t.strategyId : defaultStrategyId(isLong), isLong);
-            });
-            const prev = document.getElementById('batchPreviewBox');
             const val = document.getElementById('batchValidationMsg');
-            if (prev) prev.classList.add('hidden');
             if (val) { val.classList.add('hidden'); val.innerText = ''; }
             const overlay = document.getElementById('batchReviewOverlay');
             if (overlay) {
                 overlay.classList.remove('hidden');
                 overlay.style.display = 'flex';
             }
+            renderBatchPreview();
         }
 
         function closeBatchReviewDrawer() {
@@ -1901,16 +2007,18 @@
         function collectBatchTradesFromDom() {
             const trades = [];
             const errors = [];
+            const globalStrategyEl = document.getElementById('batchGlobalStrategy');
             document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
                 const ticker = el.dataset.ticker;
                 const isLong = el.dataset.long === 'true';
                 const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
-                const strategyId = (el.querySelector('.batch-option') || {}).value || defaultStrategyId(isLong);
-                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+                const strategyId = (globalStrategyEl && globalStrategyEl.value) || defaultStrategyId(isLong);
+                const customTps = batchCustomTps[ticker] || [];
+                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
                 if (!built.ok) errors.push(`${ticker}: ${built.error}`);
-                else trades.push({ ticker, isLong, entry, shares, stop, strategyId, built });
+                else trades.push({ ticker, isLong, entry, shares, stop, strategyId, customTps, built });
             });
             return { trades, errors };
         }
@@ -1928,20 +2036,6 @@
             return true;
         }
 
-        function toggleBatchPreview() {
-            const box = document.getElementById('batchPreviewBox');
-            const body = document.getElementById('batchPreviewBody');
-            if (box.classList.contains('hidden')) {
-                const { trades, errors } = collectBatchTradesFromDom();
-                if (!showBatchValidation(errors) || !trades.length) return;
-                body.innerHTML = trades.flatMap(t => t.built.preview.map(p =>
-                    `<div class="flex justify-between gap-2"><span class="text-white font-bold">${p.ticker}</span><span>${p.action} ${p.qty}</span><span class="text-red-300">STP ${p.stop.toFixed(2)}</span><span class="text-emerald-300">LMT ${p.tp.toFixed(2)}</span><span class="text-gray-500">${p.oca}</span></div>`
-                )).join('');
-                box.classList.remove('hidden');
-            } else {
-                box.classList.add('hidden');
-            }
-        }
 
         function downloadBatchCombinedCSV() {
             const { trades, errors } = collectBatchTradesFromDom();
@@ -1962,10 +2056,12 @@
                 .filter(t => t && selectedTickers.has(t.ticker));
         }
 
-        function logTradeRecord(t) {
+        function logTradeRecord(t, tpValues) {
             const rps = t.isLong ? (t.entry - t.stop) : (t.stop - t.entry);
             const strat = getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
-            const tps = (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
+            const tps = Array.isArray(tpValues)
+                ? tpValues
+                : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
             activeTradesLog.unshift({
                 id: Date.now() + Math.random(),
                 ticker: t.ticker,
@@ -2085,7 +2181,10 @@
             const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
             const err = validateTradeParams(isLong, entry, shares, stop);
             if (err) { alert(err); return; }
-            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId });
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            const tpValues = built.ok ? built.preview.map(p => p.tp) : null;
+            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId }, tpValues);
             saveActiveTradesLog();
             updateActiveTradesCountBadge();
             alert(`Trade for ${ticker} logged successfully in Active Trades!`);
