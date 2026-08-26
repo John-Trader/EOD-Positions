@@ -1947,7 +1947,7 @@
                     <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center">STP ${p.stop.toFixed(2)}</span>
-                    <span class="text-emerald-300 w-20 text-center">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
                     <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
                 </div>
             `)).join('');
