@@ -1,0 +1,2779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Position Size Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        html, body { overflow-x: hidden; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+        #navDrawer { width: min(15rem, 60vw); max-width: 60vw; }
+        @media (max-width: 640px) {
+            .super-input { font-size: 1.05rem !important; padding: 0.55rem !important; }
+            .risk-input { font-size: 1.2rem !important; }
+        }
+        .super-input { 
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            border-radius: 0.45rem;
+            padding: 0.45rem 0.5rem;
+            width: 100%;
+            font-size: 1.05rem; 
+            border: 2px solid transparent;
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            text-transform: uppercase;
+        }
+        .super-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+        }
+        .trigger-input {
+            font-size: 0.8rem;
+            padding: 0.35rem 0.4rem;
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            border: 1px solid #374151 !important;
+            text-align: center;
+        }
+        .risk-input {
+            font-size: 1.1rem;
+            text-align: center;
+            padding: 0.3rem 0.5rem;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-modal {
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.25s ease-out forwards;
+        }
+        
+        /* VISUAL TRIGGER STATES */
+        .status-active-long {
+            border: 2px solid #10b981 !important;
+            background: linear-gradient(180deg, rgba(6, 78, 59, 0.45) 0%, rgba(30, 41, 59, 0.75) 100%) !important;
+            box-shadow: 0 4px 25px rgba(16, 185, 129, 0.3) !important;
+        }
+        .status-active-short {
+            border: 2px solid #ef4444 !important;
+            background: linear-gradient(180deg, rgba(127, 29, 29, 0.45) 0%, rgba(30, 41, 59, 0.75) 100%) !important;
+            box-shadow: 0 4px 25px rgba(239, 68, 68, 0.3) !important;
+        }
+        .status-wait {
+            opacity: 0.55;
+            filter: grayscale(80%);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        
+        .copy-hover:hover {
+            cursor: pointer;
+            background-color: rgba(255,255,255,0.12);
+        }
+        .copy-feedback {
+            animation: fadeOut 1s forwards;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        
+        .toggle-active {
+            background-color: #8b5cf6 !important;
+            color: white !important;
+            border-color: #a78bfa !important;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
+        }
+        .voice-active {
+            background-color: #0ea5e9 !important;
+            color: white !important;
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.4);
+        }
+        .custom-checkbox {
+            accent-color: #3b82f6;
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
+        }
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .table-row-long {
+            border: 1.5px solid rgba(16, 185, 129, 0.7) !important;
+            background: linear-gradient(90deg, rgba(6, 78, 59, 0.55) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+            box-shadow: 0 0 14px rgba(16, 185, 129, 0.28);
+        }
+        .table-row-short {
+            border: 1.5px solid rgba(239, 68, 68, 0.7) !important;
+            background: linear-gradient(90deg, rgba(127, 29, 29, 0.55) 0%, rgba(15, 23, 42, 0.75) 100%) !important;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.28);
+        }
+        .table-row-wait {
+            opacity: 0.58;
+            filter: grayscale(70%);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .nav-link-active {
+            background: rgba(59, 130, 246, 0.18);
+            border-color: rgba(96, 165, 250, 0.45);
+            color: #fff;
+        }
+        .hamburger-drawer {
+            transform: translateX(-105%);
+            transition: transform 0.22s ease-out;
+        }
+        .hamburger-drawer.open {
+            transform: translateX(0);
+        }
+        input[type="checkbox"].trade-check {
+            accent-color: #22d3ee;
+            width: 0.95rem;
+            height: 0.95rem;
+            cursor: pointer;
+        }
+        @keyframes jumpDot {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+            40% { transform: translateY(-4px); opacity: 1; }
+        }
+        .stream-dot {
+            display: inline-block;
+            font-weight: 900;
+            font-family: monospace;
+            letter-spacing: 1px;
+        }
+        .dot-1 { animation: jumpDot 1.2s infinite ease-in-out; }
+        .dot-2 { animation: jumpDot 1.2s infinite ease-in-out 0.2s; }
+        .dot-3 { animation: jumpDot 1.2s infinite ease-in-out 0.4s; }
+        .modal-overlay-pad {
+            padding-top: 7vh;
+            padding-bottom: 7vh;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-3 sm:p-4 text-gray-100 flex flex-col items-center">
+
+    <!-- Hamburger Backdrop -->
+    <div id="navBackdrop" class="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm hidden" onclick="closeNavMenu()"></div>
+    <!-- Hamburger Drawer -->
+    <aside id="navDrawer" class="hamburger-drawer fixed top-0 left-0 z-[70] h-full glass-modal border-r border-white/10 shadow-2xl flex flex-col">
+        <div class="px-4 py-4 border-b border-white/10 flex items-center justify-between">
+            <span class="text-sm font-black uppercase tracking-tight text-white">Menu</span>
+            <button onclick="closeNavMenu()" class="text-gray-400 hover:text-white text-xl leading-none font-bold">&times;</button>
+        </div>
+        <nav class="p-3 space-y-1.5 flex-1">
+            <button id="navLinkScanner" onclick="navigateTo('scanner')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold nav-link-active">📊 Scanner</button>
+            <button id="navLinkTrades" onclick="navigateTo('active-trades')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">
+                📋 Active Trades <span id="navTradesBadge" class="ml-1 text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30">0</span>
+            </button>
+            <button id="navLinkBuilder" onclick="navigateTo('manual-builder')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">🛠 Order Builder</button>
+            <button id="navLinkSettings" onclick="navigateTo('settings')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold text-gray-300 hover:text-white">⚙ Settings</button>
+        </nav>
+        <div class="p-4 border-t border-white/10 space-y-2">
+            <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Market Breadth</div>
+            <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
+                <button id="menuRegimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding</button>
+                <button id="menuRegimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- PAGE 1: SCANNER -->
+    <div id="page-scanner" class="w-full flex flex-col items-center">
+    <!-- Main Container -->
+    <div class="glass-card rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden ring-1 ring-white/10 mb-3 relative">
+        <!-- Compact Header -->
+        <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+                <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
+                <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+                <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
+                    <span class="relative flex h-1.5 w-1.5">
+                        <span id="liveStatusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span id="liveStatusDot" class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
+                    <span id="liveStatusText" class="text-emerald-400 uppercase">LIVE</span>
+                </div>
+                <div class="text-[9px] font-mono text-gray-400 font-bold bg-slate-950/60 px-1.5 py-0.5 rounded-full border border-white/10">
+                    <span id="countdown" class="text-gray-300">CLOSED</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inputs Section -->
+        <div class="p-3 space-y-3">
+            <div id="scannerCollapsedBar" class="hidden flex items-center justify-between gap-2 bg-slate-900/50 border border-white/10 rounded-lg px-2.5 py-1.5">
+                <span id="scannerCollapsedText" class="text-[10px] font-mono-num text-gray-300 truncate"></span>
+                <button onclick="setScannerCollapsed(false)" class="text-[10px] font-bold text-blue-300 uppercase shrink-0">Expand</button>
+            </div>
+            <div id="scannerFormBody">
+            <div class="space-y-0.5 flex flex-col items-center">
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
+                <div class="w-full max-w-[140px]">
+                    <input type="number" id="riskValue" class="super-input risk-input" placeholder="500" value="500">
+                </div>
+            </div>
+
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
+                    <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
+                </div>
+                
+                <!-- Dynamic Grid -->
+                <div class="grid grid-cols-2 gap-2" id="inputGrid">
+                    <!-- Tickers 0 - 5 -->
+                    <div class="flex flex-col gap-1.5 ticker-group" id="group-0">
+                        <input type="text" class="super-input ticker-input" data-idx="0" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="0" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group" id="group-1">
+                        <input type="text" class="super-input ticker-input" data-idx="1" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="1" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-2">
+                        <input type="text" class="super-input ticker-input" data-idx="2" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="2" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-3">
+                        <input type="text" class="super-input ticker-input" data-idx="3" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="3" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-4">
+                        <input type="text" class="super-input ticker-input" data-idx="4" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="4" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-5">
+                        <input type="text" class="super-input ticker-input" data-idx="5" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="5" placeholder="Trigger $">
+                    </div>
+                </div>
+
+                <!-- Add Row Button -->
+                <div class="flex justify-center pt-0.5">
+                    <button id="addRowBtn" onclick="addMoreRows()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3.5 py-1 rounded-full font-bold transition-all">
+                        + ADD ROW
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="calculateAll()" id="calcBtn" class="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2.5 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
+                CALCULATE
+            </button>
+            
+            <p id="errorMsg" class="text-red-400 font-bold text-sm text-center bg-red-900/20 py-2 rounded hidden"></p>
+            </div><!-- /scannerFormBody -->
+        </div>
+    </div>
+
+    <!-- UI Controls Toolbar -->
+    <div class="w-full max-w-2xl flex flex-wrap justify-between items-center mb-2 gap-2" id="uiControls">
+        <div id="batchActions" class="hidden flex flex-wrap items-center gap-1.5">
+            <span class="text-[10px] font-bold text-cyan-300">✓ <span id="batchSelectedCount">0</span> selected</span>
+            <button onclick="openBatchReviewDrawer()" class="bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Export CSV</button>
+            <button onclick="logSelectedTrades()" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Log Trades</button>
+        </div>
+        <div></div>
+        <div class="flex items-center gap-1.5">
+            <button id="viewToggleBtn" onclick="toggleViewMode()" class="bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
+            </button>
+            <button id="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                👁 Focus
+            </button>
+            <button id="voiceBtn" onclick="toggleVoice()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                🔊 Voice
+            </button>
+        </div>
+    </div>
+
+    <!-- Results Container -->
+    <div id="resultsContainer" class="w-full max-w-2xl space-y-2 pb-24"></div>
+    </div><!-- /page-scanner -->
+
+    <!-- PAGE 4: SETTINGS -->
+    <div id="page-settings" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Settings</h2>
+                </div>
+                <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+            </div>
+            <div class="p-3 space-y-4 text-sm">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
+                    <select id="apiProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold">
+                        <option value="finnhub">Finnhub</option>
+                        <option value="twelvedata">Twelve Data</option>
+                        <option value="stockdata">StockData.org</option>
+                    </select>
+                    <div class="flex gap-2">
+                        <input type="password" id="apiKeyInput" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                        <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
+                    <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
+                        <button id="regimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding (8&gt;20)</button>
+                        <button id="regimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining (8&lt;20)</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <label class="text-[9px] text-gray-500 uppercase">Expanding uses
+                            <select id="regimeExpandingStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                        </label>
+                        <label class="text-[9px] text-gray-500 uppercase">Declining uses
+                            <select id="regimeDecliningStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                        </label>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
+                        <input type="number" id="slippageValue" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
+                    </div>
+                    <div class="space-y-1.5 pt-1">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase block">Interface</label>
+                        <label id="liveUpdateContainer" class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
+                            <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
+                            <span class="text-xs text-gray-300">Show Focus Button</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showVoiceSetting" class="custom-checkbox" onchange="updateUIControls()">
+                            <span class="text-xs text-gray-300">Show Voice Button</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="collapseAfterCalcSetting" class="custom-checkbox" onchange="saveCollapseAfterCalc()">
+                            <span class="text-xs text-gray-300">Collapse inputs after Calculate</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="border-t border-white/10 pt-3 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">Custom Exit Strategies</label>
+                        <button onclick="addBlankStrategy()" class="text-[10px] font-bold text-blue-300 uppercase">+ New</button>
+                    </div>
+                    <div id="strategyEditorList" class="space-y-2"></div>
+                </div>
+
+                <div class="border-t border-white/10 pt-3 space-y-2">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block">Data Backup &amp; Transfer</label>
+                    <div class="flex gap-2">
+                        <button onclick="exportSettingsJson()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                            <span>💾</span> Export Backup (.json)
+                        </button>
+                        <button onclick="document.getElementById('importBackupFileInput').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                            <span>📥</span> Import Backup (.json)
+                        </button>
+                        <input type="file" id="importBackupFileInput" accept=".json" class="hidden" onchange="importSettingsJson(event)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAGE 2: ACTIVE TRADES -->
+    <div id="page-active-trades" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Active Trades</h2>
+                    <span id="activeTradesCountBadge" class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/40">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="refreshActiveTradesPrices()" id="refreshActiveTradesBtn" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-2.5 py-1 rounded-md font-bold transition-all">🔄 Refresh Prices</button>
+                    <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+                </div>
+            </div>
+            <div id="activeTradesPageList" class="p-3 space-y-2 min-h-[40vh]"></div>
+        </div>
+    </div>
+
+    <!-- PAGE 3: MANUAL ORDER BUILDER -->
+    <div id="page-manual-builder" class="hidden w-full max-w-2xl">
+        <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
+            <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <h2 class="text-sm font-black uppercase text-white">Order Builder</h2>
+                </div>
+                <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
+            </div>
+            <div class="p-3 space-y-3">
+                <p class="text-[11px] text-gray-400">Build TWS exit baskets for fills entered outside the scanner. Same Option 1 / Option 2 math and CSV format.</p>
+                <div id="builderRows" class="space-y-2"></div>
+                <button onclick="addBuilderRow()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="downloadBuilderCombinedCSV()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
+                    <button onclick="logAllBuilderTrades()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold">💾 Log All</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- STRATEGY ORDERS POPUP MODAL (Glassmorphism)              -->
+    <!-- ======================================================== -->
+    <div id="strategyModalOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleModalBackdropClick(event)">
+        <div class="glass-modal w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="bg-slate-900/80 px-4 py-2.5 border-b border-white/10 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <span id="modalTickerBadge" class="text-xl font-black text-white font-mono-num">AAPL</span>
+                    <span id="modalSetupBadge" class="text-xs font-black px-2.5 py-1 rounded-full uppercase">LONG</span>
+                </div>
+                <button onclick="closeStrategyModal()" class="text-gray-400 hover:text-white text-xl font-bold p-1 leading-none transition-colors">&times;</button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <div class="p-3 overflow-y-auto space-y-3 text-sm">
+                <div class="bg-slate-900/40 p-2.5 rounded-xl border border-white/5 space-y-2">
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <label class="text-[9px] text-gray-400 font-bold uppercase">Entry
+                            <input type="number" step="0.01" id="modalEntryPrice" class="w-full bg-slate-800 text-white font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
+                        <label class="text-[9px] text-gray-400 font-bold uppercase">Shares
+                            <input type="number" step="1" id="modalShares" class="w-full bg-slate-800 text-cyan-300 font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
+                        <label class="text-[9px] text-gray-400 font-bold uppercase" id="modalStopLabel">Stop
+                            <input type="number" step="0.01" id="modalStopPrice" class="w-full bg-slate-800 text-red-300 font-mono-num font-bold text-xs px-1.5 py-1 rounded border border-slate-600 text-center outline-none mt-0.5" oninput="recalcModalOrders()">
+                        </label>
+                    </div>
+                    <div class="flex justify-between text-[10px] font-mono-num text-gray-400">
+                        <span>R/sh <strong id="modalRiskPerShare" class="text-white">$0.00</strong></span>
+                        <span>Risk <strong id="modalTotalRisk" class="text-red-400">-$0.00</strong></span>
+                        <span id="modalRefBound">LOD <strong id="modalRefBoundVal" class="text-gray-300">$0.00</strong></span>
+                    </div>
+                </div>
+
+                <div id="modalLongStrategySection" class="space-y-1.5">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Exit strategy</div>
+                    <select id="modalStrategySelect" onchange="onModalStrategyChange()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600"></select>
+                </div>
+
+                <!-- Generated Orders Panel -->
+                <div class="space-y-2.5">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">IBKR TWS Pure Exit Orders (OCA)</span>
+                        <span class="text-[10px] text-blue-400 font-mono-num font-bold">GTC Execution</span>
+                    </div>
+
+                    <div id="modalOrdersCardsContainer" class="space-y-2 font-mono-num">
+                        <!-- Dynamic Order Cards Inserted Here -->
+                    </div>
+
+                    <!-- Strategy Exit Rule Banner -->
+                    <div class="bg-blue-950/30 border border-blue-500/20 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-200">
+                        <span class="text-sm">📌</span>
+                        <div class="space-y-0.5">
+                            <div class="font-bold text-white">Exit Rule Reminder:</div>
+                            <div id="modalStrategyRuleText" class="text-[11px] text-blue-300">Exit at the 5th day (no breakeven stop).</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer / Actions -->
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row flex-wrap gap-2 justify-between items-stretch sm:items-center">
+                <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
+                    <span>📥</span> Download TWS Basket (.csv)
+                </button>
+
+                <div class="flex gap-2">
+                    <button onclick="logCurrentTradeFromModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                        <span>💾</span> Log Trade
+                    </button>
+                    <button onclick="copyModalSummary()" class="bg-slate-800 hover:bg-slate-700 text-gray-300 border border-slate-600 px-3 py-2 rounded-lg text-xs font-bold transition-all">
+                        📋 Copy Summary
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- ACTIVE TRADES DRAWER / MODAL                             -->
+    <!-- ======================================================== -->
+    <div id="activeTradesModalOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleActiveTradesBackdropClick(event)">
+        <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="bg-slate-900/80 px-5 py-4 border-b border-white/10 flex justify-between items-center">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xl">📋</span>
+                    <h2 class="text-lg font-black text-white uppercase tracking-tight">Active Trades Tracker</h2>
+                </div>
+                <button onclick="closeActiveTradesModal()" class="text-gray-400 hover:text-white text-xl font-bold p-1 leading-none transition-colors">&times;</button>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-4 text-sm flex-1">
+                <div id="activeTradesListContainer" class="space-y-3">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <div class="bg-slate-900/80 px-5 py-3 border-t border-white/10 flex justify-between items-center text-xs text-gray-400">
+                <span>Trades are saved locally in your browser.</span>
+                <button onclick="closeActiveTradesModal()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-1.5 rounded-lg font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BATCH REVIEW DRAWER -->
+    <div id="batchReviewOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
+        <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10 flex justify-between items-center gap-2">
+                <h2 class="text-sm font-black uppercase text-white shrink-0">Batch Review → 1 TWS CSV</h2>
+                <select id="batchGlobalStrategy" onchange="onBatchGlobalStrategyChange(this)" class="bg-slate-800 text-white text-[10px] font-bold rounded px-1.5 py-0.5 border border-slate-600 min-w-0"></select>
+                <button onclick="closeBatchReviewDrawer()" class="text-gray-400 hover:text-white text-xl font-bold leading-none shrink-0">&times;</button>
+            </div>
+            <div id="batchReviewList" class="p-3 overflow-y-auto space-y-1.5 flex-1 text-sm"></div>
+            <div id="batchPreviewBox" class="mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2">
+                <div class="text-[10px] font-bold text-cyan-300 uppercase mb-1">CSV Preview</div>
+                <div id="batchPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-0.5 max-h-[60vh] overflow-y-auto"></div>
+            </div>
+            <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-2">
+                <button onclick="downloadBatchCombinedCSV()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================================
+        // GLOBAL CONFIG & STATE
+        // ========================================================
+        const API_CONFIGS = {
+            finnhub: { name: 'Finnhub', storageKey: 'finnhub_key', needsKey: true, supportsWs: true },
+            twelvedata: { name: 'Twelve Data', storageKey: 'twelvedata_key', needsKey: true, supportsWs: true },
+            stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false }
+        };
+
+        let realtimeSocket = null;
+        let realtimeTasks = [];
+        let realtimeQuotes = {};
+        let realtimeQuoteErrors = {};
+        let reconnectTimeout = null;
+        let reconnectAttempts = 0;
+
+        let liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled');
+        if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
+        liveUpdateEnabled = liveUpdateEnabled === 'true';
+
+        let globalMarketRegime = localStorage.getItem('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
+        let currentViewMode = localStorage.getItem('preferredViewMode') || 'cards'; // 'cards' | 'table'
+        let currentPage = 'scanner';
+        let selectedTickers = new Set();
+        let lastRenderedSnapshot = [];
+        let builderRowId = 0;
+        let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
+        let isStreamingLive = false;
+
+        const DEFAULT_STRATEGIES = [
+            { id: 'opt1', name: 'Option 1 · 100% @ 1:6', builtIn: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] },
+            { id: 'opt2', name: 'Option 2 · 40% @ 1:1 + 60% @ 1:6', builtIn: true, legs: [
+                { pct: 40, rr: 1, stopMode: 'fixed' },
+                { pct: 60, rr: 6, stopMode: 'fixed' }
+            ] },
+            { id: 'short16', name: 'Short · 100% @ 1:6', builtIn: true, short: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] }
+        ];
+        let customStrategies = [];
+        let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
+        try {
+            const savedS = localStorage.getItem('customStrategies');
+            if (savedS) customStrategies = JSON.parse(savedS);
+            const savedMap = localStorage.getItem('regimeStrategyMap');
+            if (savedMap) regimeStrategyMap = { ...regimeStrategyMap, ...JSON.parse(savedMap) };
+        } catch (e) {}
+
+        function allStrategies() {
+            const safeCustom = Array.isArray(customStrategies) ? customStrategies : [];
+            return DEFAULT_STRATEGIES.concat(safeCustom);
+        }
+        function getStrategyById(id) {
+            return allStrategies().find(s => s.id === id) || DEFAULT_STRATEGIES[0];
+        }
+        function defaultStrategyId(isLong) {
+            if (!isLong) return 'short16';
+            return globalMarketRegime === 'declining' ? (regimeStrategyMap.declining || 'opt2') : (regimeStrategyMap.expanding || 'opt1');
+        }
+
+        let isFocusMode = false;
+        let isVoiceEnabled = false;
+        let visibleCount = 2;
+
+        // Batch review custom TP overrides (ticker -> number[])
+        let batchCustomTps = {};
+
+        // Current active modal data
+        let currentModalState = {
+            ticker: '',
+            isLong: true,
+            entryPrice: 0,
+            shares: 0,
+            stopPrice: 0,
+            refBound: 0, // LOD for long, HOD for short
+            strategyId: 'opt1',
+            customTps: []
+        };
+
+        // Active Trades Log
+        let activeTradesLog = [];
+        try {
+            const savedLog = localStorage.getItem('activeTradesLog');
+            if (savedLog) activeTradesLog = JSON.parse(savedLog);
+        } catch (e) { activeTradesLog = []; }
+
+        // ========================================================
+        // INITIALIZATION & SETTINGS
+        // ========================================================
+        function loadSettings() {
+            const savedRisk = localStorage.getItem('riskValue');
+            const savedProvider = localStorage.getItem('selectedProvider');
+            const savedSlippage = localStorage.getItem('slippageValue');
+            const savedCount = localStorage.getItem('visibleCount');
+            
+            if (savedRisk) document.getElementById('riskValue').value = savedRisk;
+            if (savedProvider) document.getElementById('apiProvider').value = savedProvider;
+            if (savedSlippage) document.getElementById('slippageValue').value = savedSlippage;
+            if (savedCount) visibleCount = parseInt(savedCount);
+            
+            updateVisibleRows();
+            updateApiKeyInput();
+            setGlobalRegime(globalMarketRegime, false);
+            updateViewToggleUI();
+            updateActiveTradesCountBadge();
+
+            document.querySelectorAll('.ticker-input').forEach(input => {
+                input.value = localStorage.getItem(`ticker_${input.dataset.idx}`) || '';
+            });
+            document.querySelectorAll('.trigger-input').forEach(input => {
+                input.value = localStorage.getItem(`trigger_${input.dataset.idx}`) || '';
+            });
+
+            const showFocus = localStorage.getItem('setting_showFocus') !== 'false';
+            const showVoice = localStorage.getItem('setting_showVoice') === 'true';
+
+            document.getElementById('showFocusSetting').checked = showFocus;
+            document.getElementById('showVoiceSetting').checked = showVoice;
+            document.getElementById('liveUpdateSetting').checked = liveUpdateEnabled;
+            const collapseEl = document.getElementById('collapseAfterCalcSetting');
+            if (collapseEl) collapseEl.checked = collapseAfterCalc;
+            
+            updateUIControls();
+            refreshStrategySelects();
+            renderStrategyEditor();
+            applyScannerCollapsed();
+        }
+
+        function saveCollapseAfterCalc() {
+            collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
+            localStorage.setItem('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
+        }
+
+        function setScannerCollapsed(on) {
+            const bar = document.getElementById('scannerCollapsedBar');
+            const body = document.getElementById('scannerFormBody');
+            if (!bar || !body) return;
+            if (on) {
+                const tickers = Array.from(document.querySelectorAll('.ticker-input')).map(i => i.value.trim().toUpperCase()).filter(Boolean);
+                document.getElementById('scannerCollapsedText').innerText = tickers.join('  ·  ') || 'Scanner collapsed';
+                bar.classList.remove('hidden');
+                bar.classList.add('flex');
+                body.classList.add('hidden');
+            } else {
+                bar.classList.add('hidden');
+                bar.classList.remove('flex');
+                body.classList.remove('hidden');
+            }
+        }
+        function applyScannerCollapsed() {
+            if (!collapseAfterCalc) setScannerCollapsed(false);
+        }
+
+        function saveLiveUpdateSetting() {
+            liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
+            localStorage.setItem('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
+            updateTopStatus();
+        }
+
+        function styleRegimePair(expBtn, decBtn, regime) {
+            if (!expBtn || !decBtn) return;
+            const on = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold bg-emerald-600 text-white shadow-sm';
+            const off = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold text-gray-400 hover:text-white';
+            const onDec = 'flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold bg-amber-600 text-white shadow-sm';
+            if (regime === 'expanding') {
+                expBtn.className = on;
+                decBtn.className = off;
+            } else {
+                expBtn.className = off;
+                decBtn.className = onDec;
+            }
+        }
+
+        function setGlobalRegime(regime, save = true) {
+            globalMarketRegime = regime;
+            if (save) localStorage.setItem('globalMarketRegime', regime);
+            styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
+            styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
+        }
+
+        function openNavMenu() {
+            document.getElementById('navDrawer').classList.add('open');
+            document.getElementById('navBackdrop').classList.remove('hidden');
+        }
+        function closeNavMenu() {
+            document.getElementById('navDrawer').classList.remove('open');
+            document.getElementById('navBackdrop').classList.add('hidden');
+        }
+        function navigateTo(page) {
+            currentPage = page;
+            document.getElementById('page-scanner').classList.toggle('hidden', page !== 'scanner');
+            document.getElementById('page-active-trades').classList.toggle('hidden', page !== 'active-trades');
+            document.getElementById('page-manual-builder').classList.toggle('hidden', page !== 'manual-builder');
+            document.getElementById('page-settings').classList.toggle('hidden', page !== 'settings');
+            ['navLinkScanner','navLinkTrades','navLinkBuilder','navLinkSettings'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.remove('nav-link-active');
+                el.classList.add('text-gray-300');
+            });
+            const map = { scanner: 'navLinkScanner', 'active-trades': 'navLinkTrades', 'manual-builder': 'navLinkBuilder', settings: 'navLinkSettings' };
+            const active = document.getElementById(map[page]);
+            if (active) {
+                active.classList.add('nav-link-active');
+                active.classList.remove('text-gray-300');
+            }
+            closeNavMenu();
+            if (page === 'active-trades') renderActiveTradesPage();
+            if (page === 'manual-builder' && document.getElementById('builderRows').children.length === 0) addBuilderRow();
+            if (page === 'settings') { refreshStrategySelects(); renderStrategyEditor(); }
+        }
+
+        function toggleSettingsPanel() {
+            navigateTo('settings');
+        }
+
+        function toggleViewMode() {
+            currentViewMode = (currentViewMode === 'cards') ? 'table' : 'cards';
+            localStorage.setItem('preferredViewMode', currentViewMode);
+            updateViewToggleUI();
+            const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
+            const container = document.getElementById('resultsContainer');
+            if (realtimeTasks.length > 0) {
+                renderRealtimeSnapshot(container, riskVal, slippageVal);
+            }
+        }
+
+        function updateViewToggleUI() {
+            const icon = document.getElementById('viewToggleIcon');
+            const text = document.getElementById('viewToggleText');
+            if (currentViewMode === 'cards') {
+                icon.innerText = '📑';
+                text.innerText = 'Table';
+            } else {
+                icon.innerText = '📊';
+                text.innerText = 'Cards';
+            }
+        }
+
+        function updateTopStatus(statusOverride = null) {
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const ind = document.getElementById('liveStatusIndicator');
+            const txt = document.getElementById('liveStatusText');
+            const ping = document.getElementById('liveStatusPing');
+            const dot = document.getElementById('liveStatusDot');
+
+            if (config && config.supportsWs) {
+                ind.classList.remove('hidden');
+                ind.classList.add('flex');
+                
+                if (statusOverride === 'reconnecting') {
+                    txt.innerText = 'RECONNECTING';
+                    txt.className = 'text-amber-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+                } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
+                    txt.innerText = 'LIVE';
+                    txt.className = 'text-emerald-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+                } else if (!liveUpdateEnabled) {
+                    txt.innerText = 'MANUAL';
+                    txt.className = 'text-gray-400 uppercase font-bold';
+                    ping.className = 'hidden';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+                } else {
+                    txt.innerText = 'STANDBY';
+                    txt.className = 'text-gray-400 uppercase font-bold';
+                    ping.className = 'hidden';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+                }
+            } else {
+                ind.classList.add('hidden');
+                ind.classList.remove('flex');
+            }
+        }
+
+        function setCalcBtnStreaming(on) {
+            const btn = document.getElementById('calcBtn');
+            isStreamingLive = !!on;
+            if (on) {
+                btn.innerHTML = 'STREAMING<span class="stream-dot dot-1">.</span><span class="stream-dot dot-2">.</span><span class="stream-dot dot-3">.</span>';
+                btn.classList.add('is-streaming');
+            } else {
+                btn.innerText = 'CALCULATE';
+                btn.classList.remove('is-streaming');
+            }
+        }
+
+        function addMoreRows() {
+            if (visibleCount < 6) {
+                visibleCount += 2;
+                localStorage.setItem('visibleCount', visibleCount);
+                updateVisibleRows();
+            }
+        }
+
+        function updateVisibleRows() {
+            for (let i = 0; i < 6; i++) {
+                const group = document.getElementById(`group-${i}`);
+                if (i < visibleCount) group.classList.remove('hidden');
+                else group.classList.add('hidden');
+            }
+            const btn = document.getElementById('addRowBtn');
+            if (visibleCount >= 6) btn.classList.add('hidden');
+            else btn.classList.remove('hidden');
+        }
+
+        function saveInputs() {
+            localStorage.setItem('riskValue', document.getElementById('riskValue').value);
+            localStorage.setItem('slippageValue', document.getElementById('slippageValue').value);
+            document.querySelectorAll('.ticker-input').forEach(input => {
+                localStorage.setItem(`ticker_${input.dataset.idx}`, input.value.toUpperCase());
+            });
+            document.querySelectorAll('.trigger-input').forEach(input => {
+                localStorage.setItem(`trigger_${input.dataset.idx}`, input.value);
+            });
+        }
+
+        function updateUIControls() {
+            const showFocus = document.getElementById('showFocusSetting').checked;
+            const showVoice = document.getElementById('showVoiceSetting').checked;
+            const focusBtn = document.getElementById('focusBtn');
+            const voiceBtn = document.getElementById('voiceBtn');
+
+            if (showFocus) focusBtn.classList.remove('hidden');
+            else focusBtn.classList.add('hidden');
+
+            if (showVoice) voiceBtn.classList.remove('hidden');
+            else voiceBtn.classList.add('hidden');
+
+            localStorage.setItem('setting_showFocus', showFocus);
+            localStorage.setItem('setting_showVoice', showVoice);
+        }
+
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', saveInputs);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') calculateAll(); });
+        });
+        
+        document.getElementById('apiProvider').addEventListener('change', (e) => {
+            localStorage.setItem('selectedProvider', e.target.value);
+            updateApiKeyInput();
+            disconnectWebSocket();
+        });
+
+        function updateApiKeyInput() {
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const apiInput = document.getElementById('apiKeyInput');
+            if (config.needsKey) {
+                apiInput.disabled = false;
+                apiInput.placeholder = 'Enter API Key';
+                const key = localStorage.getItem(config.storageKey);
+                apiInput.value = key || '';
+            } else {
+                apiInput.disabled = true;
+                apiInput.placeholder = 'No API key needed';
+                apiInput.value = '';
+            }
+
+            const liveContainer = document.getElementById('liveUpdateContainer');
+            if (config.supportsWs) {
+                liveContainer.style.display = 'flex';
+            } else {
+                liveContainer.style.display = 'none';
+                disconnectWebSocket();
+            }
+            updateTopStatus();
+        }
+
+        function saveKey() {
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const key = document.getElementById('apiKeyInput').value.trim();
+            if (config.needsKey && key) {
+                localStorage.setItem(config.storageKey, key);
+                alert('API Key Saved'); 
+            }
+        }
+
+        function applyFocusMode() {
+            const container = document.getElementById('resultsContainer');
+            if (!container) return;
+            const all = Array.from(container.querySelectorAll('[id^="card-"], #tableWrap > div'));
+            if (isFocusMode) {
+                all.forEach(el => {
+                    if (currentViewMode === 'table') {
+                        el.style.display = el.classList.contains('table-row-wait') ? 'none' : '';
+                    } else {
+                        el.style.display = el.classList.contains('status-wait') ? 'none' : '';
+                    }
+                });
+            } else {
+                all.forEach(el => el.style.display = '');
+            }
+        }
+
+        function toggleFocusMode() {
+            isFocusMode = !isFocusMode;
+            const btn = document.getElementById('focusBtn');
+            if (isFocusMode) {
+                btn.classList.add('toggle-active');
+                btn.classList.remove('bg-slate-800', 'text-gray-400');
+            } else {
+                btn.classList.remove('toggle-active');
+                btn.classList.add('bg-slate-800', 'text-gray-400');
+            }
+            applyFocusMode();
+        }
+
+        function toggleVoice() {
+            isVoiceEnabled = !isVoiceEnabled;
+            const btn = document.getElementById('voiceBtn');
+            if (isVoiceEnabled) {
+                btn.classList.add('voice-active');
+                btn.classList.remove('bg-slate-800', 'text-gray-400');
+                const u = new SpeechSynthesisUtterance("Voice Alerts Enabled");
+                u.volume = 0.5;
+                window.speechSynthesis.speak(u);
+            } else {
+                btn.classList.remove('voice-active');
+                btn.classList.add('bg-slate-800', 'text-gray-400');
+                window.speechSynthesis.cancel();
+            }
+        }
+
+        function clearInputs() {
+            if (confirm('Clear all ticker inputs?')) {
+                document.querySelectorAll('.ticker-input').forEach(i => i.value = '');
+                document.querySelectorAll('.trigger-input').forEach(i => i.value = '');
+                saveInputs();
+                disconnectWebSocket();
+                document.getElementById('resultsContainer').innerHTML = '';
+            }
+        }
+
+        // ========================================================
+        // SMART TRIGGER HELPER (DUAL BID & ASK)
+        // ========================================================
+        function isTriggerActive(data, trigger, isGreenDay) {
+            if (trigger === null || trigger === undefined || isNaN(trigger)) return false;
+            const { c, bid, ask } = data;
+            const hasBidAsk = (typeof bid === 'number' && bid > 0) && (typeof ask === 'number' && ask > 0);
+            if (isGreenDay) {
+                if (hasBidAsk) return bid >= trigger && ask >= trigger;
+                return c >= trigger;
+            } else {
+                if (hasBidAsk) return bid <= trigger && ask <= trigger;
+                return c <= trigger;
+            }
+        }
+
+        function speakResults(results) {
+            if (!isVoiceEnabled) return;
+            const activeTriggers = results.filter(r => {
+                if (!r.success) return false;
+                const { c, pc } = r.data;
+                const isGreenDay = c > pc;
+                return isTriggerActive(r.data, r.trigger, isGreenDay);
+            });
+
+            if (activeTriggers.length === 0) return;
+            activeTriggers.forEach(item => {
+                const { ticker, data } = item;
+                const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+                const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+                const isGreenDay = data.c > data.pc;
+                const stopPrice = isGreenDay ? (data.l - 0.01) : (data.h + 0.01);
+                let riskPerShare = Math.abs(data.c - stopPrice) + slippage;
+                let shares = riskPerShare > 0 ? Math.floor(risk / riskPerShare) : 0;
+                const dir = isGreenDay ? "Long" : "Short";
+                const text = `${ticker}. ${dir} Trigger Active. ${shares} Shares.`;
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.1;
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+
+        // ========================================================
+        // MARKET CLOCK
+        // ========================================================
+        function updateClock() {
+            const now = new Date();
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const s = now.getSeconds();
+            const day = now.getDay(); 
+
+            const countdownEl = document.getElementById('countdown');
+
+            if (day === 0 || day === 6) {
+                countdownEl.innerText = "CLOSED";
+                countdownEl.classList.remove('text-white', 'text-red-400');
+                countdownEl.classList.add('text-gray-400');
+                return;
+            }
+
+            const totalMinutes = (h * 60) + m;
+            const marketOpenMinutes = (9 * 60) + 30; 
+            const marketCloseMinutes = (16 * 60);    
+
+            if (totalMinutes < marketOpenMinutes || totalMinutes >= marketCloseMinutes) {
+                countdownEl.innerText = "CLOSED";
+                countdownEl.classList.remove('text-white', 'text-red-400');
+                countdownEl.classList.add('text-gray-400');
+            } else {
+                const closeTime = new Date();
+                closeTime.setHours(16, 0, 0, 0);
+                const diff = closeTime - now;
+
+                const hh = Math.floor(diff / (1000 * 60 * 60));
+                const mm = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const ss = Math.floor((diff % (1000 * 60)) / 1000);
+
+                countdownEl.innerText = 
+                    `${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
+                
+                if (hh === 0 && mm < 5) {
+                    countdownEl.classList.remove('text-gray-400');
+                    countdownEl.classList.add('text-red-400');
+                } else {
+                    countdownEl.classList.remove('text-gray-400', 'text-red-400');
+                    countdownEl.classList.add('text-white');
+                }
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ========================================================
+        // API FETCH & WEBSOCKET ENGINE
+        // ========================================================
+        async function fetchTickerData(ticker, provider, apiKey) {
+            if (provider === 'twelvedata') {
+                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${ticker}&apikey=${apiKey}`);
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
+                const d = await quote.json();
+                if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
+                const bid = d.bid ? parseFloat(d.bid) : null;
+                const ask = d.ask ? parseFloat(d.ask) : null;
+                return { 
+                    c: parseFloat(d.close), 
+                    h: parseFloat(d.high), 
+                    l: parseFloat(d.low), 
+                    pc: parseFloat(d.previous_close),
+                    bid: (bid && bid > 0) ? bid : null,
+                    ask: (ask && ask > 0) ? ask : null
+                };
+            } else if (provider === 'finnhub') {
+                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
+                if (quote.status === 429) throw new Error("Rate Limit");
+                const d = await quote.json();
+                if (d.c === 0 && d.d === null) throw new Error(`Invalid Ticker: ${ticker}`);
+                const bid = (d.b && d.b > 0) ? parseFloat(d.b) : null;
+                const ask = (d.a && d.a > 0) ? parseFloat(d.a) : null;
+                return { 
+                    c: d.c, 
+                    h: d.h, 
+                    l: d.l, 
+                    pc: d.pc,
+                    bid: bid,
+                    ask: ask
+                };
+            } else if (provider === 'stockdata') {
+                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${apiKey}`);
+                if (quote.status === 429) throw new Error("Rate Limit");
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
+                const d_res = await quote.json();
+                if (!d_res.data || !d_res.data.length) throw new Error(`Invalid Ticker: ${ticker}`);
+                const d = d_res.data[0];
+                const bid = (d.bid && d.bid > 0) ? Number(d.bid) : null;
+                const ask = (d.ask && d.ask > 0) ? Number(d.ask) : null;
+                return { 
+                    c: Number(d.price), 
+                    h: Number(d.day_high ?? d.price), 
+                    l: Number(d.day_low ?? d.price), 
+                    pc: Number(d.previous_close_price ?? d.price),
+                    bid: bid,
+                    ask: ask
+                };
+            }
+            throw new Error("Unknown provider");
+        }
+
+        function disconnectWebSocket() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            if (realtimeSocket) {
+                try { 
+                    realtimeSocket.onclose = null;
+                    realtimeSocket.onerror = null;
+                    realtimeSocket.close(); 
+                } catch (e) {}
+            }
+            realtimeSocket = null;
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+            setCalcBtnStreaming(false);
+            updateTopStatus();
+        }
+
+        function renderRealtimeSnapshot(container, riskVal, slippageVal) {
+            container.innerHTML = '';
+            const results = realtimeTasks.map(task => {
+                const data = realtimeQuotes[task.ticker];
+                if (data) return { ...task, data, success: true };
+                const err = realtimeQuoteErrors[task.ticker];
+                if (err) return { ...task, error: err, success: false };
+                return { ...task, error: 'Waiting for live quote...', success: false };
+            });
+            lastRenderedSnapshot = results;
+
+            if (currentViewMode === 'table') {
+                renderTableContainer(results, riskVal, slippageVal, container);
+            } else {
+                results.forEach(res => {
+                    if (res.success) renderCard(res, riskVal, slippageVal, container);
+                    else renderError(res, container);
+                });
+            }
+
+            applyFocusMode();
+        }
+
+        function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers) {
+            if (!container || changedTickers.size === 0) return;
+            const risk = parseFloat(document.getElementById('riskValue').value) || riskVal || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || slippageVal || 0;
+            const results = realtimeTasks.map(task => {
+                const data = realtimeQuotes[task.ticker];
+                if (data) return { ...task, data, success: true };
+                const err = realtimeQuoteErrors[task.ticker];
+                if (err) return { ...task, error: err, success: false };
+                return { ...task, error: 'Waiting for live quote...', success: false };
+            });
+            lastRenderedSnapshot = results;
+
+            if (currentViewMode === 'table') {
+                const wrap = container.querySelector('#tableWrap');
+                if (!wrap) return;
+                changedTickers.forEach(ticker => {
+                    const result = results.find(r => r.ticker === ticker && r.success);
+                    if (!result) return;
+                    const row = document.getElementById(`table-row-${ticker}`);
+                    if (row) updateTableRow(row, result, risk, slippage);
+                });
+            } else {
+                changedTickers.forEach(ticker => {
+                    const result = results.find(r => r.ticker === ticker && r.success);
+                    if (!result) return;
+                    const card = document.getElementById(`card-${ticker}`);
+                    if (card) updateCard(card, result, risk, slippage);
+                });
+            }
+
+            applyFocusMode();
+        }
+
+        async function startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container) {
+            disconnectWebSocket();
+            realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+            Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+
+            // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
+            let anySuccess = false;
+            const fetchPromises = realtimeTasks.map(async (t) => {
+                try {
+                    const data = await fetchTickerData(t.ticker, provider, apiKey);
+                    realtimeQuotes[t.ticker] = data;
+                    anySuccess = true;
+                } catch (e) {
+                    console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
+                    realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                }
+            });
+            await Promise.all(fetchPromises);
+            renderRealtimeSnapshot(container, riskVal, slippageVal);
+
+            // 2. Open WebSocket with Auto-Reconnect only if at least one baseline succeeded
+            if (anySuccess) {
+                connectSocket(provider, apiKey, riskVal, slippageVal, container);
+            }
+        }
+
+        function connectSocket(provider, apiKey, riskVal, slippageVal, container) {
+            try {
+                if (provider === 'finnhub') {
+                    realtimeSocket = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
+                } else if (provider === 'twelvedata') {
+                    realtimeSocket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${apiKey}`);
+                } else {
+                    return;
+                }
+            } catch (e) {
+                renderError({ ticker: "WebSocket", error: "Connection Failed" }, container);
+                return;
+            }
+
+            realtimeSocket.onopen = () => {
+                reconnectAttempts = 0;
+                setCalcBtnStreaming(true);
+                updateTopStatus();
+                const validTasks = realtimeTasks.filter(t => realtimeQuotes[t.ticker]);
+                if (provider === 'finnhub') {
+                    validTasks.forEach(t => {
+                        realtimeSocket.send(JSON.stringify({ 'type': 'subscribe', 'symbol': t.ticker }));
+                    });
+                } else if (provider === 'twelvedata') {
+                    const symbols = validTasks.map(t => t.ticker).join(',');
+                    if (symbols) {
+                        realtimeSocket.send(JSON.stringify({
+                            "action": "subscribe",
+                            "params": { "symbols": symbols }
+                        }));
+                    }
+                }
+            };
+
+            const changedTickers = new Set();
+
+            realtimeSocket.onmessage = (event) => {
+                try {
+                    const response = JSON.parse(event.data);
+
+                    if (provider === 'finnhub') {
+                        if (response.type !== 'trade' || !response.data) return;
+                        response.data.forEach(trade => {
+                            const ticker = String(trade.s).toUpperCase();
+                            const price = Number(trade.p);
+                            if (!Number.isFinite(price) || !realtimeQuotes[ticker]) return;
+
+                            const prev = realtimeQuotes[ticker];
+                            realtimeQuotes[ticker] = {
+                                c: price,
+                                h: Math.max(prev.h, price),
+                                l: Math.min(prev.l, price),
+                                pc: prev.pc,
+                                bid: prev.bid,
+                                ask: prev.ask
+                            };
+                            changedTickers.add(ticker);
+                        });
+                    } 
+                    else if (provider === 'twelvedata') {
+                        if (response.event !== 'price') return;
+                        const ticker = String(response.symbol).toUpperCase();
+                        const price = Number(response.price);
+                        if (!Number.isFinite(price) || !realtimeQuotes[ticker]) return;
+
+                        const prev = realtimeQuotes[ticker];
+                        realtimeQuotes[ticker] = {
+                            c: price,
+                            h: Math.max(prev.h, price),
+                            l: Math.min(prev.l, price),
+                            pc: prev.pc,
+                            bid: (response.bid && Number(response.bid) > 0) ? Number(response.bid) : prev.bid,
+                            ask: (response.ask && Number(response.ask) > 0) ? Number(response.ask) : prev.ask
+                        };
+                        changedTickers.add(ticker);
+                    }
+
+                    if (changedTickers.size > 0) {
+                        tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers);
+                        changedTickers.clear();
+                    }
+
+                } catch (err) {}
+            };
+
+            realtimeSocket.onerror = () => {
+                updateTopStatus('reconnecting');
+            };
+
+            realtimeSocket.onclose = () => {
+                setCalcBtnStreaming(false);
+                updateTopStatus('reconnecting');
+                if (liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0) {
+                    const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
+                    reconnectAttempts++;
+                    reconnectTimeout = setTimeout(() => {
+                        connectSocket(provider, apiKey, riskVal, slippageVal, container);
+                    }, backoff);
+                }
+            };
+        }
+
+        async function calculateAll() {
+            const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const container = document.getElementById('resultsContainer');
+            const btn = document.getElementById('calcBtn');
+            const errorMsg = document.getElementById('errorMsg');
+
+            if (config.needsKey && !apiKey) {
+                errorMsg.innerText = "Please set API Key in Settings.";
+                errorMsg.classList.remove('hidden');
+                navigateTo('settings');
+                return;
+            }
+
+            const inputs = Array.from(document.querySelectorAll('.ticker-input'));
+            const triggers = Array.from(document.querySelectorAll('.trigger-input'));
+
+            const tasks = [];
+            for (let i = 0; i < visibleCount; i++) {
+                 const ticker = inputs[i].value.trim().toUpperCase();
+                 const trigger = parseFloat(triggers[i].value);
+                 if (ticker) {
+                     tasks.push({ ticker, trigger: isNaN(trigger) ? null : trigger });
+                 }
+            }
+
+            if (tasks.length === 0) return;
+
+            errorMsg.classList.add('hidden');
+            container.innerHTML = '';
+
+            // Handle WebSocket stream for supported providers when live update is active
+            if (config.supportsWs && liveUpdateEnabled) {
+                setCalcBtnStreaming(true);
+                startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
+                if (collapseAfterCalc) setScannerCollapsed(true);
+                return;
+            }
+
+            disconnectWebSocket();
+            setCalcBtnStreaming(false);
+            btn.innerText = 'FETCHING...';
+            const startTime = performance.now();
+
+            try {
+                const promises = tasks.map(async (task) => {
+                    try {
+                        const data = await fetchTickerData(task.ticker, provider, apiKey);
+                        return { ...task, data, success: true };
+                    } catch (e) {
+                        return { ...task, error: e.message, success: false };
+                    }
+                });
+
+                const results = await Promise.all(promises);
+                const endTime = performance.now();
+                const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
+
+                realtimeTasks = tasks;
+                lastRenderedSnapshot = results;
+                results.forEach(r => {
+                    if (r.success) realtimeQuotes[r.ticker] = r.data;
+                });
+
+                if (currentViewMode === 'table') {
+                    renderTableContainer(results, riskVal, slippageVal, container);
+                } else {
+                    results.forEach(res => {
+                        if (res.success) renderCard(res, riskVal, slippageVal, container);
+                        else renderError(res, container);
+                    });
+                }
+
+                speakResults(results);
+                applyFocusMode();
+
+                const successCount = results.filter(r => r.success).length;
+                const metricDiv = document.createElement('div');
+                metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
+                metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
+                container.appendChild(metricDiv);
+
+            } catch (e) {
+                errorMsg.innerText = "Critical Error: " + e.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                setCalcBtnStreaming(false);
+                if (collapseAfterCalc) setScannerCollapsed(true);
+            }
+        }
+
+        // ========================================================
+        // UI RENDERING - CARDS & TABLE
+        // ========================================================
+        function getRealtimeFields(item, risk, slippage) {
+            const { c, h, l, pc, bid, ask } = item.data;
+            const { ticker, trigger } = item;
+            const isGreenDay = c > pc;
+            const setupType = isGreenDay ? "LONG" : "SHORT";
+            const typeColor = isGreenDay ? "text-emerald-400" : "text-rose-400";
+            const stopPrice = isGreenDay ? (l - 0.01) : (h + 0.01);
+            let riskPerShare = isGreenDay ? (c - stopPrice) : (stopPrice - c);
+            riskPerShare += slippage;
+            const shares = (riskPerShare > 0) ? Math.floor(risk / riskPerShare) : 0;
+            const changePct = pc ? ((c - pc) / pc * 100).toFixed(2) : '0.00';
+            const bidText = (bid && bid > 0) ? bid.toFixed(2) : '--';
+            const askText = (ask && ask > 0) ? ask.toFixed(2) : '--';
+            let statusClass = "status-wait";
+            let rowClass = "table-row-wait";
+            let isActive = false;
+            if (trigger !== null && trigger !== undefined && !isNaN(trigger)) {
+                if (isTriggerActive(item.data, trigger, isGreenDay)) {
+                    isActive = true;
+                    statusClass = isGreenDay ? "status-active-long" : "status-active-short";
+                    rowClass = isGreenDay ? "table-row-long" : "table-row-short";
+                }
+            } else {
+                statusClass = "glass-card";
+                rowClass = "";
+            }
+            return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive };
+        }
+
+        function renderCard(item, risk, slippage, container) {
+            const f = getRealtimeFields(item, risk, slippage);
+            const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
+            const triggerBadge = (f.trigger !== null && f.trigger !== undefined && !isNaN(f.trigger))
+                ? `<div class="text-center self-center">
+                    <div class="text-[8px] font-bold text-gray-500 uppercase leading-none">Trigger</div>
+                    <div class="text-[10px] font-mono-num font-bold text-gray-200 bg-slate-900/60 px-1.5 py-0.5 rounded-full border border-white/10 mt-0.5">$${f.trigger.toFixed(2)}</div>
+                   </div>`
+                : '';
+            const card = document.createElement('div');
+            card.id = `card-${f.ticker}`;
+            card.className = `glass-card rounded-xl px-3 py-2 animate-fade-in ${f.statusClass}`;
+            card.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                    <div class="flex items-start gap-2 min-w-0">
+                        <input type="checkbox" class="trade-check mt-1" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)" title="Select for batch CSV">
+                        <div>
+                            <h2 class="text-xl font-black text-white tracking-tight leading-none">${f.ticker}</h2>
+                            <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase">${f.setupType}</div>
+                        </div>
+                    </div>
+                    ${triggerBadge}
+                    <div class="self-center text-right font-mono-num text-[9px] leading-tight text-gray-400 px-0.5">
+                        <div>H <span data-field="high" class="text-gray-200">${f.h.toFixed(2)}</span></div>
+                        <div>L <span data-field="low" class="text-gray-200">${f.l.toFixed(2)}</span></div>
+                    </div>
+                    <div class="text-right">
+                        <div data-field="lastPrice" class="text-xl font-black text-blue-400 leading-none font-mono-num">$${f.c.toFixed(2)}</div>
+                        <div class="text-[9px] font-mono-num mt-0.5">
+                            <span data-field="changePct" class="${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold">${f.changePct > 0 ? '+' : ''}${f.changePct}%</span>
+                            <span class="text-gray-500 mx-0.5">·</span>
+                            <span data-field="bid" class="text-blue-300">B $${f.bidText}</span>
+                            <span data-field="ask" class="text-indigo-300 ml-1">A $${f.askText}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-stretch gap-1.5">
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1">
+                        Exit<br>Orders
+                    </button>
+                    <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
+                        <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
+                        <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
+                            <span data-field="shares" class="share-val">${f.shares.toLocaleString()}</span>
+                            <span class="copy-msg absolute inset-0 text-emerald-400 text-[10px] flex items-center justify-center opacity-0">COPIED!</span>
+                        </div>
+                    </div>
+                    <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
+                        <div class="text-[8px] text-gray-500 uppercase font-bold">Stop</div>
+                        <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        function updateCard(card, item, risk, slippage) {
+            const f = getRealtimeFields(item, risk, slippage);
+            card.className = `glass-card rounded-xl px-3 py-2 ${f.statusClass}`;
+            const setupType = card.querySelector('[data-field="setupType"]');
+            if (setupType) { setupType.textContent = f.setupType; setupType.className = `text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase`; }
+            const high = card.querySelector('[data-field="high"]');
+            if (high) high.textContent = f.h.toFixed(2);
+            const low = card.querySelector('[data-field="low"]');
+            if (low) low.textContent = f.l.toFixed(2);
+            const lastPrice = card.querySelector('[data-field="lastPrice"]');
+            if (lastPrice) lastPrice.textContent = `$${f.c.toFixed(2)}`;
+            const changePct = card.querySelector('[data-field="changePct"]');
+            if (changePct) { changePct.textContent = `${f.changePct > 0 ? '+' : ''}${f.changePct}%`; changePct.className = `${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold`; }
+            const bid = card.querySelector('[data-field="bid"]');
+            if (bid) bid.textContent = `B $${f.bidText}`;
+            const ask = card.querySelector('[data-field="ask"]');
+            if (ask) ask.textContent = `A $${f.askText}`;
+            const shares = card.querySelector('[data-field="shares"]');
+            if (shares) shares.textContent = f.shares.toLocaleString();
+            const stopPrice = card.querySelector('[data-field="stopPrice"]');
+            if (stopPrice) stopPrice.textContent = f.stopPrice.toFixed(2);
+            const copyBox = card.querySelector('.copy-hover');
+            if (copyBox) copyBox.dataset.shares = f.shares;
+            const exitBtn = card.querySelector('[data-action="open-exit-orders"]');
+            if (exitBtn) {
+                exitBtn.dataset.price = f.c;
+                exitBtn.dataset.shares = f.shares;
+                exitBtn.dataset.stop = f.stopPrice;
+                exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
+                exitBtn.dataset.long = f.isGreenDay;
+                exitBtn.className = `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
+            }
+        }
+
+        function renderTableContainer(results, risk, slippage, container) {
+            const validResults = results.filter(r => r.success);
+            const errorResults = results.filter(r => !r.success);
+            const wrap = document.createElement('div');
+            wrap.id = 'tableWrap';
+            wrap.className = 'space-y-1.5';
+
+            validResults.forEach(item => {
+                wrap.appendChild(createTableRow(item, risk, slippage));
+            });
+
+            if (validResults.length) container.appendChild(wrap);
+            errorResults.forEach(res => renderError(res, container));
+        }
+
+        function createTableRow(item, risk, slippage) {
+            const f = getRealtimeFields(item, risk, slippage);
+            const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
+            const row = document.createElement('div');
+            row.id = `table-row-${f.ticker}`;
+            row.className = `rounded-lg px-2.5 py-2 animate-fade-in ${f.rowClass}`;
+            row.innerHTML = `
+                <div class="flex items-center gap-1.5">
+                    <input type="checkbox" class="trade-check shrink-0" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)">
+                    <div class="w-[54px] shrink-0">
+                        <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${f.ticker}</div>
+                        <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase mt-0.5">${f.setupType}</div>
+                    </div>
+                    <div class="shrink-0">
+                        <div data-field="lastPrice" class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${f.c.toFixed(2)}</div>
+                        <div data-field="bidAsk" class="text-[8px] text-gray-400 font-mono-num mt-0.5">B ${f.bidText} A ${f.askText}</div>
+                    </div>
+                    <div class="shrink-0 text-[8px] font-mono-num text-gray-500 leading-tight w-[46px]">
+                        <div data-field="high">H ${f.h.toFixed(2)}</div>
+                        <div data-field="low">L ${f.l.toFixed(2)}</div>
+                    </div>
+                    <div class="shrink-0 text-center w-[52px]">
+                        <div class="text-[7px] text-gray-500 uppercase font-bold leading-none">Trigger</div>
+                        <div data-field="trigger" class="text-[10px] font-mono-num font-bold text-gray-200">${f.trigger ? '$'+f.trigger.toFixed(2) : '--'}</div>
+                    </div>
+                    <button class="ml-auto shrink-0 w-[48px] text-center copy-hover rounded-md bg-slate-950/40 py-0.5" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)" title="Copy shares">
+                        <div class="text-[8px] text-cyan-500 uppercase font-bold leading-none">Sh</div>
+                        <span data-field="shares" class="share-val block text-lg font-black font-mono-num text-cyan-300 leading-none">${f.shares.toLocaleString()}</span>
+                        <span class="copy-msg hidden text-[9px] text-emerald-400">OK</span>
+                    </button>
+                    <div class="shrink-0 w-[48px] text-right">
+                        <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
+                        <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
+                    </div>
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}">Ord</button>
+                </div>
+            `;
+            return row;
+        }
+
+        function updateTableRow(row, item, risk, slippage) {
+            const f = getRealtimeFields(item, risk, slippage);
+            row.className = `rounded-lg px-2.5 py-2 ${f.rowClass}`;
+            const setupType = row.querySelector('[data-field="setupType"]');
+            if (setupType) { setupType.textContent = f.setupType; setupType.className = `text-[9px] font-black ${f.typeColor} uppercase mt-0.5`; }
+            const lastPrice = row.querySelector('[data-field="lastPrice"]');
+            if (lastPrice) lastPrice.textContent = `$${f.c.toFixed(2)}`;
+            const bidAsk = row.querySelector('[data-field="bidAsk"]');
+            if (bidAsk) bidAsk.textContent = `B ${f.bidText} A ${f.askText}`;
+            const high = row.querySelector('[data-field="high"]');
+            if (high) high.textContent = `H ${f.h.toFixed(2)}`;
+            const low = row.querySelector('[data-field="low"]');
+            if (low) low.textContent = `L ${f.l.toFixed(2)}`;
+            const trigger = row.querySelector('[data-field="trigger"]');
+            if (trigger) trigger.textContent = f.trigger ? `$${f.trigger.toFixed(2)}` : '--';
+            const shares = row.querySelector('[data-field="shares"]');
+            if (shares) shares.textContent = f.shares.toLocaleString();
+            const copyBtn = row.querySelector('.copy-hover');
+            if (copyBtn) copyBtn.dataset.shares = f.shares;
+            const stopPrice = row.querySelector('[data-field="stopPrice"]');
+            if (stopPrice) stopPrice.textContent = f.stopPrice.toFixed(2);
+            const exitBtn = row.querySelector('[data-action="open-exit-orders"]');
+            if (exitBtn) {
+                exitBtn.dataset.price = f.c;
+                exitBtn.dataset.shares = f.shares;
+                exitBtn.dataset.stop = f.stopPrice;
+                exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
+                exitBtn.dataset.long = f.isGreenDay;
+                exitBtn.className = `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
+            }
+        }
+
+        function copyToClipboard(text, element) {
+            const cleanText = String(text).replace(/,/g, '');
+            navigator.clipboard.writeText(cleanText).then(() => {
+                const valSpan = element.querySelector('.share-val');
+                const msgSpan = element.querySelector('.copy-msg');
+                if (valSpan && msgSpan) {
+                    valSpan.classList.add('opacity-0');
+                    msgSpan.classList.remove('opacity-0', 'hidden');
+                    msgSpan.classList.add('copy-feedback');
+                    setTimeout(() => {
+                        valSpan.classList.remove('opacity-0');
+                        msgSpan.classList.add('opacity-0', 'hidden');
+                        msgSpan.classList.remove('copy-feedback');
+                    }, 1000);
+                } else {
+                    const orig = element.innerText;
+                    element.innerText = 'COPIED!';
+                    setTimeout(() => { element.innerText = orig; }, 800);
+                }
+            });
+        }
+
+        function renderError(item, container) {
+            const { ticker, trigger, error } = item;
+            const div = document.createElement('div');
+            div.id = `card-${ticker || 'error'}`;
+            div.className = "glass-card rounded-xl px-3 py-2 animate-fade-in border-rose-500/40 bg-rose-950/30";
+            div.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                    <div class="flex items-start gap-2 min-w-0">
+                        <div class="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-black shrink-0">!</div>
+                        <div>
+                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${ticker}</h2>
+                            <div class="text-[10px] font-black text-rose-400/80 mt-1 leading-none uppercase">ERROR</div>
+                        </div>
+                    </div>
+                    ${trigger !== null && trigger !== undefined && !isNaN(trigger)
+                        ? `<div class="text-center self-center">
+                            <div class="text-[8px] font-bold text-rose-300/70 uppercase leading-none">Trigger</div>
+                            <div class="text-[10px] font-mono-num font-bold text-rose-200 bg-rose-950/50 px-1.5 py-0.5 rounded-full border border-rose-500/20 mt-0.5">$${trigger.toFixed(2)}</div>
+                           </div>`
+                        : ''}
+                    <div class="self-center text-right max-w-[140px]">
+                        <div class="text-[10px] font-bold text-rose-200 leading-tight">${error}</div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        // ========================================================
+        // STRATEGY ORDERS MODAL ENGINE (PURE EXIT OCA BRACKETS)
+        // ========================================================
+        function openStrategyModal(ticker, isLong, entryPrice, shares, stopPrice, refBound) {
+            const overlay = document.getElementById('strategyModalOverlay');
+            if (!overlay) return;
+            overlay.classList.remove('hidden');
+            overlay.style.display = 'flex';
+
+            currentModalState = {
+                ticker: String(ticker).toUpperCase(),
+                isLong: !!isLong,
+                entryPrice: parseFloat(entryPrice) || 0,
+                shares: parseInt(shares) || 0,
+                stopPrice: parseFloat(stopPrice) || 0,
+                refBound: parseFloat(refBound) || 0,
+                strategyId: defaultStrategyId(!!isLong),
+                customTps: []
+            };
+
+            try {
+                document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
+                const setupBadge = document.getElementById('modalSetupBadge');
+                if (currentModalState.isLong) {
+                    setupBadge.innerText = 'LONG';
+                    setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                    document.getElementById('modalRefBound').innerHTML = `LOD <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
+                } else {
+                    setupBadge.innerText = 'SHORT';
+                    setupBadge.className = 'text-xs font-black px-2.5 py-1 rounded-full uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                    document.getElementById('modalRefBound').innerHTML = `HOD <strong id="modalRefBoundVal" class="text-gray-300">$${currentModalState.refBound.toFixed(2)}</strong>`;
+                }
+
+                const modalInputs = {
+                    modalEntryPrice: document.getElementById('modalEntryPrice'),
+                    modalShares: document.getElementById('modalShares'),
+                    modalStopPrice: document.getElementById('modalStopPrice')
+                };
+                for (const [id, el] of Object.entries(modalInputs)) {
+                    if (!el) console.error(`openStrategyModal: missing #${id}`);
+                }
+                if (modalInputs.modalEntryPrice) modalInputs.modalEntryPrice.value = currentModalState.entryPrice.toFixed(2);
+                if (modalInputs.modalShares) modalInputs.modalShares.value = currentModalState.shares;
+                if (modalInputs.modalStopPrice) modalInputs.modalStopPrice.value = currentModalState.stopPrice.toFixed(2);
+
+                fillStrategySelect(document.getElementById('modalStrategySelect'), currentModalState.strategyId, currentModalState.isLong);
+                document.getElementById('modalLongStrategySection').classList.remove('hidden');
+                recalcModalOrders();
+            } catch (err) {
+                console.error('openStrategyModal error:', err);
+                const errText = (err && (err.message || String(err))) ? String(err.message || err).slice(0, 120) : 'unknown';
+                const cardsContainer = document.getElementById('modalOrdersCardsContainer');
+                if (cardsContainer) {
+                    cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">Unable to calculate orders: ${errText}</div>`;
+                }
+            }
+        }
+
+        function closeStrategyModal() {
+            const overlay = document.getElementById('strategyModalOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }
+        }
+
+        function handleModalBackdropClick(e) {
+            if (e.target.id === 'strategyModalOverlay') closeStrategyModal();
+        }
+
+        function onModalStrategyChange() {
+            const sel = document.getElementById('modalStrategySelect');
+            if (!sel) return;
+            currentModalState.strategyId = sel.value;
+            currentModalState.customTps = [];
+            recalcModalOrders();
+        }
+
+        function recalcModalOrders() {
+            const entryEl = document.getElementById('modalEntryPrice');
+            const sharesEl = document.getElementById('modalShares');
+            const stopEl = document.getElementById('modalStopPrice');
+            const entry = entryEl ? (parseFloat(entryEl.value) || 0) : currentModalState.entryPrice;
+            const shares = sharesEl ? (parseInt(sharesEl.value) || 0) : currentModalState.shares;
+            const stop = stopEl ? (parseFloat(stopEl.value) || 0) : currentModalState.stopPrice;
+            const isLong = currentModalState.isLong;
+            const strategySel = document.getElementById('modalStrategySelect');
+            const strategyId = (strategySel && strategySel.value) || currentModalState.strategyId;
+
+            const riskPerShare = isLong ? (entry - stop) : (stop - entry);
+            const totalRisk = riskPerShare > 0 ? (riskPerShare * shares) : 0;
+
+            document.getElementById('modalRiskPerShare').innerText = `$${Math.max(0, riskPerShare).toFixed(2)}`;
+            document.getElementById('modalTotalRisk').innerText = `-$${totalRisk.toFixed(2)}`;
+
+            const cardsContainer = document.getElementById('modalOrdersCardsContainer');
+            const ruleText = document.getElementById('modalStrategyRuleText');
+
+            const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId, currentModalState.customTps);
+            if (!built.ok) {
+                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
+                return;
+            }
+            ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + 'Exit at the 5th day. TIF GTC.';
+            cardsContainer.innerHTML = built.preview.map((p, i) => `
+                <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
+                    <div>
+                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
+                        <div class="text-xs font-black text-white">
+                            STP $${p.stop.toFixed(2)}
+                            <span class="text-gray-500">+</span>
+                            LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${i})">
+                            <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="copySingleValue('${p.stop.toFixed(2)}', this)" class="bg-slate-800 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
+                        <button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function copySingleValue(val, btnElement) {
+            navigator.clipboard.writeText(val).then(() => {
+                const orig = btnElement.innerText;
+                btnElement.innerText = 'COPIED!';
+                setTimeout(() => { btnElement.innerText = orig; }, 900);
+            });
+        }
+
+        function onModalTpInput(el, i) {
+            const v = parseFloat(el.value);
+            if (!isNaN(v) && v > 0) {
+                currentModalState.customTps[i] = v;
+            } else {
+                currentModalState.customTps[i] = null;
+            }
+        }
+
+        function copyModalTp(i, btn) {
+            const el = document.getElementById(`modal-tp-${i}`);
+            const val = el ? el.value : '';
+            if (val) copySingleValue(val, btn);
+        }
+
+        function readCustomTpsFromDom() {
+            const tps = [];
+            document.querySelectorAll('#modalOrdersCardsContainer input[data-leg-idx]').forEach(el => {
+                const i = parseInt(el.dataset.legIdx);
+                const v = parseFloat(el.value);
+                tps[i] = (!isNaN(v) && v > 0) ? v : null;
+            });
+            return tps;
+        }
+
+        function copyModalSummary() {
+            const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
+            const shares = parseInt(document.getElementById('modalShares').value) || 0;
+            const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
+            const ticker = currentModalState.ticker;
+            const isLong = currentModalState.isLong;
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            if (!built.ok) { alert(built.error); return; }
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)} (${p.rr}R)`).join(' | ');
+            const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
+            navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
+        }
+
+        // ========================================================
+        // TWS BASKETTRADER CSV GENERATOR (PURE EXIT OCA)
+        // ========================================================
+        const TWS_CSV_HEADERS = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OcaGroup"];
+
+        function splitSharesByPct(total, pcts) {
+            const raw = pcts.map(p => (total * p) / 100);
+            const floors = raw.map(v => Math.floor(v));
+            let leftover = total - floors.reduce((a, b) => a + b, 0);
+            const order = raw.map((v, i) => ({ i, frac: v - floors[i] })).sort((a, b) => b.frac - a.frac);
+            for (let k = 0; k < leftover; k++) floors[order[k % order.length].i] += 1;
+            return floors;
+        }
+
+        function stopPriceForLeg(isLong, entry, origStop, stopMode) {
+            if (stopMode === 'breakeven') return Number(entry.toFixed(2));
+            if (typeof stopMode === 'string' && stopMode.startsWith('plus')) {
+                const r = parseFloat(stopMode.replace('plus', '')) || 0;
+                const rps = Math.abs(entry - origStop);
+                return Number((isLong ? entry + r * rps : entry - r * rps).toFixed(2));
+            }
+            return origStop;
+        }
+
+        function validateTradeParams(isLong, entry, shares, stop) {
+            if (!shares || shares <= 0) return 'Shares must be > 0';
+            if (!entry || entry <= 0) return 'Entry must be > 0';
+            if (!stop || stop <= 0) return 'Stop must be > 0';
+            if (isLong && !(entry > stop)) return 'Long: entry must be above stop';
+            if (!isLong && !(stop > entry)) return 'Short: stop must be above entry';
+            return null;
+        }
+
+        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps) {
+            const err = validateTradeParams(isLong, entry, shares, stop);
+            if (err) return { ok: false, error: err, rows: [], preview: [] };
+            const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
+            const rps = isLong ? (entry - stop) : (stop - entry);
+            const action = isLong ? 'SELL' : 'BUY';
+            const pcts = strat.legs.map(l => Number(l.pct) || 0);
+            const qtys = splitSharesByPct(shares, pcts);
+            const rows = [];
+            const preview = [];
+            strat.legs.forEach((leg, i) => {
+                const qty = qtys[i];
+                if (!qty) return;
+                const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
+                const tp = customTp || defaultTp;
+                const stp = stopPriceForLeg(isLong, entry, stop, leg.stopMode || 'fixed');
+                const oca = `${ticker}_${strat.id}_L${i + 1}`;
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", '', stp.toFixed(2), ticker, oca]);
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
+                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode: leg.stopMode || 'fixed' });
+            });
+            if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
+            return { ok: true, error: null, rows, preview, strategy: strat, rps };
+        }
+
+        function appendExitOcaRows(rows, ticker, isLong, entry, shares, stop, strategyId) {
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) return false;
+            built.rows.forEach(r => rows.push(r));
+            return true;
+        }
+
+        function triggerCsvDownload(filename, rows) {
+            const csvContent = [TWS_CSV_HEADERS.join(","), ...rows.map(r => r.join(","))].join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadTWSBasketCSV() {
+            const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
+            const shares = parseInt(document.getElementById('modalShares').value) || 0;
+            const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
+            const ticker = currentModalState.ticker;
+            const isLong = currentModalState.isLong;
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            if (!built.ok) {
+                alert(built.error);
+                return;
+            }
+            triggerCsvDownload(`${ticker}_TWS_Exit_Basket.csv`, built.rows);
+        }
+
+        function snapshotTradeFromItem(item, risk, slippage) {
+            if (!item || !item.success || !item.data) return null;
+            const { c, h, l, pc } = item.data;
+            const isLong = c > pc;
+            const stopPrice = isLong ? (l - 0.01) : (h + 0.01);
+            let rps = isLong ? (c - stopPrice) : (stopPrice - c);
+            rps += slippage;
+            const shares = rps > 0 ? Math.floor(risk / rps) : 0;
+            return {
+                ticker: item.ticker,
+                isLong,
+                entry: c,
+                shares,
+                stop: stopPrice,
+                refBound: isLong ? l : h,
+                strategyId: defaultStrategyId(isLong)
+            };
+        }
+
+        function toggleTickerSelect(ticker, checked) {
+            if (checked) selectedTickers.add(ticker);
+            else selectedTickers.delete(ticker);
+            updateBatchBar();
+        }
+
+        function updateBatchBar() {
+            const bar = document.getElementById('batchActions');
+            const n = selectedTickers.size;
+            document.getElementById('batchSelectedCount').innerText = n;
+            if (n > 0) bar.classList.remove('hidden');
+            else bar.classList.add('hidden');
+        }
+
+        // ========================================================
+        // BATCH REVIEW TP HELPERS & HANDLERS
+        // ========================================================
+        function onBatchInput(el) {
+            renderBatchPreview();
+        }
+
+        function onBatchPreviewTpInput(el) {
+            const ticker = el.dataset.ticker;
+            const i = parseInt(el.dataset.legIdx);
+            const v = parseFloat(el.value);
+            if (!batchCustomTps[ticker]) batchCustomTps[ticker] = [];
+            batchCustomTps[ticker][i] = (!isNaN(v) && v > 0) ? v : null;
+        }
+
+        function onBatchGlobalStrategyChange(el) {
+            batchCustomTps = {};
+            renderBatchPreview();
+        }
+
+        function renderBatchPreview() {
+            const body = document.getElementById('batchPreviewBody');
+            if (!body) return;
+            const { trades, errors } = collectBatchTradesFromDom();
+            showBatchValidation(errors);
+            if (!trades.length) {
+                body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-2">No valid trades to preview.</div>';
+                return;
+            }
+            body.innerHTML = trades.flatMap(t => t.built.preview.map((p, i) => `
+                <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
+                    <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
+                    <span class="w-14 text-center">${p.action} ${p.qty}</span>
+                    <span class="text-red-300 w-16 text-center">STP ${p.stop.toFixed(2)}</span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
+                    <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
+                </div>
+            `)).join('');
+        }
+
+        function openBatchReviewDrawer() {
+            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+            const list = document.getElementById('batchReviewList');
+            list.innerHTML = '';
+            batchCustomTps = {};
+            const trades = lastRenderedSnapshot
+                .map(item => snapshotTradeFromItem(item, risk, slippage))
+                .filter(t => t && selectedTickers.has(t.ticker));
+            const isAllLong = trades.length > 0 && trades.every(t => t.isLong);
+            const globalStrategySel = document.getElementById('batchGlobalStrategy');
+            if (globalStrategySel) fillStrategySelect(globalStrategySel, defaultStrategyId(isAllLong), isAllLong);
+            if (!trades.length) {
+                list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
+                document.getElementById('batchReviewOverlay').classList.remove('hidden');
+                renderBatchPreview();
+                return;
+            }
+            trades.forEach((t, idx) => {
+                list.insertAdjacentHTML('beforeend', `
+                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${t.isLong}">
+                        <div class="shrink-0 w-14 leading-none">
+                            <div class="font-black font-mono-num text-white text-sm">${t.ticker}</div>
+                            <div class="text-[9px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1 flex-1 min-w-0">
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.shares}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
+                        </div>
+                    </div>
+                `);
+            });
+            const val = document.getElementById('batchValidationMsg');
+            if (val) { val.classList.add('hidden'); val.innerText = ''; }
+            const overlay = document.getElementById('batchReviewOverlay');
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                overlay.style.display = 'flex';
+            }
+            renderBatchPreview();
+        }
+
+        function closeBatchReviewDrawer() {
+            const overlay = document.getElementById('batchReviewOverlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.style.display = 'none';
+            }
+        }
+
+        function collectBatchTradesFromDom() {
+            const trades = [];
+            const errors = [];
+            const globalStrategyEl = document.getElementById('batchGlobalStrategy');
+            document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
+                const ticker = el.dataset.ticker;
+                const isLong = el.dataset.long === 'true';
+                const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
+                const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
+                const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
+                const strategyId = (globalStrategyEl && globalStrategyEl.value) || defaultStrategyId(isLong);
+                const customTps = batchCustomTps[ticker] || [];
+                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+                if (!built.ok) errors.push(`${ticker}: ${built.error}`);
+                else trades.push({ ticker, isLong, entry, shares, stop, strategyId, customTps, built });
+            });
+            return { trades, errors };
+        }
+
+        function showBatchValidation(errors) {
+            const el = document.getElementById('batchValidationMsg');
+            if (!el) return !errors.length;
+            if (errors.length) {
+                el.classList.remove('hidden');
+                el.innerText = errors.join(' · ');
+                return false;
+            }
+            el.classList.add('hidden');
+            el.innerText = '';
+            return true;
+        }
+
+
+        function downloadBatchCombinedCSV() {
+            const { trades, errors } = collectBatchTradesFromDom();
+            if (!showBatchValidation(errors) || !trades.length) {
+                if (!errors.length) alert('No valid trades to export.');
+                return;
+            }
+            const rows = [];
+            trades.forEach(t => t.built.rows.forEach(r => rows.push(r)));
+            triggerCsvDownload('Batch_TWS_Exit_Basket.csv', rows);
+        }
+
+        function selectedSnapshotTrades() {
+            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+            return lastRenderedSnapshot
+                .map(item => snapshotTradeFromItem(item, risk, slippage))
+                .filter(t => t && selectedTickers.has(t.ticker));
+        }
+
+        function logTradeRecord(t, tpValues) {
+            const rps = t.isLong ? (t.entry - t.stop) : (t.stop - t.entry);
+            const strat = getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
+            const tps = Array.isArray(tpValues)
+                ? tpValues
+                : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
+            activeTradesLog.unshift({
+                id: Date.now() + Math.random(),
+                ticker: t.ticker,
+                side: t.isLong ? 'LONG' : 'SHORT',
+                entryDate: new Date().toISOString().split('T')[0],
+                entryPrice: t.entry,
+                shares: t.shares,
+                stopPrice: t.stop,
+                regime: strat.name,
+                tp1: tps[0] || null,
+                tp2: tps[tps.length - 1] || null,
+                status: 'ACTIVE'
+            });
+        }
+
+        function logSelectedTrades() {
+            const trades = selectedSnapshotTrades();
+            if (!trades.length) { alert('Select one or more tickers first.'); return; }
+            trades.forEach(logTradeRecord);
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            alert(`Logged ${trades.length} trade(s) to Active Trades.`);
+        }
+
+        function addBuilderRow(prefill) {
+            const id = ++builderRowId;
+            const p = prefill || {};
+            const wrap = document.getElementById('builderRows');
+            const div = document.createElement('div');
+            div.className = 'bg-slate-900/50 border border-white/10 rounded-lg p-2 builder-row';
+            div.dataset.id = id;
+            const isLong = p.isLong !== false;
+            div.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase">Trade #${id}</span>
+                    <button onclick="this.closest('.builder-row').remove()" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
+                </div>
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" value="${p.ticker||''}" placeholder="TICK"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Side<select class="b-side w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5">${isLong?'<option value="long" selected>LONG</option><option value="short">SHORT</option>':'<option value="long">LONG</option><option value="short" selected>SHORT</option>'}</select></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Strategy<select class="b-opt w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5"></select></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.entry||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.shares||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5" value="${p.stop||''}"></label>
+                </div>
+                <div class="b-preview mt-1 text-[9px] font-mono-num text-gray-400"></div>
+            `;
+            wrap.appendChild(div);
+            fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+            const refresh = () => refreshBuilderPreview(div);
+            div.querySelectorAll('input,select').forEach(el => el.addEventListener('input', refresh));
+            div.querySelector('.b-side').addEventListener('change', () => {
+                fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                refresh();
+            });
+            refresh();
+        }
+
+        function refreshBuilderPreview(el) {
+            const isLong = el.querySelector('.b-side').value === 'long';
+            const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
+            const shares = parseInt(el.querySelector('.b-shares').value) || 0;
+            const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
+            const strategyId = el.querySelector('.b-opt').value;
+            const box = el.querySelector('.b-preview');
+            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId);
+            if (!built.ok) { box.innerText = built.error; return; }
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ');
+        }
+
+        function collectBuilderTrades() {
+            const out = [];
+            document.querySelectorAll('#builderRows .builder-row').forEach(el => {
+                const ticker = (el.querySelector('.b-ticker').value || '').trim().toUpperCase();
+                const isLong = el.querySelector('.b-side').value === 'long';
+                const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
+                const shares = parseInt(el.querySelector('.b-shares').value) || 0;
+                const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
+                const strategyId = el.querySelector('.b-opt').value;
+                if (ticker && shares > 0 && entry > 0 && stop > 0) out.push({ ticker, isLong, entry, shares, stop, strategyId });
+            });
+            return out;
+        }
+
+        function downloadBuilderCombinedCSV() {
+            const trades = collectBuilderTrades();
+            const rows = [];
+            const errors = [];
+            trades.forEach(t => {
+                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId);
+                if (!built.ok) errors.push(`${t.ticker}: ${built.error}`);
+                else built.rows.forEach(r => rows.push(r));
+            });
+            if (errors.length) { alert(errors.join('\n')); return; }
+            if (!rows.length) { alert('Add at least one complete trade.'); return; }
+            triggerCsvDownload('Manual_TWS_Exit_Basket.csv', rows);
+        }
+
+        function logAllBuilderTrades() {
+            const trades = collectBuilderTrades();
+            if (!trades.length) { alert('Add at least one complete trade.'); return; }
+            trades.forEach(logTradeRecord);
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            alert(`Logged ${trades.length} trade(s) to Active Trades.`);
+        }
+
+        // ========================================================
+        // ACTIVE TRADES TRACKER ENGINE
+        // ========================================================
+        function logCurrentTradeFromModal() {
+            const entry = parseFloat(document.getElementById('modalEntryPrice').value) || 0;
+            const shares = parseInt(document.getElementById('modalShares').value) || 0;
+            const stop = parseFloat(document.getElementById('modalStopPrice').value) || 0;
+            const ticker = currentModalState.ticker;
+            const isLong = currentModalState.isLong;
+            const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
+            const err = validateTradeParams(isLong, entry, shares, stop);
+            if (err) { alert(err); return; }
+            const customTps = readCustomTpsFromDom();
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            const tpValues = built.ok ? built.preview.map(p => p.tp) : null;
+            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId }, tpValues);
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            alert(`Trade for ${ticker} logged successfully in Active Trades!`);
+        }
+
+        function fillStrategySelect(sel, selectedId, isLong) {
+            if (!sel) return;
+            const list = allStrategies().filter(s => isLong ? !s.short : true);
+            sel.innerHTML = list.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${s.name}</option>`).join('');
+            if (selectedId && !list.some(s => s.id === selectedId) && list[0]) sel.value = list[0].id;
+        }
+
+        function refreshStrategySelects() {
+            fillStrategySelect(document.getElementById('regimeExpandingStrategy'), regimeStrategyMap.expanding, true);
+            fillStrategySelect(document.getElementById('regimeDecliningStrategy'), regimeStrategyMap.declining, true);
+        }
+
+        function saveRegimeStrategyMap() {
+            const a = document.getElementById('regimeExpandingStrategy');
+            const b = document.getElementById('regimeDecliningStrategy');
+            if (a) regimeStrategyMap.expanding = a.value;
+            if (b) regimeStrategyMap.declining = b.value;
+            localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+        }
+
+        function persistCustomStrategies() {
+            localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+            refreshStrategySelects();
+        }
+
+        function addBlankStrategy() {
+            customStrategies.push({
+                id: 's' + Date.now(),
+                name: 'New strategy',
+                builtIn: false,
+                legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }]
+            });
+            persistCustomStrategies();
+            renderStrategyEditor();
+        }
+
+        function renderStrategyEditor() {
+            const box = document.getElementById('strategyEditorList');
+            if (!box) return;
+            const renderOne = (s, locked) => {
+                const legs = (s.legs || []).map((l, i) => `
+                    <div class="grid grid-cols-3 gap-1">
+                        <input type="number" ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="pct" value="${l.pct}" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600" placeholder="%">
+                        <input type="number" step="0.1" ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="rr" value="${l.rr}" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600" placeholder="R">
+                        <select ${locked?'disabled':''} data-sid="${s.id}" data-leg="${i}" data-k="stopMode" class="bg-slate-800 text-white text-[11px] rounded px-1 py-1 border border-slate-600">
+                            <option value="fixed" ${l.stopMode==='fixed'?'selected':''}>Stop fixed</option>
+                            <option value="breakeven" ${l.stopMode==='breakeven'?'selected':''}>Stop → BE</option>
+                            <option value="plus1" ${l.stopMode==='plus1'?'selected':''}>Stop → +1R</option>
+                        </select>
+                    </div>`).join('');
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 space-y-1.5" data-sid="${s.id}">
+                    <div class="flex items-center gap-2">
+                        <input ${locked?'disabled':''} class="flex-1 bg-slate-800 text-white text-xs font-bold rounded px-2 py-1 border border-slate-600 strat-name" value="${s.name.replace(/"/g,'&quot;')}">
+                        ${locked ? '<span class="text-[9px] text-gray-500 uppercase">Built-in</span>' :
+                            `<button onclick="addStrategyLeg('${s.id}')" class="text-[10px] text-blue-300 font-bold">+ Leg</button>
+                             <button onclick="deleteStrategy('${s.id}')" class="text-[10px] text-red-400 font-bold">Del</button>`}
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 text-[8px] text-gray-500 uppercase font-bold"><span>% of pos</span><span>TP (R)</span><span>Stop after</span></div>
+                    ${legs}
+                </div>`;
+            };
+            box.innerHTML = DEFAULT_STRATEGIES.filter(s => !s.short).map(s => renderOne(s, true)).join('') +
+                customStrategies.map(s => renderOne(s, false)).join('');
+            box.querySelectorAll('input,select').forEach(el => {
+                if (el.disabled) return;
+                el.addEventListener('change', onStrategyFieldChange);
+                el.addEventListener('input', onStrategyFieldChange);
+            });
+        }
+
+        function onStrategyFieldChange(e) {
+            const el = e.target;
+            const sid = el.dataset.sid || el.closest('[data-sid]')?.dataset.sid;
+            const s = customStrategies.find(x => x.id === sid);
+            if (!s) return;
+            if (el.classList.contains('strat-name')) { s.name = el.value; persistCustomStrategies(); return; }
+            const i = parseInt(el.dataset.leg);
+            if (Number.isNaN(i) || !s.legs[i]) return;
+            if (el.dataset.k === 'pct' || el.dataset.k === 'rr') s.legs[i][el.dataset.k] = parseFloat(el.value) || 0;
+            else s.legs[i][el.dataset.k] = el.value;
+            persistCustomStrategies();
+        }
+
+        function addStrategyLeg(id) {
+            const s = customStrategies.find(x => x.id === id);
+            if (!s) return;
+            s.legs.push({ pct: 0, rr: 2, stopMode: 'fixed' });
+            persistCustomStrategies();
+            renderStrategyEditor();
+        }
+
+        function deleteStrategy(id) {
+            customStrategies = customStrategies.filter(s => s.id !== id);
+            persistCustomStrategies();
+            renderStrategyEditor();
+        }
+
+        function saveActiveTradesLog() {
+            localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+        }
+
+        function updateActiveTradesCountBadge() {
+            const count = activeTradesLog.filter(t => t.status === 'ACTIVE').length;
+            const a = document.getElementById('activeTradesCountBadge');
+            const b = document.getElementById('navTradesBadge');
+            if (a) a.innerText = count;
+            if (b) b.innerText = count;
+        }
+
+        // Official NYSE Market Holidays (2024 - 2030)
+        const NYSE_HOLIDAYS = new Set([
+            '2024-01-01', '2024-01-15', '2024-02-19', '2024-03-29', '2024-05-27', '2024-06-19', '2024-07-04', '2024-09-02', '2024-11-28', '2024-12-25',
+            '2025-01-01', '2025-01-20', '2025-02-17', '2025-04-18', '2025-05-26', '2025-06-19', '2025-07-04', '2025-09-01', '2025-11-27', '2025-12-25',
+            '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+            '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
+            '2028-01-17', '2028-02-21', '2028-04-14', '2028-05-29', '2028-06-19', '2028-07-04', '2028-09-04', '2028-11-23', '2028-12-25',
+            '2029-01-01', '2029-01-15', '2029-02-19', '2029-03-30', '2029-05-28', '2029-06-19', '2029-07-04', '2029-09-03', '2029-11-22', '2029-12-25',
+            '2030-01-01', '2030-01-21', '2030-02-18', '2030-04-19', '2030-05-27', '2030-06-19', '2030-07-04', '2030-09-02', '2030-11-28', '2030-12-25'
+        ]);
+
+        function isNYSEMarketOpenDay(dateObj) {
+            const day = dateObj.getDay();
+            if (day === 0 || day === 6) return false;
+            const iso = dateObj.toISOString().split('T')[0];
+            if (NYSE_HOLIDAYS.has(iso)) return false;
+            return true;
+        }
+
+        function calculateMarketDaysElapsed(startDateStr) {
+            const start = new Date(startDateStr);
+            const now = new Date();
+            let count = 1;
+            let cur = new Date(start);
+            while (cur < now) {
+                cur.setDate(cur.getDate() + 1);
+                if (isNYSEMarketOpenDay(cur) && cur <= now) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        let activeTradesPriceCache = {};
+
+        function getTradePrice(ticker) {
+            if (activeTradesPriceCache[ticker]) return activeTradesPriceCache[ticker];
+            if (realtimeQuotes[ticker] && realtimeQuotes[ticker].c) return realtimeQuotes[ticker].c;
+            return null;
+        }
+
+        function getPnlBadgeHtml(trade) {
+            const curPrice = getTradePrice(trade.ticker);
+            if (!curPrice) return `<span class="text-[9px] text-gray-500 font-mono">No live quote</span>`;
+            const isLong = trade.side === 'LONG';
+            const rps = isLong ? Math.abs(trade.entryPrice - trade.stopPrice) : Math.abs(trade.stopPrice - trade.entryPrice);
+            const rMult = rps > 0 ? (isLong ? (curPrice - trade.entryPrice) / rps : (trade.entryPrice - curPrice) / rps) : 0;
+            const pnlDollars = (isLong ? (curPrice - trade.entryPrice) : (trade.entryPrice - curPrice)) * trade.shares;
+
+            let statusTag = '';
+            if (isLong) {
+                if (curPrice <= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice >= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP2 HIT</span>`;
+                else if (trade.tp1 && curPrice >= trade.tp1) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-950 text-amber-300 border border-amber-500/40">⭐ TP1 HIT</span>`;
+            } else {
+                if (curPrice >= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice <= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP HIT</span>`;
+            }
+
+            const rText = `${rMult >= 0 ? '+' : ''}${rMult.toFixed(2)}R`;
+            const dollarText = `${pnlDollars >= 0 ? '+$' : '-$'}${Math.abs(pnlDollars).toFixed(0)}`;
+            const rClass = rMult >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+            return `
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] font-mono-num text-gray-300">Px: <strong class="text-blue-300">$${curPrice.toFixed(2)}</strong></span>
+                    <span class="text-[10px] font-mono-num font-bold ${rClass}">${rText} (${dollarText})</span>
+                    ${statusTag}
+                </div>
+            `;
+        }
+
+        async function refreshActiveTradesPrices() {
+            const btn = document.getElementById('refreshActiveTradesBtn');
+            if (btn) btn.innerText = 'Refreshing...';
+            const provider = document.getElementById('apiProvider').value;
+            const config = API_CONFIGS[provider];
+            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+
+            try {
+                const promises = activeTrades.map(async t => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey);
+                        if (data && data.c) activeTradesPriceCache[t.ticker] = data.c;
+                    } catch (e) {}
+                });
+                await Promise.all(promises);
+                renderActiveTradesPage();
+            } catch (e) {
+            } finally {
+                if (btn) btn.innerText = '🔄 Refresh Prices';
+            }
+        }
+
+        function getTradeProgressBarHtml(trade) {
+            const curPrice = getTradePrice(trade.ticker);
+            const isLong = trade.side === 'LONG';
+            const entry = Number(trade.entryPrice);
+            const stop = Number(trade.stopPrice);
+            const target = Number(trade.tp2 || (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry)));
+
+            if (!curPrice) {
+                return `
+                    <div class="space-y-1 pt-1.5 border-t border-white/5">
+                        <div class="flex justify-between text-[8px] font-mono text-gray-500 font-bold uppercase">
+                            <span>🛑 Stop: $${stop.toFixed(2)}</span>
+                            <span>Entry: $${entry.toFixed(2)}</span>
+                            <span>🎯 Target: $${target.toFixed(2)}</span>
+                        </div>
+                        <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-white/5 relative">
+                            <div class="bg-blue-500/30 h-full rounded-full" style="width: 15%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let pct = 0;
+            if (isLong) {
+                const totalRange = target - stop;
+                if (totalRange > 0) pct = ((curPrice - stop) / totalRange) * 100;
+            } else {
+                const totalRange = stop - target;
+                if (totalRange > 0) pct = ((stop - curPrice) / totalRange) * 100;
+            }
+
+            const clampedPct = Math.max(0, Math.min(100, pct));
+            const isNearStop = clampedPct < 15;
+            const isHitTarget = clampedPct >= 100;
+            const barColor = isNearStop ? 'bg-rose-500' : (isHitTarget ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-gradient-to-r from-rose-500 via-blue-500 to-emerald-400');
+
+            return `
+                <div class="space-y-1 pt-1.5 border-t border-white/5">
+                    <div class="flex justify-between text-[8px] font-mono font-bold">
+                        <span class="text-red-400">🛑 Stop $${stop.toFixed(2)}</span>
+                        <span class="text-gray-400">Entry $${entry.toFixed(2)}</span>
+                        <span class="text-emerald-400">🎯 Target $${target.toFixed(2)}</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-white/10 relative p-0.5 shadow-inner">
+                        <div class="${barColor} h-full rounded-full transition-all duration-500" style="width: ${clampedPct.toFixed(1)}%"></div>
+                    </div>
+                    <div class="flex justify-between text-[8px] font-mono text-gray-400">
+                        <span>To Stop: <strong class="${isNearStop ? 'text-red-400 font-bold' : 'text-gray-300'}">$${Math.abs(curPrice - stop).toFixed(2)}</strong></span>
+                        <span>Progress: <strong class="${isHitTarget ? 'text-emerald-400 font-bold' : 'text-cyan-300 font-bold'}">${clampedPct.toFixed(0)}%</strong></span>
+                        <span>To Target: <strong class="${isHitTarget ? 'text-emerald-400 font-bold' : 'text-emerald-300'}">$${Math.abs(target - curPrice).toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function tradeCardHtml(trade) {
+            const dayCount = calculateMarketDaysElapsed(trade.entryDate);
+            const isLong = trade.side === 'LONG';
+            const isDay5 = dayCount >= 5;
+            const pnlHtml = getPnlBadgeHtml(trade);
+            const progressHtml = getTradeProgressBarHtml(trade);
+
+            return `
+                <div class="bg-slate-900/60 p-3 rounded-xl border border-white/10 space-y-2 font-mono-num">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-lg font-black text-white">${trade.ticker}</span>
+                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                            <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${trade.regime}</span>
+                        </div>
+                        <span class="text-[11px] font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
+                            Day ${dayCount} of 5 ${isDay5 ? '· EXIT TODAY' : ''}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">$${Number(trade.stopPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${trade.tp1 ? `$${Number(trade.tp1).toFixed(2)} / $${Number(trade.tp2).toFixed(2)}` : `$${Number(trade.tp2).toFixed(2)}`}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${trade.entryDate}</span></div>
+                    </div>
+                    ${progressHtml}
+                    <div class="flex justify-between items-center pt-1 border-t border-white/5">
+                        <div>${pnlHtml}</div>
+                        <button onclick="deleteTrade(${trade.id})" class="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded hover:bg-red-950/40 transition-colors">Close / Remove</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderActiveTradesPage() {
+            const container = document.getElementById('activeTradesPageList');
+            if (!container) return;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            if (!activeTrades.length) {
+                container.innerHTML = `<div class="p-8 text-center text-gray-400 space-y-2">
+                    <div class="font-bold text-white">No active logged trades</div>
+                    <div class="text-xs text-gray-500">Log a trade from Strategy Orders, Order Builder, or Batch Export.</div>
+                </div>`;
+                return;
+            }
+            container.innerHTML = activeTrades.map(tradeCardHtml).join('');
+        }
+
+        function exportSettingsJson() {
+            const backupData = {
+                version: 1,
+                exportDate: new Date().toISOString(),
+                customStrategies,
+                regimeStrategyMap,
+                activeTradesLog,
+                globalMarketRegime,
+                riskValue: localStorage.getItem('riskValue'),
+                slippageValue: localStorage.getItem('slippageValue'),
+                selectedProvider: localStorage.getItem('selectedProvider'),
+                collapseAfterCalc: localStorage.getItem('collapseAfterCalc'),
+                preferredViewMode: localStorage.getItem('preferredViewMode')
+            };
+            const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `PositionCalc_Backup_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function importSettingsJson(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (data.customStrategies) {
+                        customStrategies = data.customStrategies;
+                        localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+                    }
+                    if (data.regimeStrategyMap) {
+                        regimeStrategyMap = data.regimeStrategyMap;
+                        localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+                    }
+                    if (data.activeTradesLog) {
+                        activeTradesLog = data.activeTradesLog;
+                        localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+                    }
+                    if (data.globalMarketRegime) {
+                        globalMarketRegime = data.globalMarketRegime;
+                        localStorage.setItem('globalMarketRegime', globalMarketRegime);
+                    }
+                    if (data.riskValue) localStorage.setItem('riskValue', data.riskValue);
+                    if (data.slippageValue) localStorage.setItem('slippageValue', data.slippageValue);
+                    if (data.selectedProvider) localStorage.setItem('selectedProvider', data.selectedProvider);
+                    if (data.collapseAfterCalc) localStorage.setItem('collapseAfterCalc', data.collapseAfterCalc);
+                    if (data.preferredViewMode) localStorage.setItem('preferredViewMode', data.preferredViewMode);
+
+                    loadSettings();
+                    alert('Settings and Active Trades restored successfully!');
+                    navigateTo('scanner');
+                } catch (err) {
+                    alert('Invalid backup JSON file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        function openActiveTradesModal() {
+            navigateTo('active-trades');
+            const container = document.getElementById('activeTradesListContainer');
+            if (!container) return;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+
+            if (activeTrades.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-gray-400 bg-slate-900/40 rounded-2xl border border-white/5 space-y-2">
+                        <span class="text-3xl block">📋</span>
+                        <div class="font-bold text-white text-base">No Active Logged Trades</div>
+                        <div class="text-xs text-gray-500">When you enter a position, click "Log Trade" inside the Strategy Orders popup to track it here.</div>
+                    </div>
+                `;
+            } else {
+                let html = '';
+                activeTrades.forEach(trade => {
+                    const dayCount = calculateMarketDaysElapsed(trade.entryDate);
+                    const isLong = trade.side === 'LONG';
+                    const isDay5 = dayCount >= 5;
+
+                    html += `
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-white/10 space-y-3 font-mono-num">
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="text-xl font-black text-white">${trade.ticker}</span>
+                                    <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                                    <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${trade.regime}</span>
+                                </div>
+                                
+                                <div class="text-right">
+                                    <span class="text-xs font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2.5 py-1 rounded-full">
+                                        Day ${dayCount} of 5 ${isDay5 ? '🚨 (EXIT TODAY)' : ''}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 border-t border-white/5">
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span>
+                                    <span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${trade.entryPrice.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span>
+                                    <span class="text-red-400 font-bold">$${trade.stopPrice.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span>
+                                    <span class="text-emerald-400 font-bold">${trade.tp1 ? `$${trade.tp1.toFixed(2)} / $${trade.tp2.toFixed(2)}` : `$${trade.tp2.toFixed(2)}`}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span>
+                                    <span class="text-gray-300">${trade.entryDate}</span>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end pt-1">
+                                <button onclick="deleteTrade(${trade.id})" class="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded hover:bg-red-950/40 transition-colors">
+                                    Close / Remove Trade
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            }
+
+            document.getElementById('activeTradesModalOverlay').classList.remove('hidden');
+        }
+
+        function closeActiveTradesModal() {
+            document.getElementById('activeTradesModalOverlay').classList.add('hidden');
+        }
+
+        function handleActiveTradesBackdropClick(e) {
+            if (e.target.id === 'activeTradesModalOverlay') closeActiveTradesModal();
+        }
+
+        function deleteTrade(id) {
+            if (confirm('Close and remove this active trade?')) {
+                activeTradesLog = activeTradesLog.filter(t => t.id !== id);
+                saveActiveTradesLog();
+                updateActiveTradesCountBadge();
+                renderActiveTradesPage();
+                const leftover = document.getElementById('activeTradesListContainer');
+                if (leftover) leftover.innerHTML = activeTradesLog.filter(t => t.status === 'ACTIVE').map(tradeCardHtml).join('') || leftover.innerHTML;
+            }
+        }
+
+        // Keyboard Shortcut Handler (ESC to close modals)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeStrategyModal();
+                closeActiveTradesModal();
+                closeBatchReviewDrawer();
+                closeNavMenu();
+            }
+        });
+
+        // Open Strategy Orders modal on pointerdown to beat live DOM re-renders
+        document.addEventListener('pointerdown', (e) => {
+            const btn = e.target.closest('[data-action="open-exit-orders"]');
+            if (!btn) return;
+            e.stopPropagation();
+            openStrategyModal(
+                btn.dataset.ticker,
+                btn.dataset.long === 'true',
+                parseFloat(btn.dataset.price),
+                parseInt(btn.dataset.shares),
+                parseFloat(btn.dataset.stop),
+                parseFloat(btn.dataset.ref)
+            );
+        });
+
+        loadSettings();
+    </script>
+</body>
+</html>
