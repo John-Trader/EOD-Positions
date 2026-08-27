@@ -70,7 +70,15 @@
         .animate-fade-in {
             animation: fadeIn 0.25s ease-out forwards;
         }
-        
+
+        @keyframes valueFlash {
+            0% { color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.7); }
+            100% { color: inherit; text-shadow: none; }
+        }
+        .value-flash {
+            animation: valueFlash 0.25s ease-out;
+        }
+
         /* VISUAL TRIGGER STATES */
         .status-active-long {
             border: 2px solid #10b981 !important;
@@ -1484,6 +1492,20 @@
             return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive };
         }
 
+        function flashElement(el) {
+            if (!el) return;
+            el.classList.remove('value-flash');
+            void el.offsetWidth;
+            el.classList.add('value-flash');
+        }
+
+        function setTextAndFlash(el, newText) {
+            if (!el) return;
+            const oldText = el.textContent;
+            el.textContent = newText;
+            if (oldText !== newText) flashElement(el);
+        }
+
         function renderCard(item, risk, slippage, container) {
             const f = getRealtimeFields(item, risk, slippage);
             const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
@@ -1550,7 +1572,7 @@
             const low = card.querySelector('[data-field="low"]');
             if (low) low.textContent = f.l.toFixed(2);
             const lastPrice = card.querySelector('[data-field="lastPrice"]');
-            if (lastPrice) lastPrice.textContent = `$${f.c.toFixed(2)}`;
+            if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
             const changePct = card.querySelector('[data-field="changePct"]');
             if (changePct) { changePct.textContent = `${f.changePct > 0 ? '+' : ''}${f.changePct}%`; changePct.className = `${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold`; }
             const bid = card.querySelector('[data-field="bid"]');
@@ -1558,7 +1580,7 @@
             const ask = card.querySelector('[data-field="ask"]');
             if (ask) ask.textContent = `A $${f.askText}`;
             const shares = card.querySelector('[data-field="shares"]');
-            if (shares) shares.textContent = f.shares.toLocaleString();
+            if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
             const stopPrice = card.querySelector('[data-field="stopPrice"]');
             if (stopPrice) stopPrice.textContent = f.stopPrice.toFixed(2);
             const copyBox = card.querySelector('.copy-hover');
@@ -1635,7 +1657,7 @@
             const setupType = row.querySelector('[data-field="setupType"]');
             if (setupType) { setupType.textContent = f.setupType; setupType.className = `text-[9px] font-black ${f.typeColor} uppercase mt-0.5`; }
             const lastPrice = row.querySelector('[data-field="lastPrice"]');
-            if (lastPrice) lastPrice.textContent = `$${f.c.toFixed(2)}`;
+            if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
             const bidAsk = row.querySelector('[data-field="bidAsk"]');
             if (bidAsk) bidAsk.textContent = `B ${f.bidText} A ${f.askText}`;
             const high = row.querySelector('[data-field="high"]');
@@ -1645,7 +1667,7 @@
             const trigger = row.querySelector('[data-field="trigger"]');
             if (trigger) trigger.textContent = f.trigger ? `$${f.trigger.toFixed(2)}` : '--';
             const shares = row.querySelector('[data-field="shares"]');
-            if (shares) shares.textContent = f.shares.toLocaleString();
+            if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
             const copyBtn = row.querySelector('.copy-hover');
             if (copyBtn) copyBtn.dataset.shares = f.shares;
             const stopPrice = row.querySelector('[data-field="stopPrice"]');
