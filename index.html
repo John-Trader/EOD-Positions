@@ -72,7 +72,7 @@
         }
 
         @keyframes valueFlash {
-            0% { color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.7); }
+            0% { color: #ffffff; text-shadow: 0 0 6px rgba(255,255,255,0.5); }
             100% { color: inherit; text-shadow: none; }
         }
         .value-flash {
@@ -217,6 +217,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v1.0.2</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -249,12 +250,15 @@
             <div class="space-y-1.5">
                 <div class="flex justify-between items-center mb-0.5">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
-                    <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
+                    <div class="flex items-center gap-1.5">
+                        <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-2 py-0.5 rounded-full font-bold transition-all">+ ADD ROW</button>
+                        <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
+                    </div>
                 </div>
                 
                 <!-- Dynamic Grid -->
-                <div class="grid grid-cols-2 gap-2" id="inputGrid">
-                    <!-- Tickers 0 - 5 -->
+                <div class="grid grid-cols-3 gap-1.5" id="inputGrid">
+                    <!-- Tickers 0 - 8 -->
                     <div class="flex flex-col gap-1.5 ticker-group" id="group-0">
                         <input type="text" class="super-input ticker-input" data-idx="0" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="0" placeholder="Trigger $">
@@ -279,13 +283,18 @@
                         <input type="text" class="super-input ticker-input" data-idx="5" placeholder="TICKER">
                         <input type="number" step="0.01" class="trigger-input rounded" data-idx="5" placeholder="Trigger $">
                     </div>
-                </div>
-
-                <!-- Add Row Button -->
-                <div class="flex justify-center pt-0.5">
-                    <button id="addRowBtn" onclick="addMoreRows()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3.5 py-1 rounded-full font-bold transition-all">
-                        + ADD ROW
-                    </button>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-6">
+                        <input type="text" class="super-input ticker-input" data-idx="6" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="6" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-7">
+                        <input type="text" class="super-input ticker-input" data-idx="7" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="7" placeholder="Trigger $">
+                    </div>
+                    <div class="flex flex-col gap-1.5 ticker-group hidden" id="group-8">
+                        <input type="text" class="super-input ticker-input" data-idx="8" placeholder="TICKER">
+                        <input type="number" step="0.01" class="trigger-input rounded" data-idx="8" placeholder="Trigger $">
+                    </div>
                 </div>
             </div>
 
@@ -637,7 +646,7 @@
 
         let isFocusMode = false;
         let isVoiceEnabled = false;
-        let visibleCount = 2;
+        let visibleCount = 3;
 
         // Batch review custom TP overrides (ticker -> number[])
         let batchCustomTps = {};
@@ -867,21 +876,21 @@
         }
 
         function addMoreRows() {
-            if (visibleCount < 6) {
-                visibleCount += 2;
+            if (visibleCount < 9) {
+                visibleCount = Math.min(9, visibleCount + 3);
                 localStorage.setItem('visibleCount', visibleCount);
                 updateVisibleRows();
             }
         }
 
         function updateVisibleRows() {
-            for (let i = 0; i < 6; i++) {
+            for (let i = 0; i < 9; i++) {
                 const group = document.getElementById(`group-${i}`);
                 if (i < visibleCount) group.classList.remove('hidden');
                 else group.classList.add('hidden');
             }
             const btn = document.getElementById('addRowBtn');
-            if (visibleCount >= 6) btn.classList.add('hidden');
+            if (visibleCount >= 9) btn.classList.add('hidden');
             else btn.classList.remove('hidden');
         }
 
@@ -964,14 +973,16 @@
             const all = Array.from(container.querySelectorAll('[id^="card-"], #tableWrap > div'));
             if (isFocusMode) {
                 all.forEach(el => {
-                    if (currentViewMode === 'table') {
-                        el.style.display = el.classList.contains('table-row-wait') ? 'none' : '';
-                    } else {
-                        el.style.display = el.classList.contains('status-wait') ? 'none' : '';
-                    }
+                    const hide = currentViewMode === 'table'
+                        ? el.classList.contains('table-row-wait')
+                        : el.classList.contains('status-wait');
+                    const desired = hide ? 'none' : '';
+                    if (el.style.display !== desired) el.style.display = desired;
                 });
             } else {
-                all.forEach(el => el.style.display = '');
+                all.forEach(el => {
+                    if (el.style.display !== '') el.style.display = '';
+                });
             }
         }
 
@@ -1006,8 +1017,19 @@
 
         function clearInputs() {
             if (confirm('Clear all ticker inputs?')) {
-                document.querySelectorAll('.ticker-input').forEach(i => i.value = '');
-                document.querySelectorAll('.trigger-input').forEach(i => i.value = '');
+                visibleCount = 3;
+                localStorage.removeItem('visibleCount');
+
+                document.querySelectorAll('.ticker-input').forEach(i => {
+                    i.value = '';
+                    localStorage.removeItem(`ticker_${i.dataset.idx}`);
+                });
+                document.querySelectorAll('.trigger-input').forEach(i => {
+                    i.value = '';
+                    localStorage.removeItem(`trigger_${i.dataset.idx}`);
+                });
+
+                updateVisibleRows();
                 saveInputs();
                 disconnectWebSocket();
                 document.getElementById('resultsContainer').innerHTML = '';
@@ -1506,6 +1528,16 @@
             if (oldText !== newText) flashElement(el);
         }
 
+        function setTextIfChanged(el, newText) {
+            if (!el) return;
+            if (el.textContent !== newText) el.textContent = newText;
+        }
+
+        function setClassIfChanged(el, newClass) {
+            if (!el) return;
+            if (el.className !== newClass) el.className = newClass;
+        }
+
         function renderCard(item, risk, slippage, container) {
             const f = getRealtimeFields(item, risk, slippage);
             const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
@@ -1564,25 +1596,34 @@
 
         function updateCard(card, item, risk, slippage) {
             const f = getRealtimeFields(item, risk, slippage);
-            card.className = `glass-card rounded-xl px-3 py-2 ${f.statusClass}`;
+            const newCardClass = `glass-card rounded-xl px-3 py-2 ${f.statusClass}`;
+            if (card.className !== newCardClass) card.className = newCardClass;
             const setupType = card.querySelector('[data-field="setupType"]');
-            if (setupType) { setupType.textContent = f.setupType; setupType.className = `text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase`; }
+            if (setupType) {
+                setTextIfChanged(setupType, f.setupType);
+                const newSetupClass = `text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase`;
+                if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
+            }
             const high = card.querySelector('[data-field="high"]');
-            if (high) high.textContent = f.h.toFixed(2);
+            if (high) setTextIfChanged(high, f.h.toFixed(2));
             const low = card.querySelector('[data-field="low"]');
-            if (low) low.textContent = f.l.toFixed(2);
+            if (low) setTextIfChanged(low, f.l.toFixed(2));
             const lastPrice = card.querySelector('[data-field="lastPrice"]');
             if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
             const changePct = card.querySelector('[data-field="changePct"]');
-            if (changePct) { changePct.textContent = `${f.changePct > 0 ? '+' : ''}${f.changePct}%`; changePct.className = `${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold`; }
+            if (changePct) {
+                setTextIfChanged(changePct, `${f.changePct > 0 ? '+' : ''}${f.changePct}%`);
+                const newChangeClass = `${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold`;
+                if (changePct.className !== newChangeClass) changePct.className = newChangeClass;
+            }
             const bid = card.querySelector('[data-field="bid"]');
-            if (bid) bid.textContent = `B $${f.bidText}`;
+            if (bid) setTextIfChanged(bid, `B $${f.bidText}`);
             const ask = card.querySelector('[data-field="ask"]');
-            if (ask) ask.textContent = `A $${f.askText}`;
+            if (ask) setTextIfChanged(ask, `A $${f.askText}`);
             const shares = card.querySelector('[data-field="shares"]');
             if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
             const stopPrice = card.querySelector('[data-field="stopPrice"]');
-            if (stopPrice) stopPrice.textContent = f.stopPrice.toFixed(2);
+            if (stopPrice) setTextIfChanged(stopPrice, f.stopPrice.toFixed(2));
             const copyBox = card.querySelector('.copy-hover');
             if (copyBox) copyBox.dataset.shares = f.shares;
             const exitBtn = card.querySelector('[data-action="open-exit-orders"]');
@@ -1592,7 +1633,8 @@
                 exitBtn.dataset.stop = f.stopPrice;
                 exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
                 exitBtn.dataset.long = f.isGreenDay;
-                exitBtn.className = `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
+                const newExitClass = `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
+                if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
         }
 
@@ -1653,25 +1695,30 @@
 
         function updateTableRow(row, item, risk, slippage) {
             const f = getRealtimeFields(item, risk, slippage);
-            row.className = `rounded-lg px-2.5 py-2 ${f.rowClass}`;
+            const newRowClass = `rounded-lg px-2.5 py-2 ${f.rowClass}`;
+            if (row.className !== newRowClass) row.className = newRowClass;
             const setupType = row.querySelector('[data-field="setupType"]');
-            if (setupType) { setupType.textContent = f.setupType; setupType.className = `text-[9px] font-black ${f.typeColor} uppercase mt-0.5`; }
+            if (setupType) {
+                setTextIfChanged(setupType, f.setupType);
+                const newSetupClass = `text-[9px] font-black ${f.typeColor} uppercase mt-0.5`;
+                if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
+            }
             const lastPrice = row.querySelector('[data-field="lastPrice"]');
             if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
             const bidAsk = row.querySelector('[data-field="bidAsk"]');
-            if (bidAsk) bidAsk.textContent = `B ${f.bidText} A ${f.askText}`;
+            if (bidAsk) setTextIfChanged(bidAsk, `B ${f.bidText} A ${f.askText}`);
             const high = row.querySelector('[data-field="high"]');
-            if (high) high.textContent = `H ${f.h.toFixed(2)}`;
+            if (high) setTextIfChanged(high, `H ${f.h.toFixed(2)}`);
             const low = row.querySelector('[data-field="low"]');
-            if (low) low.textContent = `L ${f.l.toFixed(2)}`;
+            if (low) setTextIfChanged(low, `L ${f.l.toFixed(2)}`);
             const trigger = row.querySelector('[data-field="trigger"]');
-            if (trigger) trigger.textContent = f.trigger ? `$${f.trigger.toFixed(2)}` : '--';
+            if (trigger) setTextIfChanged(trigger, f.trigger ? `$${f.trigger.toFixed(2)}` : '--');
             const shares = row.querySelector('[data-field="shares"]');
             if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
             const copyBtn = row.querySelector('.copy-hover');
             if (copyBtn) copyBtn.dataset.shares = f.shares;
             const stopPrice = row.querySelector('[data-field="stopPrice"]');
-            if (stopPrice) stopPrice.textContent = f.stopPrice.toFixed(2);
+            if (stopPrice) setTextIfChanged(stopPrice, f.stopPrice.toFixed(2));
             const exitBtn = row.querySelector('[data-action="open-exit-orders"]');
             if (exitBtn) {
                 exitBtn.dataset.price = f.c;
@@ -1679,7 +1726,8 @@
                 exitBtn.dataset.stop = f.stopPrice;
                 exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
                 exitBtn.dataset.long = f.isGreenDay;
-                exitBtn.className = `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
+                const newExitClass = `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
+                if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
         }
 
@@ -2618,7 +2666,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: 1,
+                version: "1.0.2",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
