@@ -12,6 +12,10 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         html, body { overflow-x: hidden; }
+        *:focus-visible {
+            outline: 2px solid rgba(59, 130, 246, 0.8) !important;
+            outline-offset: 2px !important;
+        }
         body { 
             font-family: 'Inter', sans-serif; 
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
@@ -202,10 +206,10 @@
     <!-- Hamburger Backdrop -->
     <div id="navBackdrop" class="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-sm hidden" onclick="closeNavMenu()"></div>
     <!-- Hamburger Drawer -->
-    <aside id="navDrawer" class="hamburger-drawer fixed top-0 left-0 z-[70] h-full glass-modal border-r border-white/10 shadow-2xl flex flex-col">
+    <aside id="navDrawer" role="navigation" aria-label="Main navigation" class="hamburger-drawer fixed top-0 left-0 z-[70] h-full glass-modal border-r border-white/10 shadow-2xl flex flex-col">
         <div class="px-4 py-4 border-b border-white/10 flex items-center justify-between">
             <span class="text-sm font-black uppercase tracking-tight text-white">Menu</span>
-            <button onclick="closeNavMenu()" class="text-gray-400 hover:text-white text-xl leading-none font-bold">&times;</button>
+            <button aria-label="Close menu" onclick="closeNavMenu()" class="text-gray-400 hover:text-white text-xl leading-none font-bold">&times;</button>
         </div>
         <nav class="p-3 space-y-1.5 flex-1">
             <button id="navLinkScanner" onclick="navigateTo('scanner')" class="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 text-sm font-bold nav-link-active">📊 Scanner</button>
@@ -231,12 +235,12 @@
         <!-- Compact Header -->
         <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0">
-                <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
+                <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.0.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.8</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
-                <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
+                <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
                     <span class="relative flex h-1.5 w-1.5">
                         <span id="liveStatusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span id="liveStatusDot" class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
@@ -257,18 +261,19 @@
             </div>
             <div id="scannerFormBody">
             <div class="space-y-0.5 flex flex-col items-center">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
+                <label for="riskValue" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
                 <div class="w-full max-w-[140px]">
-                    <input type="number" id="riskValue" class="super-input risk-input" placeholder="500" value="500">
+                    <input type="number" id="riskValue" autocomplete="off" class="super-input risk-input" placeholder="500" value="500">
                 </div>
             </div>
 
             <div class="space-y-1.5">
                 <div class="flex flex-wrap items-center gap-1 mb-0.5">
-                    <div class="flex items-center justify-between w-full">
-                        <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5">PASTE SIGNALS</button>
-                        <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-2 py-0.5 rounded-full font-bold transition-all">+ ADD ROW</button>
-                        <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
+                    <div class="grid grid-cols-4 gap-1 w-full">
+                        <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-1 py-0.5 rounded-full font-bold transition-all whitespace-nowrap">+ ADD ROW</button>
+                        <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5 whitespace-nowrap">PASTE SIGNALS</button>
+                        <button onclick="toggleExitPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5 whitespace-nowrap">PASTE EXITS</button>
+                        <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors whitespace-nowrap">CLEAR ALL</button>
                     </div>
                 </div>
                 
@@ -277,8 +282,18 @@
                     <textarea id="signalPasteText" rows="5" maxlength="30000" oninput="previewSignalPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="$AMPL (Amplitude Inc) - If closing above $13.96 LONG"></textarea>
                     <pre id="signalPastePreview" class="whitespace-pre-wrap text-[11px] text-cyan-300 font-mono-num" aria-live="polite"></pre>
                     <div class="flex gap-3 text-[11px] font-bold">
-                        <button onclick="applySignalPaste()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
+                        <button onclick="autoPasteSignalAndCalculate()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
                         <button onclick="toggleSignalPaste(false)" class="text-gray-400">CANCEL</button>
+                    </div>
+                </div>
+
+                <div id="exitPastePanel" class="hidden rounded-lg bg-slate-900/60 border border-blue-500/30 p-2 space-y-2">
+                    <label for="exitPasteText" class="text-xs text-gray-300">Paste exit orders (stop, partial %, target prices). Shares and entry are filled after paste.</label>
+                    <textarea id="exitPasteText" rows="6" maxlength="30000" oninput="previewExitPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="1) $AMPL - Stop (GTC): $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82"></textarea>
+                    <div id="exitPastePreview" class="text-[11px] text-cyan-300 font-mono-num space-y-1" aria-live="polite"></div>
+                    <div class="flex gap-3 text-[11px] font-bold">
+                        <button onclick="autoPasteExitAndOpenBatch()" class="bg-blue-600 rounded px-3 py-1">OPEN BATCH REVIEW</button>
+                        <button onclick="toggleExitPaste(false)" class="text-gray-400">CANCEL</button>
                     </div>
                 </div>
                 <!-- Dynamic Grid -->
@@ -323,11 +338,16 @@
                 </div>
             </div>
 
-            <button onclick="calculateAll()" id="calcBtn" class="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2.5 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
-                CALCULATE
-            </button>
+            <div class="flex gap-2 items-center">
+                <button onclick="calculateAll()" id="calcBtn" class="flex-1 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
+                    CALCULATE
+                </button>
+                <button id="viewToggleBtn" onclick="toggleViewMode()" class="shrink-0 bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                    <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
+                </button>
+            </div>
             
-            <p id="errorMsg" class="text-red-400 font-bold text-sm text-center bg-red-900/20 py-2 rounded hidden"></p>
+            <p id="errorMsg" aria-live="assertive" class="text-red-400 font-bold text-sm text-center bg-red-900/20 py-2 rounded hidden"></p>
             </div><!-- /scannerFormBody -->
         </div>
     </div>
@@ -339,11 +359,7 @@
             <button onclick="openBatchReviewDrawer()" class="bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Export CSV</button>
             <button onclick="logSelectedTrades()" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Log Trades</button>
         </div>
-        <div></div>
         <div class="flex items-center gap-1.5">
-            <button id="viewToggleBtn" onclick="toggleViewMode()" class="bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
-                <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
-            </button>
             <button id="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
                 👁 Focus
             </button>
@@ -362,21 +378,21 @@
         <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
             <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <button aria-label="Open menu" onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
                     <h2 class="text-sm font-black uppercase text-white">Settings</h2>
                 </div>
                 <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
             </div>
             <div class="p-3 space-y-4 text-sm">
                 <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
+                    <label for="apiProvider" class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
                     <select id="apiProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold">
                         <option value="finnhub">Finnhub</option>
                         <option value="twelvedata">Twelve Data</option>
                         <option value="stockdata">StockData.org</option>
                     </select>
                     <div class="flex gap-2">
-                        <input type="password" id="apiKeyInput" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                        <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
                     </div>
@@ -398,8 +414,8 @@
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
-                        <input type="number" id="slippageValue" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
+                        <label for="slippageValue" class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
+                        <input type="number" id="slippageValue" autocomplete="off" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
                     </div>
                     <div class="space-y-1.5 pt-1">
                         <label class="text-[10px] font-bold text-gray-400 uppercase block">Interface</label>
@@ -418,6 +434,10 @@
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="collapseAfterCalcSetting" class="custom-checkbox" onchange="saveCollapseAfterCalc()">
                             <span class="text-xs text-gray-300">Collapse inputs after Calculate</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showAlertSetting" class="custom-checkbox" onchange="saveAlertSetting()">
+                            <span class="text-xs text-gray-300">Trigger alerts (browser/system notifications)</span>
                         </label>
                     </div>
                 </div>
@@ -474,7 +494,7 @@
         <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
             <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <button aria-label="Open menu" onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
                     <h2 class="text-sm font-black uppercase text-white">Active Trades</h2>
                     <span id="activeTradesCountBadge" class="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded-full border border-emerald-500/40">0</span>
                 </div>
@@ -498,7 +518,7 @@
         <div class="glass-card rounded-2xl overflow-hidden ring-1 ring-white/10 mb-3">
             <div class="bg-slate-900/60 px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <button onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
+                    <button aria-label="Open menu" onclick="openNavMenu()" class="h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white font-black text-lg leading-none">☰</button>
                     <h2 class="text-sm font-black uppercase text-white">Order Builder</h2>
                 </div>
                 <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
@@ -507,10 +527,22 @@
                 <p class="text-[11px] text-gray-400">Build TWS exit baskets for fills entered outside the scanner. Same Option 1 / Option 2 math and CSV format.</p>
                 <div class="timed-exit-box hidden bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
                     <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                    <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
+                    <input type="date" aria-label="Scheduled exit date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
                 </div>
                 <div id="builderRows" class="space-y-2"></div>
-                <button onclick="addBuilderRow()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                <div class="flex gap-2">
+                    <button onclick="addBuilderRow()" class="flex-1 text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                    <button onclick="toggleBuilderExitPaste()" class="text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">PASTE EXITS</button>
+                </div>
+                <div id="builderExitPastePanel" class="hidden rounded-lg bg-slate-900/60 border border-blue-500/30 p-2 space-y-2">
+                    <label for="builderExitPasteText" class="text-xs text-gray-300">Paste exit orders. Shares and entry are filled after paste.</label>
+                    <textarea id="builderExitPasteText" rows="6" maxlength="30000" oninput="previewBuilderExitPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="1) $AMPL - Stop (GTC): $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82"></textarea>
+                    <div id="builderExitPastePreview" class="text-[11px] text-cyan-300 font-mono-num space-y-1" aria-live="polite"></div>
+                    <div class="flex gap-3 text-[11px] font-bold">
+                        <button onclick="applyExitPasteToBuilder()" class="bg-blue-600 rounded px-3 py-1">ADD TO BUILDER</button>
+                        <button onclick="toggleBuilderExitPaste(false)" class="text-gray-400">CANCEL</button>
+                    </div>
+                </div>
                 <div class="flex flex-wrap gap-2">
                     <button onclick="downloadBuilderCombinedCSV()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
                     <button onclick="logAllBuilderTrades()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold">💾 Log All</button>
@@ -522,7 +554,7 @@
     <!-- ======================================================== -->
     <!-- STRATEGY ORDERS POPUP MODAL (Glassmorphism)              -->
     <!-- ======================================================== -->
-    <div id="strategyModalOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleModalBackdropClick(event)">
+    <div id="strategyModalOverlay" role="dialog" aria-modal="true" aria-label="Strategy orders" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleModalBackdropClick(event)">
         <div class="glass-modal w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
             <!-- Modal Header -->
             <div class="bg-slate-900/80 px-4 py-2.5 border-b border-white/10 flex justify-between items-center">
@@ -555,13 +587,13 @@
                 </div>
 
                 <div id="modalLongStrategySection" class="space-y-1.5">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Exit strategy</div>
+                    <label for="modalStrategySelect" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Exit strategy</label>
                     <select id="modalStrategySelect" onchange="onModalStrategyChange()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600"></select>
                 </div>
 
                 <div class="timed-exit-box hidden bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
                     <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                    <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
+                    <input type="date" aria-label="Scheduled exit date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
                 </div>
 
                 <!-- Generated Orders Panel -->
@@ -605,7 +637,7 @@
     </div>
 
     <!-- BATCH REVIEW DRAWER -->
-    <div id="batchReviewOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
+    <div id="batchReviewOverlay" role="dialog" aria-modal="true" aria-label="Batch review and export" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
         <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
             <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10 flex justify-between items-center gap-2">
                 <h2 class="text-sm font-black uppercase text-white shrink-0">Batch Review → 1 TWS CSV</h2>
@@ -614,7 +646,7 @@
             </div>
             <div class="timed-exit-box hidden mx-3 mt-2 bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
                 <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
+                <input type="date" aria-label="Scheduled exit date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
             </div>
             <div id="batchReviewList" class="p-3 overflow-y-auto space-y-1.5 flex-1 text-sm"></div>
             <div id="batchPreviewBox" class="mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2">
@@ -648,32 +680,40 @@
         let resyncTimer = null;            // periodic REST resync of HOD/LOD while streaming
         let lastTradeAt = {};              // ticker -> ms timestamp of last WebSocket print
         let triggerActiveState = {};       // ticker -> bool, for "trigger just became active" alerts
+        let activeFetchSession = null;     // AbortController for current scan/resync fetches
+        let activeTradesSession = null;    // AbortController for active-trade price refresh
         const RESYNC_INTERVAL_MS = 5 * 60 * 1000;
         const MAX_RECONNECT_ATTEMPTS = 8;
 
-        let liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled');
+        let liveUpdateEnabled = safeStorageGet('liveUpdateEnabled');
         if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
         liveUpdateEnabled = liveUpdateEnabled === 'true';
 
-        let globalMarketRegime = localStorage.getItem('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
-        let currentViewMode = localStorage.getItem('preferredViewMode') || 'cards'; // 'cards' | 'table'
+        let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
+        let currentViewMode = safeStorageGet('preferredViewMode') || 'cards'; // 'cards' | 'table'
         let currentPage = 'scanner';
         let selectedTickers = new Set();
         let lastRenderedSnapshot = [];
         let builderRowId = 0;
-        let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
+        let builderExplicitLegs = {}; // rowId -> [{pct, tp, label}, ...]
+        let lastExitPasteResult = null;
+        let lastBuilderExitPasteResult = null;
+        let collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
         let isStreamingLive = false;
-        let maxHoldDays = parseInt(localStorage.getItem('maxHoldDays'), 10) || 5;
+        let calculating = false;
+        let lastCalculateAt = 0;
+        let maxHoldDays = parseInt(safeStorageGet('maxHoldDays'), 10) || 5;
 
         // Day-N timed exit (opt-in): adds a GoodAfterTime MKT/MOC order to every OCA leg.
-        let timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-        let timedExitTime = localStorage.getItem('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
+        let timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
+        let timedExitTime = safeStorageGet('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
         let timedExitDate = null;                                              // 'YYYY-MM-DD', set when an export UI opens
         const TIMED_EXIT_TIMES = ['15:30', '15:40', '15:45', '15:50', '15:55'];
 
         // Optional card fields / warnings (opt-in, default OFF)
-        let showRangePct = localStorage.getItem('showRangePct') === 'true';
-        let earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
+        let showRangePct = safeStorageGet('showRangePct') === 'true';
+        let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+        let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
         function earningsBadgeFor(ticker) {
@@ -690,7 +730,7 @@
                 if (status) status.textContent = 'Earnings warnings are off.';
                 return;
             }
-            const key = localStorage.getItem(API_CONFIGS.finnhub.storageKey);
+            const key = safeStorageGet(API_CONFIGS.finnhub.storageKey);
             if (!key) {
                 if (status) status.textContent = 'Save a Finnhub API key to check earnings. EARN ? means unavailable, not clear.';
                 return;
@@ -698,9 +738,9 @@
             const from = nyDateStr();
             const to = addTradingDays(from, maxHoldDays);
             try {
-                const saved = JSON.parse(localStorage.getItem('earningsCalendarCache') || '{}');
+                const saved = JSON.parse(safeStorageGet('earningsCalendarCache') || '{}');
                 if (saved && typeof saved === 'object' && !Array.isArray(saved)) earningsCache = { ...saved, ...earningsCache };
-            } catch (e) {}
+            } catch (e) { console.warn('Could not load earnings cache:', e); }
             const tickers = [...new Set(realtimeTasks.map(t => t.ticker))];
             if (status) status.textContent = tickers.length ? 'Checking earnings calendar...' : 'Calculate your tickers to check earnings.';
             for (const ticker of tickers) {
@@ -714,7 +754,7 @@
                     if (!response.ok) throw new Error('Calendar unavailable');
                     const data = await response.json();
                     if (!Array.isArray(data.earningsCalendar)) throw new Error('Calendar unavailable');
-                    const dates = data.earningsCalendar.filter(e => e.symbol === ticker && !isNaN(ymdToUtc(e.date)) && e.date >= from && e.date <= to).map(e => e.date).sort();
+                    const dates = data.earningsCalendar.filter(e => e.symbol === ticker && Number.isFinite(ymdToUtc(e.date).getTime()) && e.date >= from && e.date <= to).map(e => e.date).sort();
                     if (requestId !== earningsRequestId) return;
                     earningsCache[ticker] = { from, to, date: dates[0] || null, status: 'ok', checkedAt: Date.now() };
                 } catch (e) {
@@ -723,12 +763,16 @@
                 } finally {
                     clearTimeout(timeout);
                 }
-                refreshAllVisible(document.getElementById('resultsContainer'));
             }
             if (requestId !== earningsRequestId) return;
             const unavailable = tickers.filter(t => earningsCache[t]?.status !== 'ok').length;
             if (status && tickers.length) status.textContent = unavailable ? `${unavailable} calendar lookup(s) unavailable. EARN ? is not an all-clear.` : `Checked ${from} through ${to}. Dates may change; confirm with the company.`;
-            try { localStorage.setItem('earningsCalendarCache', JSON.stringify(earningsCache)); } catch (e) {}
+            // Keep the cache bounded so localStorage does not grow forever.
+            const entries = Object.entries(earningsCache).sort((a, b) => (b[1].checkedAt || 0) - (a[1].checkedAt || 0));
+            if (entries.length > 100) {
+                earningsCache = Object.fromEntries(entries.slice(0, 100));
+            }
+            safeStorageSet('earningsCalendarCache', JSON.stringify(earningsCache));
             refreshAllVisible(document.getElementById('resultsContainer'));
         }
 
@@ -743,11 +787,11 @@
         let customStrategies = [];
         let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
         try {
-            const savedS = localStorage.getItem('customStrategies');
+            const savedS = safeStorageGet('customStrategies');
             if (savedS) customStrategies = JSON.parse(savedS);
-            const savedMap = localStorage.getItem('regimeStrategyMap');
+            const savedMap = safeStorageGet('regimeStrategyMap');
             if (savedMap) regimeStrategyMap = { ...regimeStrategyMap, ...JSON.parse(savedMap) };
-        } catch (e) {}
+        } catch (e) { console.warn('Could not load strategies:', e); }
 
         function allStrategies() {
             const safeCustom = Array.isArray(customStrategies) ? customStrategies : [];
@@ -768,6 +812,7 @@
 
         // Batch review custom TP overrides (ticker -> number[])
         let batchCustomTps = {};
+        let batchExplicitLegs = {}; // ticker -> [{pct, tp, label}, ...]
 
         // Current active modal data
         let currentModalState = {
@@ -784,7 +829,7 @@
         // Active Trades Log
         let activeTradesLog = [];
         try {
-            const savedLog = localStorage.getItem('activeTradesLog');
+            const savedLog = safeStorageGet('activeTradesLog');
             if (savedLog) activeTradesLog = JSON.parse(savedLog);
         } catch (e) { activeTradesLog = []; }
 
@@ -792,14 +837,14 @@
         // INITIALIZATION & SETTINGS
         // ========================================================
         function loadSettings() {
-            globalMarketRegime = localStorage.getItem('globalMarketRegime') === 'declining' ? 'declining' : 'expanding';
-            currentViewMode = localStorage.getItem('preferredViewMode') === 'table' ? 'table' : 'cards';
-            collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
-            liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled') !== 'false';
-            const savedRisk = localStorage.getItem('riskValue');
-            const savedProvider = localStorage.getItem('selectedProvider');
-            const savedSlippage = localStorage.getItem('slippageValue');
-            const savedCount = localStorage.getItem('visibleCount');
+            globalMarketRegime = safeStorageGet('globalMarketRegime') === 'declining' ? 'declining' : 'expanding';
+            currentViewMode = safeStorageGet('preferredViewMode') === 'table' ? 'table' : 'cards';
+            collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
+            liveUpdateEnabled = safeStorageGet('liveUpdateEnabled') !== 'false';
+            const savedRisk = safeStorageGet('riskValue');
+            const savedProvider = safeStorageGet('selectedProvider');
+            const savedSlippage = safeStorageGet('slippageValue');
+            const savedCount = safeStorageGet('visibleCount');
             
             if (savedRisk) document.getElementById('riskValue').value = savedRisk;
             if (Object.hasOwn(API_CONFIGS, savedProvider)) document.getElementById('apiProvider').value = savedProvider;
@@ -807,7 +852,7 @@
             if (savedCount) visibleCount = parseInt(savedCount);
             // Rows come in threes; normalise counts saved by the old 2-column layout.
             visibleCount = Math.min(9, Math.max(3, Math.ceil((visibleCount || 3) / 3) * 3));
-            try { signalSides = JSON.parse(localStorage.getItem('signalSides') || '{}') || {}; } catch (e) { signalSides = {}; }
+            try { signalSides = JSON.parse(safeStorageGet('signalSides') || '{}') || {}; } catch (e) { signalSides = {}; }
             
             updateVisibleRows();
             updateApiKeyInput();
@@ -816,20 +861,23 @@
             updateActiveTradesCountBadge();
 
             document.querySelectorAll('.ticker-input').forEach(input => {
-                input.value = localStorage.getItem(`ticker_${input.dataset.idx}`) || '';
+                input.value = safeStorageGet(`ticker_${input.dataset.idx}`) || '';
             });
             document.querySelectorAll('.trigger-input').forEach(input => {
-                input.value = localStorage.getItem(`trigger_${input.dataset.idx}`) || '';
+                input.value = safeStorageGet(`trigger_${input.dataset.idx}`) || '';
             });
 
-            const showFocus = localStorage.getItem('setting_showFocus') !== 'false';
-            const showVoice = localStorage.getItem('setting_showVoice') === 'true';
+            const showFocus = safeStorageGet('setting_showFocus') !== 'false';
+            const showVoice = safeStorageGet('setting_showVoice') === 'true';
+            alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
 
             document.getElementById('showFocusSetting').checked = showFocus;
             document.getElementById('showVoiceSetting').checked = showVoice;
             document.getElementById('liveUpdateSetting').checked = liveUpdateEnabled;
             const collapseEl = document.getElementById('collapseAfterCalcSetting');
             if (collapseEl) collapseEl.checked = collapseAfterCalc;
+            const alertEl = document.getElementById('showAlertSetting');
+            if (alertEl) alertEl.checked = alertEnabled;
             
             updateUIControls();
             refreshStrategySelects();
@@ -844,12 +892,12 @@
         }
 
         function loadFeatureSettings() {
-            maxHoldDays = boundedHoldDays(localStorage.getItem('maxHoldDays'));
-            timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-            timedExitTime = localStorage.getItem('timedExitTime') || '15:45';
+            maxHoldDays = boundedHoldDays(safeStorageGet('maxHoldDays'));
+            timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
+            timedExitTime = safeStorageGet('timedExitTime') || '15:45';
             if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
-            showRangePct = localStorage.getItem('showRangePct') === 'true';
-            earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
+            showRangePct = safeStorageGet('showRangePct') === 'true';
+            earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
             document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
             document.getElementById('timedExitTimeSetting').value = timedExitTime;
             document.getElementById('timedExitSetting').checked = timedExitEnabled;
@@ -869,7 +917,7 @@
             time.disabled = !timedExitEnabled;
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => localStorage.setItem(key, String(value)));
+            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
@@ -887,7 +935,7 @@
 
         function saveCollapseAfterCalc() {
             collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
-            localStorage.setItem('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
+            safeStorageSet('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
         }
 
         function setScannerCollapsed(on) {
@@ -912,9 +960,18 @@
 
         function saveLiveUpdateSetting() {
             liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
-            localStorage.setItem('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
+            safeStorageSet('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
             if (!liveUpdateEnabled) disconnectWebSocket();
             updateTopStatus();
+        }
+
+        async function saveAlertSetting() {
+            const on = document.getElementById('showAlertSetting').checked;
+            alertEnabled = on;
+            safeStorageSet('setting_showAlerts', on ? 'true' : 'false');
+            if (on && 'Notification' in window && Notification.permission === 'default') {
+                try { await Notification.requestPermission(); } catch (e) {}
+            }
         }
 
         function styleRegimePair(expBtn, decBtn, regime) {
@@ -933,7 +990,7 @@
 
         function setGlobalRegime(regime, save = true) {
             globalMarketRegime = regime;
-            if (save) localStorage.setItem('globalMarketRegime', regime);
+            if (save) safeStorageSet('globalMarketRegime', regime);
             styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
             styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
         }
@@ -977,7 +1034,7 @@
 
         function toggleViewMode() {
             currentViewMode = (currentViewMode === 'cards') ? 'table' : 'cards';
-            localStorage.setItem('preferredViewMode', currentViewMode);
+            safeStorageSet('preferredViewMode', currentViewMode);
             updateViewToggleUI();
             const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
             const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
@@ -1058,7 +1115,7 @@
         function addMoreRows() {
             if (visibleCount < 9) {
                 visibleCount = Math.min(9, visibleCount + 3);
-                localStorage.setItem('visibleCount', visibleCount);
+                safeStorageSet('visibleCount', visibleCount);
                 updateVisibleRows();
             }
         }
@@ -1069,21 +1126,29 @@
                 if (i < visibleCount) group.classList.remove('hidden');
                 else group.classList.add('hidden');
             }
+            document.querySelectorAll('.ticker-input').forEach((el, i) => {
+                el.setAttribute('aria-label', `Ticker symbol ${i + 1}`);
+                el.setAttribute('autocomplete', 'off');
+            });
+            document.querySelectorAll('.trigger-input').forEach((el, i) => {
+                el.setAttribute('aria-label', `Trigger price ${i + 1}`);
+                el.setAttribute('autocomplete', 'off');
+            });
             const btn = document.getElementById('addRowBtn');
             if (visibleCount >= 9) btn.classList.add('hidden');
             else btn.classList.remove('hidden');
         }
 
         function saveInputs() {
-            localStorage.setItem('riskValue', document.getElementById('riskValue').value);
-            localStorage.setItem('slippageValue', document.getElementById('slippageValue').value);
+            safeStorageSet('riskValue', document.getElementById('riskValue').value);
+            safeStorageSet('slippageValue', document.getElementById('slippageValue').value);
             document.querySelectorAll('.ticker-input').forEach(input => {
-                localStorage.setItem(`ticker_${input.dataset.idx}`, input.value.toUpperCase());
+                safeStorageSet(`ticker_${input.dataset.idx}`, input.value.toUpperCase());
             });
             document.querySelectorAll('.trigger-input').forEach(input => {
-                localStorage.setItem(`trigger_${input.dataset.idx}`, input.value);
+                safeStorageSet(`trigger_${input.dataset.idx}`, input.value);
             });
-            localStorage.setItem('signalSides', JSON.stringify(signalSides));
+            safeStorageSet('signalSides', JSON.stringify(signalSides));
         }
 
         function updateUIControls() {
@@ -1098,8 +1163,8 @@
             if (showVoice) voiceBtn.classList.remove('hidden');
             else voiceBtn.classList.add('hidden');
 
-            localStorage.setItem('setting_showFocus', showFocus);
-            localStorage.setItem('setting_showVoice', showVoice);
+            safeStorageSet('setting_showFocus', showFocus);
+            safeStorageSet('setting_showVoice', showVoice);
         }
 
         // Scanner inputs only: Enter = CALCULATE. (Settings / modal inputs must not restart the scan.)
@@ -1119,7 +1184,7 @@
         if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
-            localStorage.setItem('selectedProvider', e.target.value);
+            safeStorageSet('selectedProvider', e.target.value);
             updateApiKeyInput();
             disconnectWebSocket();
         });
@@ -1131,7 +1196,7 @@
             if (config.needsKey) {
                 apiInput.disabled = false;
                 apiInput.placeholder = 'Enter API Key';
-                const key = localStorage.getItem(config.storageKey);
+                const key = safeStorageGet(config.storageKey);
                 apiInput.value = key || '';
             } else {
                 apiInput.disabled = true;
@@ -1154,7 +1219,7 @@
             const config = API_CONFIGS[provider];
             const key = document.getElementById('apiKeyInput').value.trim();
             if (config.needsKey && key) {
-                localStorage.setItem(config.storageKey, key);
+                safeStorageSet(config.storageKey, key);
                 alert('API Key Saved'); 
             }
         }
@@ -1217,13 +1282,44 @@
                 toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] glass-modal rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xl';
                 document.body.appendChild(toast);
             }
-            toast.innerHTML = `<span class="text-gray-200">${message}</span><button id="undoToastBtn" class="text-blue-300 font-bold uppercase text-[11px] hover:text-white">Undo</button><button id="undoToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
+            toast.innerHTML = `<span class="text-gray-200">${escapeHtml(message)}</span><button id="undoToastBtn" class="text-blue-300 font-bold uppercase text-[11px] hover:text-white">Undo</button><button id="undoToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
             toast.style.display = 'flex';
             const hide = () => { toast.style.display = 'none'; if (undoToastTimer) { clearTimeout(undoToastTimer); undoToastTimer = null; } };
             toast.querySelector('#undoToastBtn').onclick = () => { hide(); undoFn(); };
             toast.querySelector('#undoToastClose').onclick = hide;
             if (undoToastTimer) clearTimeout(undoToastTimer);
             undoToastTimer = setTimeout(hide, ms);
+        }
+
+        // ---------- PWA update toast ----------
+        function showUpdateToast(worker) {
+            let toast = document.getElementById('updateToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'updateToast';
+                toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] glass-modal rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xl';
+                document.body.appendChild(toast);
+            }
+            toast.innerHTML = `<span class="text-gray-200">A new version is ready.</span><button id="updateToastBtn" class="text-emerald-300 font-bold uppercase text-[11px] hover:text-white">Refresh</button><button id="updateToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
+            toast.style.display = 'flex';
+            const hide = () => { toast.style.display = 'none'; };
+            toast.querySelector('#updateToastBtn').onclick = () => { if (worker) worker.postMessage({ type: 'SKIP_WAITING' }); window.location.reload(); };
+            toast.querySelector('#updateToastClose').onclick = hide;
+        }
+
+        // ---------- Global error toast (bottom-right) ----------
+        function showErrorToast(message, ms = 6000) {
+            let toast = document.getElementById('errorToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'errorToast';
+                toast.className = 'fixed bottom-4 right-4 z-[130] bg-rose-950/90 border border-rose-500/40 text-rose-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
+                document.body.appendChild(toast);
+            }
+            toast.innerText = typeof message === 'string' ? message : (message && message.message ? message.message : 'Something went wrong');
+            toast.style.display = 'block';
+            if (toast._hideTimer) clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
         }
 
         function parseSignalText(text) {
@@ -1239,10 +1335,10 @@
             const signals = [];
             const warnings = [];
             const seen = new Set();
-            const add = (ticker, price, side) => {
-                ticker = ticker.toUpperCase();
+            const add = (rawTicker, price, side) => {
+                const ticker = sanitizeTicker(rawTicker);
                 const trigger = Number(price.replace(/,/g, ''));
-                if (ticker.length > 10 || !Number.isFinite(trigger) || trigger <= 0) {
+                if (!ticker || !Number.isFinite(trigger) || trigger <= 0) {
                     warnings.push(`Invalid ticker or trigger: ${ticker}`);
                 } else if (seen.has(ticker)) {
                     warnings.push(`Duplicate ${ticker} ignored (first signal kept).`);
@@ -1270,11 +1366,123 @@
             return { signals: signals.slice(0, 9), warnings };
         }
 
+        function parseExitOrderText(text) {
+            const raw = String(text || '').slice(0, 30000)
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/^Stops,\s*BE alarms,?\s*TP orders:?\s*$/gim, '')
+                // Strip Discord/Markdown bold stars around tickers.
+                .replace(/\$\s*(\*+)\s*([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
+                         (m, starsBefore, ticker) => '$' + ticker)
+                .replace(/(\*+)\s*(\$[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
+                         (m, starsBefore, token) => token)
+                .replace(/(\*+)\s*([A-Z][A-Z0-9.-]{0,9})\s*(\*+)(?=\s*\$?\s*\d)/gi,
+                         (m, starsBefore, ticker) => ticker);
+
+            const blocks = raw
+                .split(/\n\s*\n|\n\s*\d+\s*[).\-]\s*/)
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            const STOP_WORDS = new Set(['STOP','STP','GTC','DAY','SELL','BUY','TO','COVER','LMT','PARTIAL','TP','STOPS','BE','ALARMS','ORDERS']);
+            const PRICE_RE = '(\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?)';
+            const priceNum = (s) => s ? Number(s.replace(/,/g, '')) : 0;
+
+            const trades = [];
+            const warnings = [];
+            const seen = new Set();
+
+            for (const block of blocks) {
+                let ticker = null;
+                let m = /\$([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\b/i.exec(block);
+                if (m) {
+                    ticker = sanitizeTicker(m[1]);
+                } else {
+                    const words = [...block.matchAll(/\b([A-Z][A-Z0-9.-]{1,10})\b/g)];
+                    const cand = words.find(w => !STOP_WORDS.has(w[1]));
+                    if (cand) ticker = sanitizeTicker(cand[1]);
+                }
+                if (!ticker) {
+                    warnings.push('Skipped a line without a ticker.');
+                    continue;
+                }
+
+                const stopMatch = new RegExp('Stop\\s*(?:\\([^)]*\\))?\\s*[:\\-]\\s*\\$?' + PRICE_RE, 'i').exec(block);
+                const stop = stopMatch ? priceNum(stopMatch[1]) : 0;
+                if (!stop) {
+                    warnings.push(`${ticker}: missing stop price.`);
+                    continue;
+                }
+
+                const legs = [];
+                const legRe = new RegExp('(?:\\(([^)]+)\\))?\\s*(Sell|Buy\\s+to\\s+Cover|Buy)?\\s*LMT\\s*:\\s*\\$?' + PRICE_RE, 'gi');
+                let lm;
+                while ((lm = legRe.exec(block)) !== null) {
+                    const label = (lm[1] || '').trim();
+                    const actionRaw = (lm[2] || '').trim().toLowerCase();
+                    const action = actionRaw === 'buy to cover' ? 'BUY' : (actionRaw === 'buy' ? 'BUY' : 'SELL');
+                    const tp = priceNum(lm[3]);
+                    if (!tp) {
+                        warnings.push(`${ticker}: invalid target price.`);
+                        continue;
+                    }
+                    const pctMatch = label.match(/(\d+)\s*(?:%|Partial)/i);
+                    const pct = pctMatch ? Number(pctMatch[1]) : 0;
+                    legs.push({ pct, tp, label, action });
+                }
+
+                if (!legs.length) {
+                    warnings.push(`${ticker}: no LMT legs found.`);
+                    continue;
+                }
+
+                const explicitPcts = legs.map(l => l.pct);
+                const sumPct = explicitPcts.reduce((a, b) => a + b, 0);
+                if (sumPct > 100) {
+                    warnings.push(`${ticker}: leg percentages sum to ${sumPct}% — skipped.`);
+                    continue;
+                }
+
+                const implicitLegs = legs.filter(l => l.pct === 0);
+                let remainder = 100 - sumPct;
+                if (implicitLegs.length) {
+                    const each = remainder / implicitLegs.length;
+                    implicitLegs.forEach(l => l.pct = each);
+                } else if (remainder > 0) {
+                    // All legs explicit but total < 100; add remainder to last leg.
+                    legs[legs.length - 1].pct += remainder;
+                    warnings.push(`${ticker}: leg percentages total ${sumPct}%; remainder added to last leg.`);
+                }
+
+                // Round and force the total to exactly 100% on the last leg.
+                legs.forEach(l => l.pct = Number(l.pct.toFixed(4)));
+                const roundedSum = legs.reduce((a, l) => a + l.pct, 0);
+                if (legs.length && Math.abs(roundedSum - 100) > 0.000001) {
+                    legs[legs.length - 1].pct = Number((legs[legs.length - 1].pct + (100 - roundedSum)).toFixed(4));
+                }
+
+                const hasSell = legs.some(l => l.action === 'SELL');
+                const hasBuy = legs.some(l => l.action === 'BUY');
+                const isLong = hasBuy ? false : (hasSell ? true : true);
+
+                if (seen.has(ticker)) {
+                    warnings.push(`Duplicate ${ticker} ignored (first exit kept).`);
+                    continue;
+                }
+                seen.add(ticker);
+
+                trades.push({ ticker, isLong, side: isLong ? 'LONG' : 'SHORT', entry: 0, shares: 0, stop, legs });
+            }
+
+            return { trades, warnings };
+        }
+
         function toggleSignalPaste(open) {
             const panel = document.getElementById('signalPastePanel');
             const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
             setHidden(panel, !show);
             if (show) {
+                setHidden(document.getElementById('exitPastePanel'), true);
                 document.getElementById('signalPasteText').focus();
                 previewSignalPaste();
             }
@@ -1290,6 +1498,101 @@
             return parsed;
         }
 
+        function toggleExitPaste(open) {
+            const panel = document.getElementById('exitPastePanel');
+            const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
+            setHidden(panel, !show);
+            if (show) {
+                document.getElementById('exitPasteText').value = '';
+                document.getElementById('exitPastePreview').innerHTML = '';
+                lastExitPasteResult = null;
+                document.getElementById('exitPasteText').focus();
+                if (!panel.classList.contains('hidden')) setHidden(document.getElementById('signalPastePanel'), true);
+            }
+        }
+
+        function previewExitPaste() {
+            const text = document.getElementById('exitPasteText').value;
+            const parsed = parseExitOrderText(text);
+
+            // Preserve side overrides from previous parse when ticker still present.
+            if (lastExitPasteResult) {
+                const oldSides = new Map(lastExitPasteResult.trades.map((t, i) => [t.ticker, { isLong: t.isLong, side: t.side, idx: i }]));
+                parsed.trades.forEach((t, i) => {
+                    const old = oldSides.get(t.ticker);
+                    if (old && old.idx === i) {
+                        t.isLong = old.isLong;
+                        t.side = old.side;
+                    }
+                });
+            }
+            lastExitPasteResult = parsed;
+
+            const tradeHtml = parsed.trades.map((t, i) => `
+                <div class="exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold">${escapeHtml(t.ticker)}</span>
+                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        </select>
+                    </div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('exitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.map(escapeHtml).join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            return parsed;
+        }
+
+        function updateExitPasteSide(select) {
+            const idx = parseInt(select.closest('.exit-paste-trade').dataset.idx);
+            if (lastExitPasteResult && lastExitPasteResult.trades[idx]) {
+                const isLong = select.value === 'long';
+                lastExitPasteResult.trades[idx].isLong = isLong;
+                lastExitPasteResult.trades[idx].side = isLong ? 'LONG' : 'SHORT';
+            }
+        }
+
+        function applyExitPasteToBatch() {
+            if (!lastExitPasteResult) previewExitPaste();
+            const parsed = lastExitPasteResult;
+            if (!parsed || !parsed.trades.length) { alert('No valid exit orders to apply.'); return; }
+            toggleExitPaste(false);
+            openBatchReviewDrawer('paste', parsed.trades);
+        }
+
+        function autoPasteExitAndOpenBatch() {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                showErrorToast('Clipboard API not available. Paste manually.');
+                return;
+            }
+            navigator.clipboard.readText().then(text => {
+                document.getElementById('exitPasteText').value = text;
+                previewExitPaste();
+                applyExitPasteToBatch();
+            }).catch(e => {
+                console.warn('Clipboard read failed:', e);
+                showErrorToast('Clipboard access denied. Paste manually and click Open Batch Review.');
+            });
+        }
+
+        function autoPasteSignalAndCalculate() {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                showErrorToast('Clipboard API not available. Paste manually.');
+                return;
+            }
+            navigator.clipboard.readText().then(text => {
+                document.getElementById('signalPasteText').value = text;
+                previewSignalPaste();
+                applySignalPaste();
+                calculateAll();
+            }).catch(e => {
+                console.warn('Clipboard read failed:', e);
+                showErrorToast('Clipboard access denied. Paste manually and click Replace Inputs.');
+            });
+        }
+
         function applySignalPaste() {
             const { signals } = previewSignalPaste();
             if (!signals.length) return;
@@ -1299,7 +1602,7 @@
             document.querySelectorAll('.trigger-input').forEach((el, i) => { el.value = signals[i] ? signals[i].trigger : ''; });
             signalSides = Object.fromEntries(signals.map((s, i) => [i, s.signalSide]).filter(([, side]) => side));
             visibleCount = Math.ceil(signals.length / 3) * 3;
-            localStorage.setItem('visibleCount', visibleCount);
+            safeStorageSet('visibleCount', visibleCount);
             updateVisibleRows();
             saveInputs();
             toggleSignalPaste(false);
@@ -1320,7 +1623,7 @@
             document.querySelectorAll('.trigger-input').forEach((i, k) => { i.value = snap.triggers[k] || ''; });
             signalSides = { ...(snap.sides || {}) };
             visibleCount = snap.visibleCount || 3;
-            localStorage.setItem('visibleCount', visibleCount);
+            safeStorageSet('visibleCount', visibleCount);
             updateVisibleRows();
             saveInputs();
         }
@@ -1342,14 +1645,14 @@
             if (!filled && !realtimeTasks.length && visibleCount === 3 && !selectedTickers.size) return;
             const snap = snapshotScannerInputs();
             visibleCount = 3;
-            localStorage.removeItem('visibleCount');
+            safeStorageRemove('visibleCount');
             document.querySelectorAll('.ticker-input').forEach(i => {
                 i.value = '';
-                localStorage.removeItem(`ticker_${i.dataset.idx}`);
+                safeStorageRemove(`ticker_${i.dataset.idx}`);
             });
             document.querySelectorAll('.trigger-input').forEach(i => {
                 i.value = '';
-                localStorage.removeItem(`trigger_${i.dataset.idx}`);
+                safeStorageRemove(`trigger_${i.dataset.idx}`);
             });
             signalSides = {};
             updateVisibleRows();
@@ -1362,7 +1665,7 @@
         // SMART TRIGGER HELPER (DUAL BID & ASK)
         // ========================================================
         function isTriggerActive(data, trigger, isGreenDay) {
-            if (trigger === null || trigger === undefined || isNaN(trigger)) return false;
+            if (trigger === null || trigger === undefined || !Number.isFinite(trigger)) return false;
             const { c, bid, ask } = data;
             const hasBidAsk = (typeof bid === 'number' && bid > 0) && (typeof ask === 'number' && ask > 0);
             if (isGreenDay) {
@@ -1407,8 +1710,23 @@
                 const f = getRealtimeFields(r, risk, slippage);
                 const was = !!triggerActiveState[ticker];
                 triggerActiveState[ticker] = f.isActive;
-                if (f.isActive && !was) speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+                if (f.isActive && !was) {
+                    speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+                    if (alertEnabled) showTriggerNotification(f.ticker, f.isGreenDay ? 'LONG' : 'SHORT', f.trigger, f.shares, f.c);
+                }
             });
+        }
+
+        function showTriggerNotification(ticker, side, trigger, shares, price) {
+            const title = `${ticker} ${side} trigger active`;
+            const body = `Price $${price.toFixed(2)} crossed $${trigger ? trigger.toFixed(2) : '--'} · ${shares.toLocaleString()} shares`;
+            try {
+                if (swRegistration && swRegistration.showNotification) {
+                    swRegistration.showNotification(title, { body, icon: './icon.svg', badge: './icon.svg' });
+                } else if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(title, { body, icon: './icon.svg' });
+                }
+            } catch (e) { console.warn('Notification failed:', e); }
         }
 
         // ========================================================
@@ -1465,17 +1783,63 @@
             return String(raw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10);
         }
 
-        async function fetchTickerData(ticker, provider, apiKey) {
-            const data = await fetchProviderQuote(ticker, provider, apiKey);
-            if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
-            return data;
+        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
+        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
+        const _storage = localStorage;
+        function safeStorageSet(key, value) {
+            try { _storage.setItem(key, value); return true; } catch (e) {
+                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+                console.warn('Storage save failed:', key, e);
+                if (quota) showErrorToast('Storage full: export a backup and free up space.');
+                return false;
+            }
+        }
+        function safeStorageGet(key) {
+            try { return _storage.getItem(key); } catch (e) { return null; }
+        }
+        function safeStorageRemove(key) {
+            try { _storage.removeItem(key); } catch (e) {}
         }
 
-        async function fetchProviderQuote(ticker, provider, apiKey) {
+        function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(new DOMException('Request timeout', 'TimeoutError')), timeoutMs);
+            if (parentSignal) {
+                parentSignal.addEventListener('abort', () => { try { controller.abort(); } catch (e) {} }, { once: true });
+            }
+            try {
+                const p = fetch(url, { ...init, signal: controller.signal });
+                p.catch(() => {}).finally(() => clearTimeout(id));
+                return p;
+            } finally {
+            }
+        }
+
+        async function fetchTickerData(ticker, provider, apiKey, signal) {
+            const providers = [provider, ...Object.keys(API_CONFIGS).filter(p => p !== provider)];
+            let firstError = null;
+            for (const p of providers) {
+                const cfg = API_CONFIGS[p];
+                const key = p === provider ? apiKey : (cfg.storageKey ? safeStorageGet(cfg.storageKey) : null);
+                if (!key) continue;
+                try {
+                    const data = await fetchProviderQuote(ticker, p, key, signal);
+                    if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
+                    return data;
+                } catch (e) {
+                    if (e && e.name === 'AbortError') throw e;
+                    if (!firstError) firstError = e;
+                    console.warn(`Provider ${p} failed for ${ticker}:`, e.message);
+                }
+            }
+            throw firstError || new Error(`All available providers failed for ${ticker}`);
+        }
+
+        async function fetchProviderQuote(ticker, provider, apiKey, signal) {
             ticker = sanitizeTicker(ticker);
             if (!ticker) throw new Error('Empty ticker');
             if (provider === 'twelvedata') {
-                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`);
+                const quote = await fetchWithTimeout(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d = await quote.json();
                 if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
@@ -1490,7 +1854,7 @@
                     ask: (ask && ask > 0) ? ask : null
                 };
             } else if (provider === 'finnhub') {
-                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`Quote API error (${quote.status})`);
                 const d = await quote.json();
@@ -1506,7 +1870,7 @@
                     ask: ask
                 };
             } else if (provider === 'stockdata') {
-                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetchWithTimeout(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d_res = await quote.json();
@@ -1528,6 +1892,7 @@
 
         function disconnectWebSocket() {
             streamGeneration++;
+            if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
@@ -1549,6 +1914,20 @@
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
+            releaseWakeLock();
+        }
+
+        let wakeLock = null;
+        async function requestWakeLock() {
+            if (!navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') return;
+            try {
+                if (wakeLock) return;
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
+            } catch (e) {}
+        }
+        function releaseWakeLock() {
+            if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
         }
 
         function buildSnapshotResults() {
@@ -1599,34 +1978,60 @@
 
         async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal) {
             if (gen !== streamGeneration || !nyNow().isRTH) return;
+            const controller = new AbortController();
+            activeFetchSession = controller;
             const changed = new Set();
-            for (const t of realtimeTasks) {
-                if (gen !== streamGeneration) return;
-                if (!realtimeQuotes[t.ticker]) continue;
-                try {
-                    const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration || !nyNow().isRTH) return;
-                    if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
-                } catch (e) {
-                    console.warn(`Resync failed for ${t.ticker}:`, e.message);
+            try {
+                for (const t of realtimeTasks) {
+                    if (gen !== streamGeneration || controller.signal.aborted) break;
+                    if (!realtimeQuotes[t.ticker]) continue;
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        if (gen !== streamGeneration || controller.signal.aborted || !nyNow().isRTH) break;
+                        if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
+                    } catch (e) {
+                        if ((e && e.name === 'AbortError') || controller.signal.aborted) break;
+                        console.warn(`Resync failed for ${t.ticker}:`, e.message);
+                    }
+                    await new Promise(r => setTimeout(r, 250));
+                    if (controller.signal.aborted) break;
                 }
-                await new Promise(r => setTimeout(r, 250));
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
             }
             if (gen === streamGeneration && changed.size) tickRealtimeSnapshot(container, riskVal, slippageVal, changed);
         }
 
         function renderRealtimeSnapshot(container, riskVal, slippageVal) {
-            container.innerHTML = '';
-            markFreshRender(container);
+            if (!container) return;
+            const { risk, slippage } = currentRiskAndSlippage();
             const results = buildSnapshotResults();
             lastRenderedSnapshot = results;
+            markFreshRender(container);
 
             if (currentViewMode === 'table') {
-                renderTableContainer(results, riskVal, slippageVal, container);
+                renderTableContainer(results, risk, slippage, container);
             } else {
+                const seen = new Set();
                 results.forEach(res => {
-                    if (res.success) renderCard(res, riskVal, slippageVal, container);
-                    else renderError(res, container);
+                    if (res.success) {
+                        seen.add(res.ticker);
+                        const card = container.querySelector(`#card-${res.ticker}`);
+                        if (card) updateCard(card, res, risk, slippage);
+                        else renderCard(res, risk, slippage, container);
+                    } else {
+                        seen.add('error-' + res.ticker);
+                        const id = `card-${res.ticker}`;
+                        const existing = container.querySelector(`#${id}`);
+                        if (existing && typeof existing.remove === 'function') existing.remove();
+                        renderError(res, container);
+                    }
+                });
+                // Remove stale cards (ticker removed or error resolved)
+                Array.from(container.children).forEach(el => {
+                    if (!el.id || !el.id.startsWith('card-')) return;
+                    const t = el.id.replace(/^card-/, '');
+                    if (!seen.has(t) && !seen.has('error-' + t)) el.remove();
                 });
             }
 
@@ -1645,14 +2050,14 @@
                 changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success);
                     if (!result) return;
-                    const row = document.getElementById(`table-row-${ticker}`);
+                    const row = wrap.querySelector(`#table-row-${ticker}`);
                     if (row) updateTableRow(row, result, risk, slippage);
                 });
             } else {
                 changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success);
                     if (!result) return;
-                    const card = document.getElementById(`card-${ticker}`);
+                    const card = container.querySelector(`#card-${ticker}`);
                     if (card) updateCard(card, result, risk, slippage);
                 });
             }
@@ -1670,6 +2075,7 @@
 
         async function startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container) {
             disconnectWebSocket();
+            requestWakeLock();
             const gen = streamGeneration;
             realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
@@ -1678,21 +2084,28 @@
             triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
+            const controller = new AbortController();
+            activeFetchSession = controller;
             let anySuccess = false;
-            const fetchPromises = realtimeTasks.map(async (t) => {
-                try {
-                    const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration) return;
-                    realtimeQuotes[t.ticker] = data;
-                    anySuccess = true;
-                } catch (e) {
-                    if (gen !== streamGeneration) return;
-                    console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
-                    realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
-                }
-            });
-            await Promise.all(fetchPromises);
+            try {
+                const fetchPromises = realtimeTasks.map(async (t) => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        if (gen !== streamGeneration) return;
+                        realtimeQuotes[t.ticker] = data;
+                        anySuccess = true;
+                    } catch (e) {
+                        if (gen !== streamGeneration || (e && e.name === 'AbortError') || controller.signal.aborted) return;
+                        console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
+                        realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                    }
+                });
+                await Promise.all(fetchPromises);
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
+            }
             if (gen !== streamGeneration) return; // a newer CALCULATE / CLEAR superseded this one
+            container.querySelector('#scanFetchingMsg')?.remove();
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
@@ -1770,7 +2183,7 @@
                         changedTickers.clear();
                     }
 
-                } catch (err) {}
+                } catch (err) { console.warn('WebSocket message error:', err); }
             };
 
             socket.onerror = () => {
@@ -1797,113 +2210,121 @@
         }
 
         async function calculateAll() {
+            if (calculating) return;
+            if (Date.now() - lastCalculateAt < 500) return;
             const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
             const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
             const provider = document.getElementById('apiProvider').value;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
 
-            if (config.needsKey && !apiKey) {
-                errorMsg.innerText = "Please set API Key in Settings.";
-                errorMsg.classList.remove('hidden');
-                navigateTo('settings');
-                return;
-            }
-
-            const inputs = Array.from(document.querySelectorAll('.ticker-input'));
-            const triggers = Array.from(document.querySelectorAll('.trigger-input'));
-
-            const tasks = [];
-            const seen = new Set();
-            for (let i = 0; i < visibleCount; i++) {
-                 const ticker = sanitizeTicker(inputs[i].value);
-                 if (inputs[i].value !== ticker) inputs[i].value = ticker;
-                 const trigger = parseFloat(triggers[i].value);
-                 if (ticker && !seen.has(ticker)) {
-                     seen.add(ticker);
-                     tasks.push({ ticker, trigger: isNaN(trigger) ? null : trigger, signalSide: signalSides[i] || null });
-                 }
-            }
-
-            if (tasks.length === 0) return;
-
-            // Selections only make sense for tickers that are still on the board.
-            Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
-            updateBatchBar();
-
-            errorMsg.classList.add('hidden');
-            container.innerHTML = `<div class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
-
-            // Handle WebSocket stream for supported providers when live update is active
-            if (config.supportsWs && liveUpdateEnabled) {
-                setCalcBtnStreaming(true);
-                startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
-                if (collapseAfterCalc) setScannerCollapsed(true);
-                return;
-            }
-
-            disconnectWebSocket();
-            const gen = streamGeneration;
-            setCalcBtnStreaming(false);
-            btn.innerText = 'FETCHING...';
-            const startTime = performance.now();
-
             try {
-                const promises = tasks.map(async (task) => {
-                    try {
-                        const data = await fetchTickerData(task.ticker, provider, apiKey);
-                        return { ...task, data, success: true };
-                    } catch (e) {
-                        return { ...task, error: e.message, success: false };
-                    }
-                });
+                calculating = true;
+                lastCalculateAt = Date.now();
+                if (btn) btn.disabled = true;
 
-                const results = await Promise.all(promises);
-                if (gen !== streamGeneration) return;
-                const endTime = performance.now();
-                const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
-
-                realtimeTasks = tasks;
-                lastRenderedSnapshot = results;
-                Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
-                triggerActiveState = {};
-                results.forEach(r => {
-                    if (r.success) realtimeQuotes[r.ticker] = r.data;
-                    else realtimeQuoteErrors[r.ticker] = r.error;
-                });
-                container.innerHTML = '';
-                markFreshRender(container);
-
-                if (currentViewMode === 'table') {
-                    renderTableContainer(results, riskVal, slippageVal, container);
-                } else {
-                    results.forEach(res => {
-                        if (res.success) renderCard(res, riskVal, slippageVal, container);
-                        else renderError(res, container);
-                    });
+                if (config.needsKey && !apiKey) {
+                    errorMsg.innerText = "Please set API Key in Settings.";
+                    errorMsg.classList.remove('hidden');
+                    navigateTo('settings');
+                    return;
                 }
 
-                speakResults(results);
-                applyFocusMode();
-                refreshEarningsForScan();
+                const inputs = Array.from(document.querySelectorAll('.ticker-input'));
+                const triggers = Array.from(document.querySelectorAll('.trigger-input'));
 
-                const successCount = results.filter(r => r.success).length;
-                const metricDiv = document.createElement('div');
-                metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
-                metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
-                container.appendChild(metricDiv);
+                const tasks = [];
+                const seen = new Set();
+                for (let i = 0; i < visibleCount; i++) {
+                     const ticker = sanitizeTicker(inputs[i].value);
+                     if (inputs[i].value !== ticker) inputs[i].value = ticker;
+                     const trigger = parseFloat(triggers[i].value);
+                     if (ticker && !seen.has(ticker)) {
+                         seen.add(ticker);
+                         tasks.push({ ticker, trigger: Number.isNaN(trigger) ? null : trigger, signalSide: signalSides[i] || null });
+                     }
+                }
 
-            } catch (e) {
-                errorMsg.innerText = "Critical Error: " + e.message;
-                errorMsg.classList.remove('hidden');
-            } finally {
-                if (gen === streamGeneration) {
-                    setCalcBtnStreaming(false);
+                if (tasks.length === 0) return;
+
+                // Selections only make sense for tickers that are still on the board.
+                Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
+                updateBatchBar();
+
+                errorMsg.classList.add('hidden');
+                container.innerHTML = `<div id="scanFetchingMsg" class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
+
+                // Handle WebSocket stream for supported providers when live update is active
+                if (config.supportsWs && liveUpdateEnabled) {
+                    setCalcBtnStreaming(true);
+                    await startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
+                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
                     if (collapseAfterCalc) setScannerCollapsed(true);
+                    return;
                 }
+
+                disconnectWebSocket();
+                const gen = streamGeneration;
+                setCalcBtnStreaming(false);
+                if (btn) btn.innerText = 'FETCHING...';
+                const startTime = performance.now();
+                const controller = new AbortController();
+                activeFetchSession = controller;
+
+                try {
+                    const promises = tasks.map(async (task) => {
+                        try {
+                            const data = await fetchTickerData(task.ticker, provider, apiKey, controller.signal);
+                            return { ...task, data, success: true };
+                        } catch (e) {
+                            return { ...task, error: e.message, success: false };
+                        }
+                    });
+
+                    const results = await Promise.all(promises);
+                    if (gen !== streamGeneration) return;
+                    const endTime = performance.now();
+                    const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
+
+                    realtimeTasks = tasks;
+                    lastRenderedSnapshot = results;
+                    Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+                    triggerActiveState = {};
+                    results.forEach(r => {
+                        if (r.success) realtimeQuotes[r.ticker] = r.data;
+                        else realtimeQuoteErrors[r.ticker] = r.error;
+                    });
+                    container.querySelector('#scanFetchingMsg')?.remove();
+                    renderRealtimeSnapshot(container, riskVal, slippageVal);
+
+                    speakResults(results);
+                    applyFocusMode();
+                    refreshEarningsForScan();
+
+                    const successCount = results.filter(r => r.success).length;
+                    const metricDiv = document.createElement('div');
+                    metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
+                    metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
+                    container.appendChild(metricDiv);
+
+                } catch (e) {
+                    if (e && e.name !== 'AbortError') {
+                        errorMsg.innerText = "Critical Error: " + e.message;
+                        errorMsg.classList.remove('hidden');
+                    }
+                } finally {
+                    if (activeFetchSession === controller) activeFetchSession = null;
+                    if (gen === streamGeneration) {
+                        setCalcBtnStreaming(false);
+                        if (collapseAfterCalc) setScannerCollapsed(true);
+                    }
+                }
+            } finally {
+                calculating = false;
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -1927,7 +2348,7 @@
             let statusClass = "status-wait";
             let rowClass = "table-row-wait";
             let isActive = false;
-            if (trigger !== null && trigger !== undefined && !isNaN(trigger)) {
+            if (Number.isFinite(trigger)) {
                 if (isTriggerActive(item.data, trigger, isGreenDay)) {
                     isActive = true;
                     statusClass = isGreenDay ? "status-active-long" : "status-active-short";
@@ -1992,7 +2413,7 @@
         const rowClassFor = (f) => `result-row rounded-lg px-2.5 py-2 ${f.rowClass}`;
         const exitBtnCardClass = (f) => `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
         const exitBtnRowClass = (f) => `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
-        const earnBadgeClass = 'text-[8px] font-bold text-red-300 bg-red-950/60 border border-red-500/40 rounded px-1 py-px leading-none whitespace-nowrap';
+        const earnBadgeClass = 'text-[8px] font-bold text-amber-300 leading-none whitespace-nowrap';
 
         function syncExitButton(exitBtn, f) {
             if (!exitBtn) return;
@@ -2006,7 +2427,7 @@
         function renderCard(item, risk, slippage, container) {
             const f = getRealtimeFields(item, risk, slippage);
             const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
-            const triggerBadge = (f.trigger !== null && f.trigger !== undefined && !isNaN(f.trigger))
+            const triggerBadge = Number.isFinite(f.trigger)
                 ? `<div class="text-center self-center">
                     <div class="text-[8px] font-bold text-gray-500 uppercase leading-none">Trigger</div>
                     <div class="text-[10px] font-mono-num font-bold text-gray-200 bg-slate-900/60 px-1.5 py-0.5 rounded-full border border-white/10 mt-0.5">$${f.trigger.toFixed(2)}</div>
@@ -2020,12 +2441,12 @@
                     <div class="flex items-start gap-2 min-w-0">
                         <input type="checkbox" class="trade-check mt-1" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)" title="Select for batch CSV">
                         <div>
-                            <h2 class="text-xl font-black text-white tracking-tight leading-none">${f.ticker}</h2>
+                            <h2 class="text-xl font-black text-white tracking-tight leading-none">${escapeHtml(f.ticker)}</h2>
                             <div class="flex items-center gap-1 mt-1 leading-none">
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
-                                <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠ signal ${f.signalSide || ''}</span>
+                                <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
                             </div>
-                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                         </div>
                     </div>
                     ${triggerBadge}
@@ -2082,7 +2503,7 @@
             const sideWarn = q('sideWarn');
             if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
             const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
+            if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
             setTextIfChanged(q('low'), f.l.toFixed(2));
             const range = q('range');
@@ -2114,16 +2535,41 @@
         function renderTableContainer(results, risk, slippage, container) {
             const validResults = results.filter(r => r.success);
             const errorResults = results.filter(r => !r.success);
-            const wrap = document.createElement('div');
-            wrap.id = 'tableWrap';
-            wrap.className = 'space-y-1.5';
+            const seen = new Set();
+
+            let wrap = document.getElementById('tableWrap');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'tableWrap';
+                wrap.className = 'space-y-1.5';
+                container.appendChild(wrap);
+            }
 
             validResults.forEach(item => {
-                wrap.appendChild(createTableRow(item, risk, slippage));
+                seen.add(item.ticker);
+                const row = wrap.querySelector(`#table-row-${item.ticker}`);
+                if (row) updateTableRow(row, item, risk, slippage);
+                else wrap.appendChild(createTableRow(item, risk, slippage));
             });
 
-            if (validResults.length) container.appendChild(wrap);
-            errorResults.forEach(res => renderError(res, container));
+            Array.from(wrap.children).forEach(row => {
+                const t = row.id.replace(/^table-row-/, '');
+                if (!seen.has(t)) row.remove();
+            });
+
+            errorResults.forEach(res => {
+                seen.add('error-' + res.ticker);
+                const id = `card-${res.ticker}`;
+                const existing = container.querySelector(`#${id}`);
+                if (existing && typeof existing.remove === 'function') existing.remove();
+                renderError(res, container);
+            });
+
+            // Remove stale error cards when a ticker recovers or is removed.
+            container.querySelectorAll('[id^="card-"]').forEach(el => {
+                const t = el.id.replace(/^card-/, '');
+                if (!seen.has(t) && !seen.has('error-' + t)) el.remove();
+            });
         }
 
         function createTableRow(item, risk, slippage) {
@@ -2136,12 +2582,12 @@
                 <div class="flex items-center gap-1.5">
                     <input type="checkbox" class="trade-check shrink-0" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)">
                     <div class="w-[54px] shrink-0">
-                        <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${f.ticker}</div>
+                        <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${escapeHtml(f.ticker)}</div>
                         <div class="flex items-center gap-1 mt-0.5 leading-none">
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
-                            <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠</span>
+                            <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
                         </div>
-                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                     </div>
                     <div class="shrink-0">
                         <div data-field="lastPrice" class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${f.c.toFixed(2)}</div>
@@ -2186,7 +2632,7 @@
             }
             setHidden(q('sideWarn'), !f.sideMismatch);
             const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
+            if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
             const bidAsk = q('bidAsk');
             if (bidAsk) { setTextIfChanged(bidAsk, `B ${f.bidText} A ${f.askText}`); setHidden(bidAsk, !f.hasBidAsk); }
@@ -2241,11 +2687,11 @@
                     <div class="flex items-start gap-2 min-w-0">
                         <div class="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-black shrink-0">!</div>
                         <div>
-                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${ticker}</h2>
+                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${escapeHtml(ticker)}</h2>
                             <div class="text-[10px] font-black text-rose-400/80 mt-1 leading-none uppercase">ERROR</div>
                         </div>
                     </div>
-                    ${trigger !== null && trigger !== undefined && !isNaN(trigger)
+                    ${Number.isFinite(trigger)
                         ? `<div class="text-center self-center">
                             <div class="text-[8px] font-bold text-rose-300/70 uppercase leading-none">Trigger</div>
                             <div class="text-[10px] font-mono-num font-bold text-rose-200 bg-rose-950/50 px-1.5 py-0.5 rounded-full border border-rose-500/20 mt-0.5">$${trigger.toFixed(2)}</div>
@@ -2269,7 +2715,7 @@
             overlay.style.display = 'flex';
 
             currentModalState = {
-                ticker: String(ticker).toUpperCase(),
+                ticker: sanitizeTicker(ticker),
                 isLong: !!isLong,
                 entryPrice: parseFloat(entryPrice) || 0,
                 shares: parseInt(shares) || 0,
@@ -2278,6 +2724,8 @@
                 strategyId: defaultStrategyId(!!isLong),
                 customTps: []
             };
+
+            overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
 
             try {
                 document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
@@ -2358,7 +2806,7 @@
 
         function buildNotesHtml(built) {
             if (!built || !built.notes || !built.notes.length) return '';
-            return built.notes.map(n => `<div class="text-[10px] text-amber-300">⚠ ${n}</div>`).join('');
+            return built.notes.map(n => `<div class="text-[10px] text-amber-300">⚠ ${escapeHtml(n)}</div>`).join('');
         }
 
         function stopLabelHtml(p) {
@@ -2396,19 +2844,19 @@
 
             const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId, currentModalState.customTps);
             if (!built.ok) {
-                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
+                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${escapeHtml(built.error)}</div>`;
                 return;
             }
             ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + `Exit by day ${maxHoldDays}. TIF GTC.`;
             cardsContainer.innerHTML = built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
-                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
+                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${escapeHtml(p.oca)}</div>
                         <div class="text-xs font-black text-white">
                             ${stopLabelHtml(p)}
                             <span class="text-gray-500">+</span>
                             LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
-                            <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span>
+                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>
                         </div>
                     </div>
                     <div class="flex gap-1">
@@ -2429,7 +2877,9 @@
 
         function onModalTpInput(el, i) {
             const v = parseFloat(el.value);
-            if (!isNaN(v) && v > 0) {
+            const valid = Number.isFinite(v) && v > 0;
+            if (el.classList && typeof el.classList.toggle === 'function') el.classList.toggle('border-red-500', !valid);
+            if (valid) {
                 currentModalState.customTps[i] = v;
             } else {
                 currentModalState.customTps[i] = null;
@@ -2447,7 +2897,7 @@
             document.querySelectorAll('#modalOrdersCardsContainer input[data-leg-idx]').forEach(el => {
                 const i = parseInt(el.dataset.legIdx);
                 const v = parseFloat(el.value);
-                tps[i] = (!isNaN(v) && v > 0) ? v : null;
+                tps[i] = (Number.isFinite(v) && v > 0) ? v : null;
             });
             return tps;
         }
@@ -2462,7 +2912,7 @@
             const customTps = readCustomTpsFromDom();
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) { alert(built.error); return; }
-            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)} (${p.rr}R)`).join(' | ');
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
             navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
         }
@@ -2536,13 +2986,28 @@
         }
 
         function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, opts = {}) {
-            const err = validateTradeParams(isLong, entry, shares, stop);
-            if (err) return { ok: false, error: err, rows: [], preview: [] };
-            const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
+            const explicit = Array.isArray(opts.explicitLegs) ? opts.explicitLegs : null;
+            const allowNoEntry = explicit && (Number(entry) === 0);
+            if (allowNoEntry) {
+                if (!Number.isSafeInteger(shares) || shares <= 0) return { ok: false, error: 'Shares must be a positive whole number', rows: [], preview: [] };
+                if (!Number.isFinite(stop) || stop <= 0) return { ok: false, error: 'Stop must be > 0', rows: [], preview: [] };
+            } else {
+                const err = validateTradeParams(isLong, entry, shares, stop);
+                if (err) return { ok: false, error: err, rows: [], preview: [] };
+            }
+            const rps = allowNoEntry ? 0 : (isLong ? (entry - stop) : (stop - entry));
+            const action = isLong ? 'SELL' : 'BUY';
+            const strat = explicit ? {
+                id: 'pasted',
+                name: 'Pasted',
+                legs: explicit.map(l => ({
+                    pct: l.pct,
+                    rr: (rps > 0 && l.tp > 0) ? Math.abs(l.tp - entry) / rps : ((allowNoEntry && l.tp > 0) ? 1 : 0),
+                    stopMode: 'fixed'
+                }))
+            } : getStrategyById(strategyId || defaultStrategyId(isLong));
             const legErr = strategyLegsError(strat);
             if (legErr) return { ok: false, error: legErr, rows: [], preview: [] };
-            const rps = isLong ? (entry - stop) : (stop - entry);
-            const action = isLong ? 'SELL' : 'BUY';
             const pcts = strat.legs.map(l => Number(l.pct) || 0);
             const qtys = splitSharesByPct(shares, pcts);
             const suffix = opts.ocaSuffix !== undefined ? opts.ocaSuffix : ocaSuffix();
@@ -2564,8 +3029,9 @@
                 const qty = qtys[i];
                 if (!qty) return;
                 const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
                 const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
-                const tp = customTp || defaultTp;
+                const tp = customTp || explicitTp || defaultTp;
                 const oca = `${ticker}_${strat.id}_L${i + 1}${suffix}`;
                 let stopMode = leg.stopMode || 'fixed';
                 let stp = stop;
@@ -2595,8 +3061,9 @@
                     exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
                     rows.push(exitRow);
                 }
-                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode, adjStop, adjTrigger, legIndex: i });
-                if (isLong ? tp <= entry : tp >= entry) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                const trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
+                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null });
+                if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
             });
             if (preview.some(p => !Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0)) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
             if (timedEnabled || preview.some(p => p.adjStop !== null)) {
@@ -2702,8 +3169,10 @@
             const ticker = el.dataset.ticker;
             const i = parseInt(el.dataset.legIdx);
             const v = parseFloat(el.value);
+            const valid = Number.isFinite(v) && v > 0;
+            if (el.classList && typeof el.classList.toggle === 'function') el.classList.toggle('border-red-500', !valid);
             if (!batchCustomTps[ticker]) batchCustomTps[ticker] = [];
-            batchCustomTps[ticker][i] = (!isNaN(v) && v > 0) ? v : null;
+            batchCustomTps[ticker][i] = valid ? v : null;
         }
 
         function onBatchGlobalStrategyChange(el) {
@@ -2720,31 +3189,54 @@
                 body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-2">No valid trades to preview.</div>';
                 return;
             }
-            body.innerHTML = trades.flatMap(t => t.built.preview.map((p, i) => `
+            body.innerHTML = trades.map(t => {
+                const rows = t.built.preview.map((p, i) => `
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
-                    <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
+                    <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
-                    <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>
+                    <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
                 </div>
-            `)).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
+            `).join('');
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${rows}</div>`;
+            }).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
         }
 
-        function openBatchReviewDrawer() {
-            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
-            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+        function openBatchReviewDrawer(source, parsedTrades) {
+            const isPaste = source === 'paste';
             const list = document.getElementById('batchReviewList');
+            const ov = document.getElementById('batchReviewOverlay');
+            if (ov) ov.setAttribute('aria-label', isPaste ? 'Batch review from pasted exit orders' : 'Batch review from selected tickers');
             list.innerHTML = '';
             batchCustomTps = {};
-            const trades = lastRenderedSnapshot
-                .map(item => snapshotTradeFromItem(item, risk, slippage))
-                .filter(t => t && selectedTickers.has(t.ticker));
+            batchExplicitLegs = {}; // clear stale explicit legs for any new batch session
+
+            let trades = [];
+            if (isPaste && Array.isArray(parsedTrades)) {
+                trades = parsedTrades.map(t => ({ ...t, entry: Number(t.entry) || 0, shares: Number(t.shares) || 0 }));
+            } else {
+                const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+                const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+                trades = lastRenderedSnapshot
+                    .map(item => snapshotTradeFromItem(item, risk, slippage))
+                    .filter(t => t && selectedTickers.has(t.ticker));
+            }
+
             const isAllLong = trades.length > 0 && trades.every(t => t.isLong);
             const globalStrategySel = document.getElementById('batchGlobalStrategy');
-            if (globalStrategySel) fillStrategySelect(globalStrategySel, AUTO_STRATEGY, isAllLong, true);
+            if (globalStrategySel) {
+                if (isPaste) {
+                    globalStrategySel.style.display = 'none';
+                } else {
+                    globalStrategySel.style.display = '';
+                    fillStrategySelect(globalStrategySel, AUTO_STRATEGY, isAllLong, true);
+                }
+            }
+
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
+
             if (!trades.length) {
                 list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
                 const ov = document.getElementById('batchReviewOverlay');
@@ -2753,17 +3245,26 @@
                 renderBatchPreview();
                 return;
             }
+
+            if (isPaste) {
+                parsedTrades.forEach(t => { batchExplicitLegs[t.ticker] = t.legs; });
+            }
+
             trades.forEach((t, idx) => {
+                const isLong = !!t.isLong;
                 list.insertAdjacentHTML('beforeend', `
-                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${t.isLong}">
-                        <div class="shrink-0 w-14 leading-none">
-                            <div class="font-black font-mono-num text-white text-sm">${t.ticker}</div>
-                            <div class="text-[9px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</div>
+                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-3 justify-center" data-ticker="${t.ticker}" data-long="${isLong}">
+                        <div class="shrink-0 flex items-center gap-1">
+                            <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>
+                            <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
+                                <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
+                                <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
+                            </select>
                         </div>
-                        <div class="grid grid-cols-3 gap-1 flex-1 min-w-0">
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.shares}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
+                        <div class="shrink-0 flex items-center gap-2">
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-20 bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.entry) || 0).toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shares<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-20 bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${Number(t.shares) || 0}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-20 bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.stop) || 0).toFixed(2)}"></label>
                         </div>
                     </div>
                 `);
@@ -2792,14 +3293,16 @@
             const globalStrategyEl = document.getElementById('batchGlobalStrategy');
             document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
                 const ticker = el.dataset.ticker;
-                const isLong = el.dataset.long === 'true';
+                const sideEl = el.querySelector('.batch-side');
+                const isLong = sideEl ? (sideEl.value === 'long') : (el.dataset.long === 'true');
                 const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
-                const globalVal = globalStrategyEl && globalStrategyEl.value;
-                const strategyId = (globalVal && globalVal !== AUTO_STRATEGY) ? globalVal : defaultStrategyId(isLong);
+                const explicit = batchExplicitLegs[ticker] || null;
+                const globalVal = globalStrategyEl && globalStrategyEl.style.display !== 'none' ? globalStrategyEl.value : null;
+                const strategyId = explicit ? null : ((globalVal && globalVal !== AUTO_STRATEGY) ? globalVal : defaultStrategyId(isLong));
                 const customTps = batchCustomTps[ticker] || [];
-                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { explicitLegs: explicit });
                 if (!built.ok) errors.push(`${ticker}: ${built.error}`);
                 else trades.push({ ticker, isLong, entry, shares, stop, strategyId, customTps, built });
             });
@@ -2841,10 +3344,21 @@
 
         function logTradeRecord(t, tpValues) {
             const rps = t.isLong ? (t.entry - t.stop) : (t.stop - t.entry);
-            const strat = getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
+            const explicit = Array.isArray(t.explicitLegs) ? t.explicitLegs : null;
+            const strat = explicit ? {
+                id: 'pasted',
+                name: 'Pasted',
+                legs: explicit.map(l => ({
+                    pct: l.pct,
+                    rr: rps > 0 && l.tp > 0 ? Math.abs(l.tp - t.entry) / rps : 0,
+                    stopMode: 'fixed'
+                }))
+            } : getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
             const tps = Array.isArray(tpValues)
                 ? tpValues
-                : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
+                : explicit
+                    ? explicit.map(l => l.tp)
+                    : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
             activeTradesLog.unshift({
                 id: Date.now() + Math.random(),
                 ticker: t.ticker,
@@ -2867,8 +3381,13 @@
         function logSelectedTrades() {
             const trades = selectedSnapshotTrades();
             if (!trades.length) { alert('Select one or more tickers first.'); return; }
+            const beforeLen = activeTradesLog.length;
             trades.forEach(logTradeRecord);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(0, activeTradesLog.length - beforeLen);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Logged ${trades.length} trade(s) to Active Trades.`);
         }
@@ -2881,42 +3400,87 @@
             div.className = 'bg-slate-900/50 border border-white/10 rounded-lg p-2 builder-row';
             div.dataset.id = id;
             const isLong = p.isLong !== false;
+            const ticker = sanitizeTicker(p.ticker);
             div.innerHTML = `
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-[9px] font-bold text-gray-400 uppercase">Trade #${id}</span>
-                    <button onclick="this.closest('.builder-row').remove()" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
+                    <button onclick="removeBuilderRow(this)" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
                 </div>
                 <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" value="${p.ticker||''}" placeholder="TICK"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" placeholder="TICK"></label>
                     <label class="text-[8px] text-gray-500 uppercase font-bold">Side<select class="b-side w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5">${isLong?'<option value="long" selected>LONG</option><option value="short">SHORT</option>':'<option value="long">LONG</option><option value="short" selected>SHORT</option>'}</select></label>
                     <label class="text-[8px] text-gray-500 uppercase font-bold">Strategy<select class="b-opt w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5"></select></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.entry||''}"></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.shares||''}"></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5" value="${p.stop||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5"></label>
                 </div>
                 <div class="b-preview mt-1 text-[9px] font-mono-num text-gray-400"></div>
             `;
+            const tickerInput = div.querySelector('.b-ticker');
+            const entryInput = div.querySelector('.b-entry');
+            const sharesInput = div.querySelector('.b-shares');
+            const stopInput = div.querySelector('.b-stop');
+            if (tickerInput) tickerInput.value = ticker || '';
+            if (entryInput) entryInput.value = (Number(p.entry) > 0 ? Number(p.entry).toFixed(2) : '');
+            if (sharesInput) sharesInput.value = (Number(p.shares) > 0 ? p.shares : '');
+            if (stopInput) stopInput.value = (Number(p.stop) > 0 ? Number(p.stop).toFixed(2) : '');
+            div.querySelectorAll('input, select').forEach(el => el.setAttribute('autocomplete', 'off'));
             wrap.appendChild(div);
-            fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+
+            if (p.explicitLegs && p.explicitLegs.length) {
+                builderExplicitLegs[id] = p.explicitLegs;
+                const opt = div.querySelector('.b-opt');
+                opt.innerHTML = '<option value="pasted" selected>Pasted</option>';
+                opt.disabled = true;
+            } else {
+                fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+            }
+
             const refresh = () => refreshBuilderPreview(div);
             div.querySelectorAll('input,select').forEach(el => el.addEventListener('input', refresh));
             div.querySelector('.b-side').addEventListener('change', () => {
-                fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                if (!builderExplicitLegs[id]) {
+                    fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                }
                 refresh();
             });
             refresh();
         }
 
+        function removeBuilderRow(btn) {
+            const row = btn.closest('.builder-row');
+            const id = row.dataset.id;
+            delete builderExplicitLegs[id];
+            row.remove();
+        }
+
         function refreshBuilderPreview(el) {
+            const id = el.dataset.id;
             const isLong = el.querySelector('.b-side').value === 'long';
-            const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
-            const shares = parseInt(el.querySelector('.b-shares').value) || 0;
-            const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
-            const strategyId = el.querySelector('.b-opt').value;
+            const ticker = sanitizeTicker(el.querySelector('.b-ticker').value) || '';
+            const entryIn = el.querySelector('.b-entry');
+            const sharesIn = el.querySelector('.b-shares');
+            const stopIn = el.querySelector('.b-stop');
+            const entry = parseFloat(entryIn.value) || 0;
+            const shares = parseInt(sharesIn.value) || 0;
+            const stop = parseFloat(stopIn.value) || 0;
+            [el.querySelector('.b-ticker'), entryIn, sharesIn, stopIn].forEach(inp => { if (inp) inp.classList.remove('border-red-500'); });
+            const err = ticker ? validateTradeParams(isLong, entry, shares, stop) : 'Ticker is required';
+            if (err) {
+                if (err.includes('Shares')) sharesIn.classList.add('border-red-500');
+                if (err.includes('Entry')) entryIn.classList.add('border-red-500');
+                if (err.includes('Stop')) stopIn.classList.add('border-red-500');
+                if (err.includes('Long:') || err.includes('Short:')) { entryIn.classList.add('border-red-500'); stopIn.classList.add('border-red-500'); }
+                if (err.includes('Ticker')) el.querySelector('.b-ticker').classList.add('border-red-500');
+                el.querySelector('.b-preview').innerText = err;
+                return;
+            }
+            const explicit = builderExplicitLegs[id] || null;
+            const strategyId = explicit ? 'pasted' : el.querySelector('.b-opt').value;
             const box = el.querySelector('.b-preview');
-            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId);
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ')
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
@@ -2924,13 +3488,15 @@
         function collectBuilderTrades() {
             const out = [];
             document.querySelectorAll('#builderRows .builder-row').forEach(el => {
-                const ticker = (el.querySelector('.b-ticker').value || '').trim().toUpperCase();
+                const id = el.dataset.id;
+                const ticker = sanitizeTicker(el.querySelector('.b-ticker').value);
                 const isLong = el.querySelector('.b-side').value === 'long';
                 const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.b-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
-                const strategyId = el.querySelector('.b-opt').value;
-                if (ticker && shares > 0 && entry > 0 && stop > 0) out.push({ ticker, isLong, entry, shares, stop, strategyId });
+                const explicitLegs = builderExplicitLegs[id] || null;
+                const strategyId = explicitLegs ? 'pasted' : el.querySelector('.b-opt').value;
+                if (ticker && shares > 0 && stop > 0 && (entry > 0 || explicitLegs)) out.push({ ticker, isLong, entry, shares, stop, strategyId, explicitLegs });
             });
             return out;
         }
@@ -2940,7 +3506,7 @@
             const rows = [];
             const errors = [];
             trades.forEach(t => {
-                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId);
+                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, null, { explicitLegs: t.explicitLegs });
                 if (!built.ok) errors.push(`${t.ticker}: ${built.error}`);
                 else built.rows.forEach(r => rows.push(r));
             });
@@ -2949,11 +3515,105 @@
             triggerCsvDownload(`Manual_TWS_Exit_${nyDateStr()}.csv`, rows);
         }
 
+        function toggleBuilderExitPaste(open) {
+            const panel = document.getElementById('builderExitPastePanel');
+            const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
+            setHidden(panel, !show);
+            if (show) {
+                document.getElementById('builderExitPasteText').value = '';
+                document.getElementById('builderExitPastePreview').innerHTML = '';
+                lastBuilderExitPasteResult = null;
+                document.getElementById('builderExitPasteText').focus();
+            }
+        }
+
+        function previewBuilderExitPaste() {
+            const text = document.getElementById('builderExitPasteText').value;
+            const parsed = parseExitOrderText(text);
+
+            if (lastBuilderExitPasteResult) {
+                const oldSides = new Map(lastBuilderExitPasteResult.trades.map((t, i) => [t.ticker, { isLong: t.isLong, side: t.side, idx: i }]));
+                parsed.trades.forEach((t, i) => {
+                    const old = oldSides.get(t.ticker);
+                    if (old && old.idx === i) {
+                        t.isLong = old.isLong;
+                        t.side = old.side;
+                    }
+                });
+            }
+            lastBuilderExitPasteResult = parsed;
+
+            const tradeHtml = parsed.trades.map((t, i) => `
+                <div class="builder-exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold">${escapeHtml(t.ticker)}</span>
+                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        </select>
+                    </div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('builderExitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.map(escapeHtml).join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            return parsed;
+        }
+
+        function updateBuilderExitPasteSide(select) {
+            const idx = parseInt(select.closest('.builder-exit-paste-trade').dataset.idx);
+            if (lastBuilderExitPasteResult && lastBuilderExitPasteResult.trades[idx]) {
+                const isLong = select.value === 'long';
+                lastBuilderExitPasteResult.trades[idx].isLong = isLong;
+                lastBuilderExitPasteResult.trades[idx].side = isLong ? 'LONG' : 'SHORT';
+            }
+        }
+
+        function mergePastedTradesIntoBuilder(parsedTrades) {
+            const existingRows = Array.from(document.querySelectorAll('#builderRows .builder-row'));
+            const existingByTicker = new Map();
+            existingRows.forEach(row => {
+                const ticker = sanitizeTicker(row.querySelector('.b-ticker').value);
+                if (ticker) existingByTicker.set(ticker, row);
+            });
+
+            parsedTrades.forEach(t => {
+                const ticker = sanitizeTicker(t.ticker);
+                const row = existingByTicker.get(ticker);
+                if (row) {
+                    const id = row.dataset.id;
+                    row.querySelector('.b-ticker').value = ticker;
+                    row.querySelector('.b-side').value = t.isLong ? 'long' : 'short';
+                    row.querySelector('.b-stop').value = t.stop.toFixed(2);
+                    builderExplicitLegs[id] = t.legs;
+                    const opt = row.querySelector('.b-opt');
+                    opt.innerHTML = '<option value="pasted" selected>Pasted</option>';
+                    opt.disabled = true;
+                    refreshBuilderPreview(row);
+                } else {
+                    addBuilderRow({ ticker, isLong: t.isLong, stop: t.stop, explicitLegs: t.legs });
+                }
+            });
+        }
+
+        function applyExitPasteToBuilder() {
+            if (!lastBuilderExitPasteResult) previewBuilderExitPaste();
+            const parsed = lastBuilderExitPasteResult;
+            if (!parsed || !parsed.trades.length) { alert('No valid exit orders to apply.'); return; }
+            toggleBuilderExitPaste(false);
+            mergePastedTradesIntoBuilder(parsed.trades);
+        }
+
         function logAllBuilderTrades() {
             const trades = collectBuilderTrades();
             if (!trades.length) { alert('Add at least one complete trade.'); return; }
+            const beforeLen = activeTradesLog.length;
             trades.forEach(logTradeRecord);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(0, activeTradesLog.length - beforeLen);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Logged ${trades.length} trade(s) to Active Trades.`);
         }
@@ -2974,7 +3634,11 @@
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             const tpValues = built.ok ? built.preview.map(p => p.tp) : null;
             logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId }, tpValues);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.shift();
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Trade for ${ticker} logged successfully in Active Trades!`);
         }
@@ -2999,11 +3663,11 @@
             const b = document.getElementById('regimeDecliningStrategy');
             if (a) regimeStrategyMap.expanding = a.value;
             if (b) regimeStrategyMap.declining = b.value;
-            localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+            safeStorageSet('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
         }
 
         function persistCustomStrategies() {
-            localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+            safeStorageSet('customStrategies', JSON.stringify(customStrategies));
             refreshStrategySelects();
         }
 
@@ -3041,7 +3705,7 @@
                     </div>
                     <div class="grid grid-cols-3 gap-1 text-[8px] text-gray-500 uppercase font-bold"><span>% of pos</span><span>TP (R)</span><span>Stop after</span></div>
                     ${legs}
-                    <div class="strat-warn text-[10px] text-red-300 font-bold ${strategyLegsError(s) ? '' : 'hidden'}">⚠ ${strategyLegsError(s) || ''}</div>
+                    <div class="strat-warn text-[10px] text-red-300 font-bold ${strategyLegsError(s) ? '' : 'hidden'}">⚠ ${escapeHtml(strategyLegsError(s) || '')}</div>
                     ${!locked && (s.legs || []).some((l, i) => l.stopMode && l.stopMode !== 'fixed') ? '<div class="text-[9px] text-amber-300/80">Non-fixed stops export as TWS adjustable stops (trigger = previous leg\'s TP). Verify once in a paper account.</div>' : ''}
                 </div>`;
             };
@@ -3089,7 +3753,7 @@
         }
 
         function saveActiveTradesLog() {
-            localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+            return safeStorageSet('activeTradesLog', JSON.stringify(activeTradesLog));
         }
 
         function updateActiveTradesCountBadge() {
@@ -3164,7 +3828,7 @@
         function isNYSEMarketOpenDay(dateStr) {
             const dt = ymdToUtc(dateStr);
             const day = dt.getUTCDay();
-            if (isNaN(dt) || day === 0 || day === 6) return false;
+            if (!Number.isFinite(dt.getTime()) || day === 0 || day === 6) return false;
             return !NYSE_HOLIDAYS.has(utcToYmd(dt));
         }
 
@@ -3173,7 +3837,7 @@
         function tradingDaysBetween(startDateStr, endDateStr) {
             const end = ymdToUtc(endDateStr);
             const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || isNaN(end) || cur >= end) return 0;
+            if (!Number.isFinite(cur.getTime()) || !Number.isFinite(end.getTime()) || cur >= end) return 0;
             let count = 0;
             while (cur < end) {
                 cur.setUTCDate(cur.getUTCDate() + 1);
@@ -3185,7 +3849,7 @@
         // Date string that is n trading days after startDateStr.
         function addTradingDays(startDateStr, n) {
             const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || !Number.isInteger(n) || n < 0 || n > 260) return '';
+            if (!Number.isFinite(cur.getTime()) || !Number.isInteger(n) || n < 0 || n > 260) return '';
             let added = 0;
             while (added < n) {
                 cur.setUTCDate(cur.getUTCDate() + 1);
@@ -3239,27 +3903,35 @@
             if (btn) btn.innerText = 'Refreshing...';
             const provider = document.getElementById('apiProvider').value;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
             const tickers = [...new Set(activeTradesLog.filter(t => t.status === 'ACTIVE').map(t => t.ticker))];
             if (!apiKey) {
                 if (btn) btn.innerText = 'Refresh Prices';
                 alert('Save an API key in Settings first.');
                 return;
             }
+            if (activeTradesSession) { try { activeTradesSession.abort(); } catch (e) {} activeTradesSession = null; }
+            const controller = new AbortController();
+            activeTradesSession = controller;
             let failed = 0;
             try {
                 const promises = tickers.map(async ticker => {
                     try {
-                        const data = await fetchTickerData(ticker, provider, apiKey);
+                        const data = await fetchTickerData(ticker, provider, apiKey, controller.signal);
                         if (data && Number.isFinite(data.c) && data.c > 0) activeTradesPriceCache[ticker] = { price: data.c, at: Date.now() };
                         else failed++;
-                    } catch (e) { failed++; }
+                    } catch (e) { if (!controller.signal.aborted && !(e && e.name === 'AbortError')) failed++; }
                 });
                 await Promise.all(promises);
-                renderActiveTradesPage();
+                // Drop stale cache entries for tickers no longer active.
+                const activeSet = new Set(tickers);
+                Object.keys(activeTradesPriceCache).forEach(k => { if (!activeSet.has(k)) delete activeTradesPriceCache[k]; });
+                updateActiveTradeCards();
                 if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
+                console.warn('Active trade price refresh failed:', e);
             } finally {
+                if (activeTradesSession === controller) activeTradesSession = null;
                 if (btn) btn.innerText = '🔄 Refresh Prices';
             }
         }
@@ -3269,7 +3941,10 @@
             const isLong = trade.side === 'LONG';
             const entry = Number(trade.entryPrice);
             const stop = Number(trade.stopPrice);
-            const target = Number(trade.tp2 || (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry)));
+            const targets = (Array.isArray(trade.targets) ? trade.targets : [trade.tp1, trade.tp2])
+                .map(p => Number(p))
+                .filter(p => Number.isFinite(p) && p > 0);
+            const target = targets.length ? targets[targets.length - 1] : (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry));
 
             if (!curPrice) {
                 return `
@@ -3363,14 +4038,16 @@
             const fees = Number(document.getElementById(`closeFees-${id}`).value);
             const entryDate = document.getElementById(`closeEntryDate-${id}`).value;
             const exitDate = document.getElementById(`closeDate-${id}`).value;
-            if (!Number.isFinite(exitPrice) || exitPrice <= 0 || !Number.isFinite(fees) || fees < 0 || isNaN(ymdToUtc(entryDate)) || isNaN(ymdToUtc(exitDate)) || exitDate < entryDate || exitDate > nyDateStr()) {
+            const dtEntry = ymdToUtc(entryDate);
+            const dtExit = ymdToUtc(exitDate);
+            if (!Number.isFinite(exitPrice) || exitPrice <= 0 || !Number.isFinite(fees) || fees < 0 || !Number.isFinite(dtEntry.getTime()) || !Number.isFinite(dtExit.getTime()) || exitDate < entryDate || exitDate > nyDateStr()) {
                 alert('Enter a valid exit price, non-negative fees, and dates between entry and today.');
                 return;
             }
             const before = { ...trade };
             Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
             Object.assign(trade, journalResult(trade));
-            try { saveActiveTradesLog(); } catch (error) {
+            if (!saveActiveTradesLog()) {
                 activeTradesLog[activeTradesLog.indexOf(trade)] = before;
                 alert('Could not save the journal. Export a backup and check browser storage.');
                 return;
@@ -3381,7 +4058,10 @@
             showUndoToast(`Recorded ${trade.ticker} in History.`, () => {
                 const idx = activeTradesLog.findIndex(t => t.id === id);
                 if (idx >= 0) activeTradesLog[idx] = before;
-                saveActiveTradesLog();
+                if (!saveActiveTradesLog()) {
+                    alert('Could not save the undo. Export a backup and check browser storage.');
+                    return;
+                }
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
             });
@@ -3450,8 +4130,8 @@
                 <div class="bg-slate-900/60 p-3 rounded-xl border border-white/10 space-y-2 font-mono-num">
                     <div class="flex justify-between items-start gap-2">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-lg font-black text-white">${trade.ticker}</span>
-                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                            <span class="text-lg font-black text-white">${escapeHtml(trade.ticker)}</span>
+                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${escapeHtml(trade.side)}</span>
                             <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(trade.regime)}</span>
                         </div>
                         <span class="text-[11px] font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -3462,11 +4142,11 @@
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">$${Number(trade.stopPrice).toFixed(2)}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${trade.entryDate}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
                     </div>
-                    ${progressHtml}
+                    <div data-trade-progress="${trade.id}">${progressHtml}</div>
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
-                        <div>${pnlHtml}</div>
+                        <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
                         <div class="flex gap-2 text-[11px] font-bold">
                             <button onclick="toggleTradeClose(${trade.id})" class="text-emerald-300 px-2 py-1">Record close</button>
                             <button onclick="deleteTrade(${trade.id})" class="text-red-400 px-2 py-1">Remove</button>
@@ -3500,20 +4180,31 @@
             container.innerHTML = activeTrades.map(tradeCardHtml).join('');
         }
 
+        function updateActiveTradeCards() {
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            if (!activeTrades.length) return;
+            activeTrades.forEach(trade => {
+                const pnlEl = document.querySelector(`[data-trade-pnl="${trade.id}"]`);
+                const progressEl = document.querySelector(`[data-trade-progress="${trade.id}"]`);
+                if (pnlEl) pnlEl.innerHTML = getPnlBadgeHtml(trade);
+                if (progressEl) progressEl.innerHTML = getTradeProgressBarHtml(trade);
+            });
+        }
+
         function exportSettingsJson() {
             const backupData = {
-                version: "2.0.1",
+                version: "2.1.8",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
                 globalMarketRegime,
-                riskValue: localStorage.getItem('riskValue'),
-                slippageValue: localStorage.getItem('slippageValue'),
-                selectedProvider: localStorage.getItem('selectedProvider'),
-                collapseAfterCalc: localStorage.getItem('collapseAfterCalc'),
-                preferredViewMode: localStorage.getItem('preferredViewMode'),
-                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, localStorage.getItem(k)])),
+                riskValue: safeStorageGet('riskValue'),
+                slippageValue: safeStorageGet('slippageValue'),
+                selectedProvider: safeStorageGet('selectedProvider'),
+                collapseAfterCalc: safeStorageGet('collapseAfterCalc'),
+                preferredViewMode: safeStorageGet('preferredViewMode'),
+                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
                 scanner: snapshotScannerInputs()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -3527,10 +4218,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -3565,8 +4256,8 @@
             if (data.activeTradesLog !== undefined) {
                 if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
                 data.activeTradesLog.forEach(t => {
-                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || isNaN(ymdToUtc(t.entryDate)) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
-                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || isNaN(ymdToUtc(t.exitDate)) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
+                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
+                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
                 });
                 if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
                 values.activeTradesLog = JSON.stringify(data.activeTradesLog);
@@ -3600,17 +4291,17 @@
                 try {
                     const values = prepareBackup(JSON.parse(event.target.result));
                     if (!confirm('Replace the settings and trade records included in this backup? Export your current backup first if needed.')) return;
-                    const before = Object.fromEntries(Object.keys(values).map(k => [k, localStorage.getItem(k)]));
-                    try {
-                        Object.entries(values).forEach(([k, v]) => localStorage.setItem(k, v));
-                    } catch (error) {
-                        Object.entries(before).forEach(([k, v]) => v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v));
-                        throw error;
+                    const before = Object.fromEntries(Object.keys(values).map(k => [k, safeStorageGet(k)]));
+                    const failed = [];
+                    Object.entries(values).forEach(([k, v]) => { if (!safeStorageSet(k, v)) failed.push(k); });
+                    if (failed.length) {
+                        Object.entries(before).forEach(([k, v]) => { if (v === null) safeStorageRemove(k); else safeStorageSet(k, v); });
+                        throw new Error('Could not save all restored values. Backup rolled back.');
                     }
                     resetScanState();
-                    customStrategies = JSON.parse(localStorage.getItem('customStrategies') || '[]');
-                    regimeStrategyMap = JSON.parse(localStorage.getItem('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
-                    activeTradesLog = JSON.parse(localStorage.getItem('activeTradesLog') || '[]');
+                    customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
+                    regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
+                    activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
                     timedExitDate = null;
                     earningsCache = {};
                     document.getElementById('advancedCsvAck').checked = false;
@@ -3631,12 +4322,19 @@
             if (idx < 0) return;
             const removed = activeTradesLog[idx];
             activeTradesLog.splice(idx, 1);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(idx, 0, removed);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             renderActiveTradesPage();
             showUndoToast(`Removed ${removed.ticker} ${removed.side}.`, () => {
                 activeTradesLog.splice(Math.min(idx, activeTradesLog.length), 0, removed);
-                saveActiveTradesLog();
+                if (!saveActiveTradesLog()) {
+                    alert('Could not save the undo. Export a backup and check browser storage.');
+                    return;
+                }
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
             });
@@ -3651,22 +4349,26 @@
             }
         });
 
-        // Open Strategy Orders modal (cards are updated in place, so a normal click is safe)
+        // Open Strategy Orders modal (reads the latest displayed values at click time so live updates are respected)
         document.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-action="open-exit-orders"]');
             if (!btn) return;
             e.stopPropagation();
-            openStrategyModal(
-                btn.dataset.ticker,
-                btn.dataset.long === 'true',
-                parseFloat(btn.dataset.price),
-                parseInt(btn.dataset.shares),
-                parseFloat(btn.dataset.stop),
-                parseFloat(btn.dataset.ref)
-            );
+            const ticker = btn.dataset.ticker;
+            const isLong = btn.dataset.long === 'true';
+            const result = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            if (result) {
+                const { risk, slippage } = currentRiskAndSlippage();
+                const f = getRealtimeFields(result, risk, slippage);
+                openStrategyModal(ticker, isLong, f.c, f.shares, f.stopPrice, isLong ? f.l : f.h);
+            } else {
+                // Fallback to the button's rendered snapshot if the snapshot has been cleared.
+                openStrategyModal(ticker, isLong, parseFloat(btn.dataset.price), parseInt(btn.dataset.shares), parseFloat(btn.dataset.stop), parseFloat(btn.dataset.ref));
+            }
         });
 
         let installPrompt = null;
+        let swRegistration = null;
         async function installApp() {
             if (!installPrompt) return;
             const prompt = installPrompt;
@@ -3697,9 +4399,19 @@
             if (!window.isSecureContext || !('serviceWorker' in navigator)) return;
             const register = async () => {
                 try {
-                    await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+                    const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+                    swRegistration = registration;
                     await navigator.serviceWorker.ready;
                     status.textContent = 'Offline shell ready. Use the browser install option if available. Quotes need internet; offline data is not live.';
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        if (!newWorker) return;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showUpdateToast(newWorker);
+                            }
+                        });
+                    });
                 } catch (e) {
                     status.textContent = 'Offline support unavailable. The online calculator still works.';
                 }
@@ -3709,9 +4421,35 @@
         }
 
         loadSettings();
-        setInterval(updateClock, 1000);
+        const clockInterval = setInterval(updateClock, 1000);
         updateClock();
         initializeInstallSupport();
+
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('error', (e) => {
+                console.error('Global error:', e.error || e.message);
+                showErrorToast(e.error ? e.error.message : e.message);
+            });
+            window.addEventListener('unhandledrejection', (e) => {
+                console.error('Unhandled rejection:', e.reason);
+                showErrorToast(e.reason ? (e.reason.message || e.reason) : 'Unexpected error');
+            });
+            window.addEventListener('beforeunload', () => {
+                if (clockInterval) clearInterval(clockInterval);
+                if (resyncTimer) clearInterval(resyncTimer);
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
+                if (activeTradesSession) { try { activeTradesSession.abort(); } catch (e) {} activeTradesSession = null; }
+                disconnectWebSocket();
+            });
+            window.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                if (realtimeSocket) requestWakeLock();
+                const container = document.getElementById('resultsContainer');
+                if (container && realtimeTasks.length) refreshAllVisible(container);
+                if (activeTradesLog.some(t => t.status === 'ACTIVE')) refreshActiveTradesPrices();
+            });
+        }
     </script>
 </body>
 </html>
