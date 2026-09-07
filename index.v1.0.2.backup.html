@@ -6,8 +6,6 @@
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Position Size Calculator</title>
-    <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -41,10 +39,7 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
         }
-        .ticker-group { min-width: 0; }
         .trigger-input {
-            width: 100%;
-            min-width: 0;
             font-size: 0.8rem;
             padding: 0.35rem 0.4rem;
             background-color: #1e293b !important;
@@ -83,17 +78,6 @@
         .value-flash {
             animation: valueFlash 0.25s ease-out;
         }
-        /* Result cards/rows are repainted on every tick: no backdrop/grayscale filters (they force a
-           full re-rasterisation of the card and read as a "blink"), and paint containment. */
-        .result-card {
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            background: rgba(30, 41, 59, 0.92);
-            contain: paint;
-        }
-        .result-row { contain: paint; }
-        .result-card.status-wait, .result-row.table-row-wait { filter: none; }
-        .fresh-render > *, .fresh-render #tableWrap > div { animation: fadeIn 0.25s ease-out forwards; }
 
         /* VISUAL TRIGGER STATES */
         .status-active-long {
@@ -233,7 +217,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.0.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v1.0.2</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -264,24 +248,14 @@
             </div>
 
             <div class="space-y-1.5">
-                <div class="flex flex-wrap justify-between items-center gap-1 mb-0.5">
+                <div class="flex justify-between items-center mb-0.5">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
                     <div class="flex items-center gap-1.5">
-                        <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5">PASTE SIGNALS</button>
                         <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-2 py-0.5 rounded-full font-bold transition-all">+ ADD ROW</button>
                         <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
                     </div>
                 </div>
                 
-                <div id="signalPastePanel" class="hidden rounded-lg bg-slate-900/60 border border-blue-500/30 p-2 space-y-2">
-                    <label for="signalPasteText" class="text-xs text-gray-300">Paste your signal message. Review the matches before replacing the inputs.</label>
-                    <textarea id="signalPasteText" rows="5" maxlength="30000" oninput="previewSignalPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="$AMPL (Amplitude Inc) - If closing above $13.96 LONG"></textarea>
-                    <pre id="signalPastePreview" class="whitespace-pre-wrap text-[11px] text-cyan-300 font-mono-num" aria-live="polite"></pre>
-                    <div class="flex gap-3 text-[11px] font-bold">
-                        <button onclick="applySignalPaste()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
-                        <button onclick="toggleSignalPaste(false)" class="text-gray-400">CANCEL</button>
-                    </div>
-                </div>
                 <!-- Dynamic Grid -->
                 <div class="grid grid-cols-3 gap-1.5" id="inputGrid">
                     <!-- Tickers 0 - 8 -->
@@ -378,7 +352,6 @@
                     </select>
                     <div class="flex gap-2">
                         <input type="password" id="apiKeyInput" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
-                        <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
                     </div>
                 </div>
@@ -423,30 +396,6 @@
                     </div>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
-                    <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
-                    <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
-                    <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">Holding period &amp; scheduled exit</div>
-                    <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
-                        <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
-                    </label>
-                    <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV (experimental)</label>
-                    <label class="flex items-center justify-between text-xs">Exit time in New York
-                        <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 border border-slate-600 rounded p-1">
-                            <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
-                        </select>
-                    </label>
-                    <p class="text-[10px] text-amber-300">Exits only, not entry orders. Review the date in each export. Advanced timed/adjustable baskets need validation in TWS paper first, including partial fills and OCA reduction. A CSV cannot read your remaining position or cancel unrelated broker orders. MOC scheduling is not offered until verified.</p>
-                    <label class="flex items-start gap-2 text-[11px] text-amber-200"><input id="advancedCsvAck" type="checkbox" class="custom-checkbox">I understand advanced CSVs are unverified and will validate them in TWS paper before live use.</label>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <button id="installAppBtn" onclick="installApp()" class="hidden bg-slate-800 text-blue-300 rounded px-3 py-1.5 text-xs font-bold">INSTALL APP</button>
-                    <p id="installAppStatus" class="text-[10px] text-gray-400">For offline shell/install support, open the app over HTTPS or localhost. Quotes always require a connection.</p>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="flex items-center justify-between">
                         <label class="text-[10px] font-bold text-gray-400 uppercase">Custom Exit Strategies</label>
                         <button onclick="addBlankStrategy()" class="text-[10px] font-bold text-blue-300 uppercase">+ New</button>
@@ -484,12 +433,6 @@
                     <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs font-bold">
-                <button id="tradesActiveTab" onclick="setTradesTab('active')" class="rounded bg-blue-600 px-3 py-1.5">ACTIVE</button>
-                <button id="tradesHistoryTab" onclick="setTradesTab('history')" class="rounded bg-slate-800 px-3 py-1.5">HISTORY</button>
-                <button onclick="exportJournalCsv()" class="ml-auto text-cyan-300">EXPORT JOURNAL CSV</button>
-            </div>
-            <p class="px-3 pt-2 text-[10px] text-gray-400">Local journal only. Recording a close does not submit or cancel broker orders. Quote-based levels are not confirmed fills.</p>
             <div id="activeTradesPageList" class="p-3 space-y-2 min-h-[40vh]"></div>
         </div>
     </div>
@@ -506,10 +449,6 @@
             </div>
             <div class="p-3 space-y-3">
                 <p class="text-[11px] text-gray-400">Build TWS exit baskets for fills entered outside the scanner. Same Option 1 / Option 2 math and CSV format.</p>
-                <div class="timed-exit-box hidden bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
-                    <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                    <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
-                </div>
                 <div id="builderRows" class="space-y-2"></div>
                 <button onclick="addBuilderRow()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
                 <div class="flex flex-wrap gap-2">
@@ -560,11 +499,6 @@
                     <select id="modalStrategySelect" onchange="onModalStrategyChange()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600"></select>
                 </div>
 
-                <div class="timed-exit-box hidden bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
-                    <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                    <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
-                </div>
-
                 <!-- Generated Orders Panel -->
                 <div class="space-y-2.5">
                     <div class="flex justify-between items-center">
@@ -605,6 +539,32 @@
         </div>
     </div>
 
+    <!-- ======================================================== -->
+    <!-- ACTIVE TRADES DRAWER / MODAL                             -->
+    <!-- ======================================================== -->
+    <div id="activeTradesModalOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="handleActiveTradesBackdropClick(event)">
+        <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+            <div class="bg-slate-900/80 px-5 py-4 border-b border-white/10 flex justify-between items-center">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-xl">📋</span>
+                    <h2 class="text-lg font-black text-white uppercase tracking-tight">Active Trades Tracker</h2>
+                </div>
+                <button onclick="closeActiveTradesModal()" class="text-gray-400 hover:text-white text-xl font-bold p-1 leading-none transition-colors">&times;</button>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-4 text-sm flex-1">
+                <div id="activeTradesListContainer" class="space-y-3">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <div class="bg-slate-900/80 px-5 py-3 border-t border-white/10 flex justify-between items-center text-xs text-gray-400">
+                <span>Trades are saved locally in your browser.</span>
+                <button onclick="closeActiveTradesModal()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-1.5 rounded-lg font-bold">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- BATCH REVIEW DRAWER -->
     <div id="batchReviewOverlay" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md hidden flex items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='batchReviewOverlay')closeBatchReviewDrawer()">
         <div class="glass-modal w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden max-h-[86vh] flex flex-col" onclick="event.stopPropagation()">
@@ -612,10 +572,6 @@
                 <h2 class="text-sm font-black uppercase text-white shrink-0">Batch Review → 1 TWS CSV</h2>
                 <select id="batchGlobalStrategy" onchange="onBatchGlobalStrategyChange(this)" class="bg-slate-800 text-white text-[10px] font-bold rounded px-1.5 py-0.5 border border-slate-600 min-w-0"></select>
                 <button onclick="closeBatchReviewDrawer()" class="text-gray-400 hover:text-white text-xl font-bold leading-none shrink-0">&times;</button>
-            </div>
-            <div class="timed-exit-box hidden mx-3 mt-2 bg-amber-950/30 border border-amber-500/30 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[10px]">
-                <span class="text-amber-200 font-bold">⏱ Day-<span class="timed-exit-days">5</span> exit · <span class="timed-exit-time">15:45</span> ET · MKT all legs</span>
-                <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
             </div>
             <div id="batchReviewList" class="p-3 overflow-y-auto space-y-1.5 flex-1 text-sm"></div>
             <div id="batchPreviewBox" class="mx-3 mb-2 bg-slate-950/70 border border-cyan-500/20 rounded-xl p-2">
@@ -645,12 +601,6 @@
         let realtimeQuoteErrors = {};
         let reconnectTimeout = null;
         let reconnectAttempts = 0;
-        let streamGeneration = 0;          // bumps on every CALCULATE / disconnect; stale sockets are ignored
-        let resyncTimer = null;            // periodic REST resync of HOD/LOD while streaming
-        let lastTradeAt = {};              // ticker -> ms timestamp of last WebSocket print
-        let triggerActiveState = {};       // ticker -> bool, for "trigger just became active" alerts
-        const RESYNC_INTERVAL_MS = 5 * 60 * 1000;
-        const MAX_RECONNECT_ATTEMPTS = 8;
 
         let liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled');
         if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
@@ -664,74 +614,6 @@
         let builderRowId = 0;
         let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
         let isStreamingLive = false;
-        let maxHoldDays = parseInt(localStorage.getItem('maxHoldDays'), 10) || 5;
-
-        // Day-N timed exit (opt-in): adds a GoodAfterTime MKT/MOC order to every OCA leg.
-        let timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-        let timedExitTime = localStorage.getItem('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
-        let timedExitDate = null;                                              // 'YYYY-MM-DD', set when an export UI opens
-        const TIMED_EXIT_TIMES = ['15:30', '15:40', '15:45', '15:50', '15:55'];
-
-        // Optional card fields / warnings (opt-in, default OFF)
-        let showRangePct = localStorage.getItem('showRangePct') === 'true';
-        let earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
-        let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
-        let earningsRequestId = 0;
-        function earningsBadgeFor(ticker) {
-            if (!earningsWarnEnabled) return null;
-            const item = earningsCache[ticker];
-            if (!item || item.from !== nyDateStr() || item.to !== addTradingDays(nyDateStr(), maxHoldDays) || item.status !== 'ok') return 'EARN ?';
-            return item.date ? `EARN ${item.date.slice(5).replace('-', '/')}` : null;
-        }
-
-        async function refreshEarningsForScan() {
-            const requestId = ++earningsRequestId;
-            const status = document.getElementById('earningsStatus');
-            if (!earningsWarnEnabled) {
-                if (status) status.textContent = 'Earnings warnings are off.';
-                return;
-            }
-            const key = localStorage.getItem(API_CONFIGS.finnhub.storageKey);
-            if (!key) {
-                if (status) status.textContent = 'Save a Finnhub API key to check earnings. EARN ? means unavailable, not clear.';
-                return;
-            }
-            const from = nyDateStr();
-            const to = addTradingDays(from, maxHoldDays);
-            try {
-                const saved = JSON.parse(localStorage.getItem('earningsCalendarCache') || '{}');
-                if (saved && typeof saved === 'object' && !Array.isArray(saved)) earningsCache = { ...saved, ...earningsCache };
-            } catch (e) {}
-            const tickers = [...new Set(realtimeTasks.map(t => t.ticker))];
-            if (status) status.textContent = tickers.length ? 'Checking earnings calendar...' : 'Calculate your tickers to check earnings.';
-            for (const ticker of tickers) {
-                if (requestId !== earningsRequestId || !earningsWarnEnabled) return;
-                const cached = earningsCache[ticker];
-                if (cached?.from === from && cached?.to === to && (cached.status === 'ok' || Date.now() - cached.checkedAt < 300000)) continue;
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 10000);
-                try {
-                    const response = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${from}&to=${to}`, { headers: { 'X-Finnhub-Token': key }, signal: controller.signal, cache: 'no-store' });
-                    if (!response.ok) throw new Error('Calendar unavailable');
-                    const data = await response.json();
-                    if (!Array.isArray(data.earningsCalendar)) throw new Error('Calendar unavailable');
-                    const dates = data.earningsCalendar.filter(e => e.symbol === ticker && !isNaN(ymdToUtc(e.date)) && e.date >= from && e.date <= to).map(e => e.date).sort();
-                    if (requestId !== earningsRequestId) return;
-                    earningsCache[ticker] = { from, to, date: dates[0] || null, status: 'ok', checkedAt: Date.now() };
-                } catch (e) {
-                    if (requestId !== earningsRequestId) return;
-                    earningsCache[ticker] = { from, to, date: null, status: 'error', checkedAt: Date.now() };
-                } finally {
-                    clearTimeout(timeout);
-                }
-                refreshAllVisible(document.getElementById('resultsContainer'));
-            }
-            if (requestId !== earningsRequestId) return;
-            const unavailable = tickers.filter(t => earningsCache[t]?.status !== 'ok').length;
-            if (status && tickers.length) status.textContent = unavailable ? `${unavailable} calendar lookup(s) unavailable. EARN ? is not an all-clear.` : `Checked ${from} through ${to}. Dates may change; confirm with the company.`;
-            try { localStorage.setItem('earningsCalendarCache', JSON.stringify(earningsCache)); } catch (e) {}
-            refreshAllVisible(document.getElementById('resultsContainer'));
-        }
 
         const DEFAULT_STRATEGIES = [
             { id: 'opt1', name: 'Option 1 · 100% @ 1:6', builtIn: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] },
@@ -765,7 +647,6 @@
         let isFocusMode = false;
         let isVoiceEnabled = false;
         let visibleCount = 3;
-        let signalSides = {};   // row idx -> 'LONG' | 'SHORT' from pasted signal text (informational only)
 
         // Batch review custom TP overrides (ticker -> number[])
         let batchCustomTps = {};
@@ -793,22 +674,15 @@
         // INITIALIZATION & SETTINGS
         // ========================================================
         function loadSettings() {
-            globalMarketRegime = localStorage.getItem('globalMarketRegime') === 'declining' ? 'declining' : 'expanding';
-            currentViewMode = localStorage.getItem('preferredViewMode') === 'table' ? 'table' : 'cards';
-            collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
-            liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled') !== 'false';
             const savedRisk = localStorage.getItem('riskValue');
             const savedProvider = localStorage.getItem('selectedProvider');
             const savedSlippage = localStorage.getItem('slippageValue');
             const savedCount = localStorage.getItem('visibleCount');
             
             if (savedRisk) document.getElementById('riskValue').value = savedRisk;
-            if (Object.hasOwn(API_CONFIGS, savedProvider)) document.getElementById('apiProvider').value = savedProvider;
-            if (savedSlippage !== null) document.getElementById('slippageValue').value = savedSlippage;
+            if (savedProvider) document.getElementById('apiProvider').value = savedProvider;
+            if (savedSlippage) document.getElementById('slippageValue').value = savedSlippage;
             if (savedCount) visibleCount = parseInt(savedCount);
-            // Rows come in threes; normalise counts saved by the old 2-column layout.
-            visibleCount = Math.min(9, Math.max(3, Math.ceil((visibleCount || 3) / 3) * 3));
-            try { signalSides = JSON.parse(localStorage.getItem('signalSides') || '{}') || {}; } catch (e) { signalSides = {}; }
             
             updateVisibleRows();
             updateApiKeyInput();
@@ -836,54 +710,6 @@
             refreshStrategySelects();
             renderStrategyEditor();
             applyScannerCollapsed();
-            loadFeatureSettings();
-        }
-
-        function boundedHoldDays(value) {
-            const n = Number(value);
-            return Number.isInteger(n) && n >= 1 && n <= 60 ? n : 5;
-        }
-
-        function loadFeatureSettings() {
-            maxHoldDays = boundedHoldDays(localStorage.getItem('maxHoldDays'));
-            timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-            timedExitTime = localStorage.getItem('timedExitTime') || '15:45';
-            if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
-            showRangePct = localStorage.getItem('showRangePct') === 'true';
-            earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
-            document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
-            document.getElementById('timedExitTimeSetting').value = timedExitTime;
-            document.getElementById('timedExitSetting').checked = timedExitEnabled;
-            document.getElementById('showRangePctSetting').checked = showRangePct;
-            document.getElementById('earningsWarnSetting').checked = earningsWarnEnabled;
-            document.getElementById('timedExitTimeSetting').disabled = !timedExitEnabled;
-            syncTimedExitInputs();
-        }
-
-        function saveFeatureSettings() {
-            const days = document.getElementById('maxHoldDaysSetting');
-            maxHoldDays = boundedHoldDays(days.value);
-            days.value = maxHoldDays;
-            timedExitEnabled = document.getElementById('timedExitSetting').checked;
-            const time = document.getElementById('timedExitTimeSetting');
-            timedExitTime = TIMED_EXIT_TIMES.includes(time.value) ? time.value : '15:45';
-            time.disabled = !timedExitEnabled;
-            showRangePct = document.getElementById('showRangePctSetting').checked;
-            earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => localStorage.setItem(key, String(value)));
-            timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
-            syncTimedExitInputs();
-            refreshAllVisible(document.getElementById('resultsContainer'));
-            refreshEarningsForScan();
-        }
-
-        function toggleApiKeyVisibility() {
-            const input = document.getElementById('apiKeyInput');
-            const show = input.type === 'password';
-            input.type = show ? 'text' : 'password';
-            const btn = document.getElementById('showKeyBtn');
-            btn.textContent = show ? 'HIDE' : 'SHOW';
-            btn.setAttribute('aria-pressed', String(show));
         }
 
         function saveCollapseAfterCalc() {
@@ -914,7 +740,6 @@
         function saveLiveUpdateSetting() {
             liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
             localStorage.setItem('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
-            if (!liveUpdateEnabled) disconnectWebSocket();
             updateTopStatus();
         }
 
@@ -967,13 +792,12 @@
             }
             closeNavMenu();
             if (page === 'active-trades') renderActiveTradesPage();
-            if (page === 'manual-builder') {
-                timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
-                syncTimedExitInputs();
-                if (document.getElementById('builderRows').children.length === 0) addBuilderRow();
-                else document.querySelectorAll('#builderRows .builder-row').forEach(refreshBuilderPreview);
-            }
+            if (page === 'manual-builder' && document.getElementById('builderRows').children.length === 0) addBuilderRow();
             if (page === 'settings') { refreshStrategySelects(); renderStrategyEditor(); }
+        }
+
+        function toggleSettingsPanel() {
+            navigateTo('settings');
         }
 
         function toggleViewMode() {
@@ -1017,11 +841,6 @@
                     txt.className = 'text-amber-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
-                } else if (statusOverride === 'offline') {
-                    txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
-                    txt.className = 'text-gray-400 uppercase font-bold';
-                    ping.className = 'hidden';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
                 } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
                     txt.innerText = 'LIVE';
                     txt.className = 'text-emerald-400 uppercase font-bold';
@@ -1084,7 +903,6 @@
             document.querySelectorAll('.trigger-input').forEach(input => {
                 localStorage.setItem(`trigger_${input.dataset.idx}`, input.value);
             });
-            localStorage.setItem('signalSides', JSON.stringify(signalSides));
         }
 
         function updateUIControls() {
@@ -1103,21 +921,10 @@
             localStorage.setItem('setting_showVoice', showVoice);
         }
 
-        // Scanner inputs only: Enter = CALCULATE. (Settings / modal inputs must not restart the scan.)
-        document.querySelectorAll('#scannerFormBody input').forEach(input => {
-            input.addEventListener('input', () => {
-                if (input.classList.contains('ticker-input')) delete signalSides[input.dataset.idx];
-                saveInputs();
-            });
-            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); calculateAll(); } });
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', saveInputs);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') calculateAll(); });
         });
-        // Risk / slippage edits re-size the visible cards immediately.
-        ['riskValue', 'slippageValue'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('input', () => refreshAllVisible(document.getElementById('resultsContainer')));
-        });
-        const apiKeyEl = document.getElementById('apiKeyInput');
-        if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
             localStorage.setItem('selectedProvider', e.target.value);
@@ -1208,148 +1015,25 @@
             }
         }
 
-        // ---------- Undo toast ----------
-        let undoToastTimer = null;
-        function showUndoToast(message, undoFn, ms = 6000) {
-            let toast = document.getElementById('undoToast');
-            if (!toast) {
-                toast = document.createElement('div');
-                toast.id = 'undoToast';
-                toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] glass-modal rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xl';
-                document.body.appendChild(toast);
-            }
-            toast.innerHTML = `<span class="text-gray-200">${message}</span><button id="undoToastBtn" class="text-blue-300 font-bold uppercase text-[11px] hover:text-white">Undo</button><button id="undoToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
-            toast.style.display = 'flex';
-            const hide = () => { toast.style.display = 'none'; if (undoToastTimer) { clearTimeout(undoToastTimer); undoToastTimer = null; } };
-            toast.querySelector('#undoToastBtn').onclick = () => { hide(); undoFn(); };
-            toast.querySelector('#undoToastClose').onclick = hide;
-            if (undoToastTimer) clearTimeout(undoToastTimer);
-            undoToastTimer = setTimeout(hide, ms);
-        }
-
-        function parseSignalText(text) {
-            const source = String(text || '').slice(0, 30000);
-            const matches = [...source.matchAll(/\$([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\b/gi)];
-            const signals = [];
-            const warnings = [];
-            const seen = new Set();
-            const add = (ticker, price, side) => {
-                ticker = ticker.toUpperCase();
-                const trigger = Number(price.replace(/,/g, ''));
-                if (ticker.length > 10 || !Number.isFinite(trigger) || trigger <= 0) {
-                    warnings.push(`Invalid ticker or trigger: ${ticker}`);
-                } else if (seen.has(ticker)) {
-                    warnings.push(`Duplicate ${ticker} ignored (first signal kept).`);
-                } else {
-                    seen.add(ticker);
-                    signals.push({ ticker, trigger, signalSide: side ? side.toUpperCase() : null });
-                }
-            };
-            if (matches.length) {
-                matches.forEach((m, i) => {
-                    const tail = source.slice(m.index + m[0].length, matches[i + 1]?.index ?? source.length);
-                    const price = /(?:closing\s+(?:above|below)\s*\$?\s*|\$\s*)(\d+(?:,\d{3})*(?:\.\d+)?)/i.exec(tail);
-                    const side = /\b(LONG|SHORT)\b/i.exec(tail);
-                    if (price) add(m[1], price[1], side?.[1]);
-                    else warnings.push(`No trigger found for ${m[1].toUpperCase()}.`);
-                });
-            } else {
-                source.split(/[,;\n]+/).filter(line => line.trim()).forEach(line => {
-                    const m = /^\s*([A-Z][A-Z0-9.-]{0,9})\s+\$?(\d+(?:\.\d+)?)(?:\s+(LONG|SHORT))?\s*$/i.exec(line);
-                    if (m) add(m[1], m[2], m[3]);
-                    else warnings.push('Skipped a line without a ticker and trigger.');
-                });
-            }
-            if (signals.length > 9) warnings.push(`Only the first 9 signals will be used; ${signals.length - 9} exceed the grid limit.`);
-            return { signals: signals.slice(0, 9), warnings };
-        }
-
-        function toggleSignalPaste(open) {
-            const panel = document.getElementById('signalPastePanel');
-            const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
-            setHidden(panel, !show);
-            if (show) {
-                document.getElementById('signalPasteText').focus();
-                previewSignalPaste();
-            }
-        }
-
-        function previewSignalPaste() {
-            const parsed = parseSignalText(document.getElementById('signalPasteText').value);
-            document.getElementById('signalPastePreview').textContent = [
-                ...parsed.signals.map(s => `${s.ticker}  $${s.trigger.toFixed(2)}${s.signalSide ? '  ' + s.signalSide : ''}`),
-                ...parsed.warnings,
-                ...(!parsed.signals.length ? ['No matching signals yet.'] : [])
-            ].join('\n');
-            return parsed;
-        }
-
-        function applySignalPaste() {
-            const { signals } = previewSignalPaste();
-            if (!signals.length) return;
-            const snap = snapshotScannerInputs();
-            resetScanState();
-            document.querySelectorAll('.ticker-input').forEach((el, i) => { el.value = signals[i]?.ticker || ''; });
-            document.querySelectorAll('.trigger-input').forEach((el, i) => { el.value = signals[i] ? signals[i].trigger : ''; });
-            signalSides = Object.fromEntries(signals.map((s, i) => [i, s.signalSide]).filter(([, side]) => side));
-            visibleCount = Math.ceil(signals.length / 3) * 3;
-            localStorage.setItem('visibleCount', visibleCount);
-            updateVisibleRows();
-            saveInputs();
-            toggleSignalPaste(false);
-            showUndoToast(`Loaded ${signals.length} signals. Click Calculate for quotes.`, () => restoreScannerInputs(snap));
-        }
-
-        function snapshotScannerInputs() {
-            return {
-                visibleCount,
-                tickers: Array.from(document.querySelectorAll('.ticker-input')).map(i => i.value),
-                triggers: Array.from(document.querySelectorAll('.trigger-input')).map(i => i.value),
-                sides: { ...signalSides }
-            };
-        }
-        function restoreScannerInputs(snap) {
-            if (!snap) return;
-            document.querySelectorAll('.ticker-input').forEach((i, k) => { i.value = snap.tickers[k] || ''; });
-            document.querySelectorAll('.trigger-input').forEach((i, k) => { i.value = snap.triggers[k] || ''; });
-            signalSides = { ...(snap.sides || {}) };
-            visibleCount = snap.visibleCount || 3;
-            localStorage.setItem('visibleCount', visibleCount);
-            updateVisibleRows();
-            saveInputs();
-        }
-
-        function resetScanState() {
-            disconnectWebSocket();
-            realtimeTasks = [];
-            lastRenderedSnapshot = [];
-            Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
-            triggerActiveState = {};
-            selectedTickers.clear();
-            updateBatchBar();
-            const container = document.getElementById('resultsContainer');
-            if (container) container.innerHTML = '';
-        }
-
         function clearInputs() {
-            const filled = Array.from(document.querySelectorAll('.ticker-input')).filter(i => i.value.trim()).length;
-            if (!filled && !realtimeTasks.length && visibleCount === 3 && !selectedTickers.size) return;
-            const snap = snapshotScannerInputs();
-            visibleCount = 3;
-            localStorage.removeItem('visibleCount');
-            document.querySelectorAll('.ticker-input').forEach(i => {
-                i.value = '';
-                localStorage.removeItem(`ticker_${i.dataset.idx}`);
-            });
-            document.querySelectorAll('.trigger-input').forEach(i => {
-                i.value = '';
-                localStorage.removeItem(`trigger_${i.dataset.idx}`);
-            });
-            signalSides = {};
-            updateVisibleRows();
-            saveInputs();
-            resetScanState();
-            showUndoToast(`Cleared ${filled} ticker${filled === 1 ? '' : 's'}.`, () => restoreScannerInputs(snap));
+            if (confirm('Clear all ticker inputs?')) {
+                visibleCount = 3;
+                localStorage.removeItem('visibleCount');
+
+                document.querySelectorAll('.ticker-input').forEach(i => {
+                    i.value = '';
+                    localStorage.removeItem(`ticker_${i.dataset.idx}`);
+                });
+                document.querySelectorAll('.trigger-input').forEach(i => {
+                    i.value = '';
+                    localStorage.removeItem(`trigger_${i.dataset.idx}`);
+                });
+
+                updateVisibleRows();
+                saveInputs();
+                disconnectWebSocket();
+                document.getElementById('resultsContainer').innerHTML = '';
+            }
         }
 
         // ========================================================
@@ -1368,108 +1052,89 @@
             }
         }
 
-        function speakText(text) {
-            if (!isVoiceEnabled || typeof SpeechSynthesisUtterance === 'undefined') return;
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 1.1;
-            window.speechSynthesis.speak(utterance);
-        }
-
-        function currentRiskAndSlippage() {
-            return {
-                risk: parseFloat(document.getElementById('riskValue').value) || 500,
-                slippage: parseFloat(document.getElementById('slippageValue').value) || 0
-            };
-        }
-
-        // Announces every currently-active trigger and records the state (used after a full render).
         function speakResults(results) {
-            const { risk, slippage } = currentRiskAndSlippage();
-            results.forEach(r => {
-                if (!r.success) return;
-                const f = getRealtimeFields(r, risk, slippage);
-                triggerActiveState[f.ticker] = f.isActive;
-                if (f.isActive) speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+            if (!isVoiceEnabled) return;
+            const activeTriggers = results.filter(r => {
+                if (!r.success) return false;
+                const { c, pc } = r.data;
+                const isGreenDay = c > pc;
+                return isTriggerActive(r.data, r.trigger, isGreenDay);
             });
-        }
 
-        // Announces only triggers that transitioned inactive -> active (used on live ticks).
-        function announceTriggerTransitions(results, changedTickers, risk, slippage) {
-            changedTickers.forEach(ticker => {
-                const r = results.find(x => x.ticker === ticker && x.success);
-                if (!r) return;
-                const f = getRealtimeFields(r, risk, slippage);
-                const was = !!triggerActiveState[ticker];
-                triggerActiveState[ticker] = f.isActive;
-                if (f.isActive && !was) speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+            if (activeTriggers.length === 0) return;
+            activeTriggers.forEach(item => {
+                const { ticker, data } = item;
+                const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+                const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+                const isGreenDay = data.c > data.pc;
+                const stopPrice = isGreenDay ? (data.l - 0.01) : (data.h + 0.01);
+                let riskPerShare = Math.abs(data.c - stopPrice) + slippage;
+                let shares = riskPerShare > 0 ? Math.floor(risk / riskPerShare) : 0;
+                const dir = isGreenDay ? "Long" : "Short";
+                const text = `${ticker}. ${dir} Trigger Active. ${shares} Shares.`;
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.1;
+                window.speechSynthesis.speak(utterance);
             });
         }
 
         // ========================================================
         // MARKET CLOCK
         // ========================================================
-        function setClockText(el, text, colorClass) {
-            if (el.innerText !== text) el.innerText = text;
-            const all = ['text-white', 'text-red-400', 'text-gray-400', 'text-amber-300'];
-            if (!el.classList.contains(colorClass)) {
-                el.classList.remove(...all.filter(c => c !== colorClass));
-                el.classList.add(colorClass);
-            }
-        }
-
         function updateClock() {
-            const countdownEl = document.getElementById('countdown');
-            if (!countdownEl) return;
-            const ny = nyNow();
-            const secOfDay = ny.minutesOfDay * 60 + ny.s;
-            const fmt = (secs) => {
-                const hh = Math.floor(secs / 3600);
-                const mm = Math.floor((secs % 3600) / 60);
-                const ss = secs % 60;
-                return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-            };
+            const now = new Date();
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const s = now.getSeconds();
+            const day = now.getDay(); 
 
-            if (!ny.isTradingDay) {
-                setClockText(countdownEl, 'CLOSED', 'text-gray-400');
+            const countdownEl = document.getElementById('countdown');
+
+            if (day === 0 || day === 6) {
+                countdownEl.innerText = "CLOSED";
+                countdownEl.classList.remove('text-white', 'text-red-400');
+                countdownEl.classList.add('text-gray-400');
                 return;
             }
-            if (secOfDay < MARKET_OPEN_MIN * 60) {
-                setClockText(countdownEl, `PRE-MKT ${fmt(MARKET_OPEN_MIN * 60 - secOfDay)}`, 'text-gray-400');
-                return;
+
+            const totalMinutes = (h * 60) + m;
+            const marketOpenMinutes = (9 * 60) + 30; 
+            const marketCloseMinutes = (16 * 60);    
+
+            if (totalMinutes < marketOpenMinutes || totalMinutes >= marketCloseMinutes) {
+                countdownEl.innerText = "CLOSED";
+                countdownEl.classList.remove('text-white', 'text-red-400');
+                countdownEl.classList.add('text-gray-400');
+            } else {
+                const closeTime = new Date();
+                closeTime.setHours(16, 0, 0, 0);
+                const diff = closeTime - now;
+
+                const hh = Math.floor(diff / (1000 * 60 * 60));
+                const mm = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const ss = Math.floor((diff % (1000 * 60)) / 1000);
+
+                countdownEl.innerText = 
+                    `${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
+                
+                if (hh === 0 && mm < 5) {
+                    countdownEl.classList.remove('text-gray-400');
+                    countdownEl.classList.add('text-red-400');
+                } else {
+                    countdownEl.classList.remove('text-gray-400', 'text-red-400');
+                    countdownEl.classList.add('text-white');
+                }
             }
-            if (secOfDay >= ny.closeMin * 60) {
-                setClockText(countdownEl, 'AFTER-HRS', 'text-gray-400');
-                return;
-            }
-            const remaining = ny.closeMin * 60 - secOfDay;
-            const early = ny.closeMin !== 16 * 60 ? '1PM ' : '';
-            const color = remaining < 5 * 60 ? 'text-red-400' : (early ? 'text-amber-300' : 'text-white');
-            setClockText(countdownEl, `${early}${fmt(remaining)}`, color);
         }
+        setInterval(updateClock, 1000);
+        updateClock();
 
         // ========================================================
         // API FETCH & WEBSOCKET ENGINE
         // ========================================================
-        // Tickers are letters/digits plus '.' or '-' (BRK.B, BF-B). Anything else is dropped.
-        function escapeHtml(value) {
-            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
-
-        function sanitizeTicker(raw) {
-            return String(raw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10);
-        }
-
         async function fetchTickerData(ticker, provider, apiKey) {
-            const data = await fetchProviderQuote(ticker, provider, apiKey);
-            if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
-            return data;
-        }
-
-        async function fetchProviderQuote(ticker, provider, apiKey) {
-            ticker = sanitizeTicker(ticker);
-            if (!ticker) throw new Error('Empty ticker');
             if (provider === 'twelvedata') {
-                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${ticker}&apikey=${apiKey}`);
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d = await quote.json();
                 if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
@@ -1484,9 +1149,8 @@
                     ask: (ask && ask > 0) ? ask : null
                 };
             } else if (provider === 'finnhub') {
-                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`);
                 if (quote.status === 429) throw new Error("Rate Limit");
-                if (!quote.ok) throw new Error(`Quote API error (${quote.status})`);
                 const d = await quote.json();
                 if (d.c === 0 && d.d === null) throw new Error(`Invalid Ticker: ${ticker}`);
                 const bid = (d.b && d.b > 0) ? parseFloat(d.b) : null;
@@ -1500,7 +1164,7 @@
                     ask: ask
                 };
             } else if (provider === 'stockdata') {
-                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${apiKey}`);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d_res = await quote.json();
@@ -1521,98 +1185,32 @@
         }
 
         function disconnectWebSocket() {
-            streamGeneration++;
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
-            }
-            if (resyncTimer) {
-                clearInterval(resyncTimer);
-                resyncTimer = null;
             }
             if (realtimeSocket) {
                 try { 
                     realtimeSocket.onclose = null;
                     realtimeSocket.onerror = null;
-                    realtimeSocket.onmessage = null;
                     realtimeSocket.close(); 
                 } catch (e) {}
             }
             realtimeSocket = null;
-            reconnectAttempts = 0;
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
         }
 
-        function buildSnapshotResults() {
-            return realtimeTasks.map(task => {
+        function renderRealtimeSnapshot(container, riskVal, slippageVal) {
+            container.innerHTML = '';
+            const results = realtimeTasks.map(task => {
                 const data = realtimeQuotes[task.ticker];
                 if (data) return { ...task, data, success: true };
                 const err = realtimeQuoteErrors[task.ticker];
                 if (err) return { ...task, error: err, success: false };
                 return { ...task, error: 'Waiting for live quote...', success: false };
             });
-        }
-
-        // Merge a live print into the stored quote. HOD/LOD only move during regular hours.
-        function applyLivePrice(ticker, price, extra = {}) {
-            const prev = realtimeQuotes[ticker];
-            if (!prev || !Number.isFinite(price) || price <= 0) return false;
-            const rth = nyNow().isRTH;
-            realtimeQuotes[ticker] = {
-                c: price,
-                h: rth ? (prev.h > 0 ? Math.max(prev.h, price) : price) : prev.h,
-                l: rth ? (prev.l > 0 ? Math.min(prev.l, price) : price) : prev.l,
-                pc: prev.pc,
-                bid: (extra.bid && extra.bid > 0) ? extra.bid : prev.bid,
-                ask: (extra.ask && extra.ask > 0) ? extra.ask : prev.ask
-            };
-            lastTradeAt[ticker] = Date.now();
-            return true;
-        }
-
-        // Merge a fresh REST quote into the stored one (periodic resync). Live last price wins
-        // unless the socket has been silent since the previous resync.
-        function mergeRestQuote(ticker, data) {
-            const prev = realtimeQuotes[ticker];
-            if (!prev) { realtimeQuotes[ticker] = data; return true; }
-            const socketQuiet = !lastTradeAt[ticker] || (Date.now() - lastTradeAt[ticker]) > RESYNC_INTERVAL_MS;
-            const next = {
-                c: socketQuiet && data.c > 0 ? data.c : prev.c,
-                h: Math.max(prev.h > 0 ? prev.h : 0, data.h > 0 ? data.h : 0) || prev.h,
-                l: (prev.l > 0 && data.l > 0) ? Math.min(prev.l, data.l) : (data.l > 0 ? data.l : prev.l),
-                pc: data.pc > 0 ? data.pc : prev.pc,
-                bid: (data.bid && data.bid > 0) ? data.bid : prev.bid,
-                ask: (data.ask && data.ask > 0) ? data.ask : prev.ask
-            };
-            const changed = ['c', 'h', 'l', 'pc', 'bid', 'ask'].some(k => next[k] !== prev[k]);
-            realtimeQuotes[ticker] = next;
-            return changed;
-        }
-
-        async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal) {
-            if (gen !== streamGeneration || !nyNow().isRTH) return;
-            const changed = new Set();
-            for (const t of realtimeTasks) {
-                if (gen !== streamGeneration) return;
-                if (!realtimeQuotes[t.ticker]) continue;
-                try {
-                    const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration || !nyNow().isRTH) return;
-                    if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
-                } catch (e) {
-                    console.warn(`Resync failed for ${t.ticker}:`, e.message);
-                }
-                await new Promise(r => setTimeout(r, 250));
-            }
-            if (gen === streamGeneration && changed.size) tickRealtimeSnapshot(container, riskVal, slippageVal, changed);
-        }
-
-        function renderRealtimeSnapshot(container, riskVal, slippageVal) {
-            container.innerHTML = '';
-            markFreshRender(container);
-            const results = buildSnapshotResults();
             lastRenderedSnapshot = results;
 
             if (currentViewMode === 'table') {
@@ -1627,10 +1225,17 @@
             applyFocusMode();
         }
 
-        function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers, announce = true) {
+        function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers) {
             if (!container || changedTickers.size === 0) return;
-            const { risk, slippage } = currentRiskAndSlippage();
-            const results = buildSnapshotResults();
+            const risk = parseFloat(document.getElementById('riskValue').value) || riskVal || 500;
+            const slippage = parseFloat(document.getElementById('slippageValue').value) || slippageVal || 0;
+            const results = realtimeTasks.map(task => {
+                const data = realtimeQuotes[task.ticker];
+                if (data) return { ...task, data, success: true };
+                const err = realtimeQuoteErrors[task.ticker];
+                if (err) return { ...task, error: err, success: false };
+                return { ...task, error: 'Waiting for live quote...', success: false };
+            });
             lastRenderedSnapshot = results;
 
             if (currentViewMode === 'table') {
@@ -1651,62 +1256,42 @@
                 });
             }
 
-            if (announce) announceTriggerTransitions(results, changedTickers, risk, slippage);
             applyFocusMode();
-        }
-
-        // Re-render every visible card/row from the current quotes (e.g. after Risk $ changes).
-        function refreshAllVisible(container) {
-            if (!container || !realtimeTasks.length) return;
-            const all = new Set(realtimeTasks.map(t => t.ticker).filter(t => realtimeQuotes[t]));
-            tickRealtimeSnapshot(container, null, null, all, false); // sizing change is not a trigger transition
         }
 
         async function startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container) {
             disconnectWebSocket();
-            const gen = streamGeneration;
             realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
-            lastTradeAt = {};
-            triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
             let anySuccess = false;
             const fetchPromises = realtimeTasks.map(async (t) => {
                 try {
                     const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration) return;
                     realtimeQuotes[t.ticker] = data;
                     anySuccess = true;
                 } catch (e) {
-                    if (gen !== streamGeneration) return;
                     console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
                     realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
                 }
             });
             await Promise.all(fetchPromises);
-            if (gen !== streamGeneration) return; // a newer CALCULATE / CLEAR superseded this one
             renderRealtimeSnapshot(container, riskVal, slippageVal);
-            speakResults(lastRenderedSnapshot);
-            refreshEarningsForScan();
 
             // 2. Open WebSocket with Auto-Reconnect only if at least one baseline succeeded
             if (anySuccess) {
-                connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
-                if (resyncTimer) clearInterval(resyncTimer);
-                resyncTimer = setInterval(() => resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal), RESYNC_INTERVAL_MS);
+                connectSocket(provider, apiKey, riskVal, slippageVal, container);
             }
         }
 
-        function connectSocket(provider, apiKey, riskVal, slippageVal, container, gen) {
-            if (gen !== streamGeneration) return;
-            let socket;
+        function connectSocket(provider, apiKey, riskVal, slippageVal, container) {
             try {
                 if (provider === 'finnhub') {
-                    socket = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`);
+                    realtimeSocket = new WebSocket(`wss://ws.finnhub.io?token=${apiKey}`);
                 } else if (provider === 'twelvedata') {
-                    socket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`);
+                    realtimeSocket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${apiKey}`);
                 } else {
                     return;
                 }
@@ -1714,23 +1299,20 @@
                 renderError({ ticker: "WebSocket", error: "Connection Failed" }, container);
                 return;
             }
-            realtimeSocket = socket;
-            const isCurrent = () => gen === streamGeneration && realtimeSocket === socket;
 
-            socket.onopen = () => {
-                if (!isCurrent()) { try { socket.close(); } catch (e) {} return; }
+            realtimeSocket.onopen = () => {
                 reconnectAttempts = 0;
                 setCalcBtnStreaming(true);
                 updateTopStatus();
                 const validTasks = realtimeTasks.filter(t => realtimeQuotes[t.ticker]);
                 if (provider === 'finnhub') {
                     validTasks.forEach(t => {
-                        socket.send(JSON.stringify({ 'type': 'subscribe', 'symbol': t.ticker }));
+                        realtimeSocket.send(JSON.stringify({ 'type': 'subscribe', 'symbol': t.ticker }));
                     });
                 } else if (provider === 'twelvedata') {
                     const symbols = validTasks.map(t => t.ticker).join(',');
                     if (symbols) {
-                        socket.send(JSON.stringify({
+                        realtimeSocket.send(JSON.stringify({
                             "action": "subscribe",
                             "params": { "symbols": symbols }
                         }));
@@ -1740,8 +1322,7 @@
 
             const changedTickers = new Set();
 
-            socket.onmessage = (event) => {
-                if (!isCurrent()) return;
+            realtimeSocket.onmessage = (event) => {
                 try {
                     const response = JSON.parse(event.data);
 
@@ -1749,14 +1330,37 @@
                         if (response.type !== 'trade' || !response.data) return;
                         response.data.forEach(trade => {
                             const ticker = String(trade.s).toUpperCase();
-                            if (applyLivePrice(ticker, Number(trade.p))) changedTickers.add(ticker);
+                            const price = Number(trade.p);
+                            if (!Number.isFinite(price) || !realtimeQuotes[ticker]) return;
+
+                            const prev = realtimeQuotes[ticker];
+                            realtimeQuotes[ticker] = {
+                                c: price,
+                                h: Math.max(prev.h, price),
+                                l: Math.min(prev.l, price),
+                                pc: prev.pc,
+                                bid: prev.bid,
+                                ask: prev.ask
+                            };
+                            changedTickers.add(ticker);
                         });
                     } 
                     else if (provider === 'twelvedata') {
                         if (response.event !== 'price') return;
                         const ticker = String(response.symbol).toUpperCase();
-                        const extra = { bid: Number(response.bid), ask: Number(response.ask) };
-                        if (applyLivePrice(ticker, Number(response.price), extra)) changedTickers.add(ticker);
+                        const price = Number(response.price);
+                        if (!Number.isFinite(price) || !realtimeQuotes[ticker]) return;
+
+                        const prev = realtimeQuotes[ticker];
+                        realtimeQuotes[ticker] = {
+                            c: price,
+                            h: Math.max(prev.h, price),
+                            l: Math.min(prev.l, price),
+                            pc: prev.pc,
+                            bid: (response.bid && Number(response.bid) > 0) ? Number(response.bid) : prev.bid,
+                            ask: (response.ask && Number(response.ask) > 0) ? Number(response.ask) : prev.ask
+                        };
+                        changedTickers.add(ticker);
                     }
 
                     if (changedTickers.size > 0) {
@@ -1767,25 +1371,19 @@
                 } catch (err) {}
             };
 
-            socket.onerror = () => {
-                if (isCurrent()) updateTopStatus('reconnecting');
+            realtimeSocket.onerror = () => {
+                updateTopStatus('reconnecting');
             };
 
-            socket.onclose = () => {
-                if (!isCurrent()) return;
+            realtimeSocket.onclose = () => {
                 setCalcBtnStreaming(false);
-                const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
-                const marketOpen = nyNow().isRTH;
-                if (canRetry && (marketOpen || reconnectAttempts < MAX_RECONNECT_ATTEMPTS)) {
-                    updateTopStatus('reconnecting');
+                updateTopStatus('reconnecting');
+                if (liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0) {
                     const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
                     reconnectAttempts++;
                     reconnectTimeout = setTimeout(() => {
-                        reconnectTimeout = null;
-                        connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
+                        connectSocket(provider, apiKey, riskVal, slippageVal, container);
                     }, backoff);
-                } else {
-                    updateTopStatus('offline');
                 }
             };
         }
@@ -1811,25 +1409,18 @@
             const triggers = Array.from(document.querySelectorAll('.trigger-input'));
 
             const tasks = [];
-            const seen = new Set();
             for (let i = 0; i < visibleCount; i++) {
-                 const ticker = sanitizeTicker(inputs[i].value);
-                 if (inputs[i].value !== ticker) inputs[i].value = ticker;
+                 const ticker = inputs[i].value.trim().toUpperCase();
                  const trigger = parseFloat(triggers[i].value);
-                 if (ticker && !seen.has(ticker)) {
-                     seen.add(ticker);
-                     tasks.push({ ticker, trigger: isNaN(trigger) ? null : trigger, signalSide: signalSides[i] || null });
+                 if (ticker) {
+                     tasks.push({ ticker, trigger: isNaN(trigger) ? null : trigger });
                  }
             }
 
             if (tasks.length === 0) return;
 
-            // Selections only make sense for tickers that are still on the board.
-            Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
-            updateBatchBar();
-
             errorMsg.classList.add('hidden');
-            container.innerHTML = `<div class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
+            container.innerHTML = '';
 
             // Handle WebSocket stream for supported providers when live update is active
             if (config.supportsWs && liveUpdateEnabled) {
@@ -1840,7 +1431,6 @@
             }
 
             disconnectWebSocket();
-            const gen = streamGeneration;
             setCalcBtnStreaming(false);
             btn.innerText = 'FETCHING...';
             const startTime = performance.now();
@@ -1856,20 +1446,14 @@
                 });
 
                 const results = await Promise.all(promises);
-                if (gen !== streamGeneration) return;
                 const endTime = performance.now();
                 const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
 
                 realtimeTasks = tasks;
                 lastRenderedSnapshot = results;
-                Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
-                triggerActiveState = {};
                 results.forEach(r => {
                     if (r.success) realtimeQuotes[r.ticker] = r.data;
-                    else realtimeQuoteErrors[r.ticker] = r.error;
                 });
-                container.innerHTML = '';
-                markFreshRender(container);
 
                 if (currentViewMode === 'table') {
                     renderTableContainer(results, riskVal, slippageVal, container);
@@ -1882,7 +1466,6 @@
 
                 speakResults(results);
                 applyFocusMode();
-                refreshEarningsForScan();
 
                 const successCount = results.filter(r => r.success).length;
                 const metricDiv = document.createElement('div');
@@ -1894,10 +1477,8 @@
                 errorMsg.innerText = "Critical Error: " + e.message;
                 errorMsg.classList.remove('hidden');
             } finally {
-                if (gen === streamGeneration) {
-                    setCalcBtnStreaming(false);
-                    if (collapseAfterCalc) setScannerCollapsed(true);
-                }
+                setCalcBtnStreaming(false);
+                if (collapseAfterCalc) setScannerCollapsed(true);
             }
         }
 
@@ -1915,7 +1496,6 @@
             riskPerShare += slippage;
             const shares = (riskPerShare > 0) ? Math.floor(risk / riskPerShare) : 0;
             const changePct = pc ? ((c - pc) / pc * 100).toFixed(2) : '0.00';
-            const hasBidAsk = !!(bid && bid > 0 && ask && ask > 0);
             const bidText = (bid && bid > 0) ? bid.toFixed(2) : '--';
             const askText = (ask && ask > 0) ? ask.toFixed(2) : '--';
             let statusClass = "status-wait";
@@ -1931,29 +1511,7 @@
                 statusClass = "glass-card";
                 rowClass = "";
             }
-            const notional = shares * c;
-            const rangePct = (h > l && c >= 0) ? Math.max(0, Math.min(100, (c - l) / (h - l) * 100)) : null;
-            const toTriggerPct = (trigger && c > 0) ? ((trigger - c) / c * 100) : null;
-            const signalSide = item.signalSide || null;
-            const sideMismatch = !!(signalSide && signalSide !== setupType);
-            const earn = earningsBadgeFor(ticker);
-            return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive,
-                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn };
-        }
-
-        function fmtMoneyShort(v) {
-            if (!Number.isFinite(v)) return '--';
-            if (v >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
-            if (v >= 1e4) return '$' + (v / 1e3).toFixed(1) + 'K';
-            return '$' + Math.round(v).toLocaleString();
-        }
-        function rangeText(f) {
-            const r = f.rangePct === null ? '--' : Math.round(f.rangePct) + '%';
-            const t = f.toTriggerPct === null ? '' : ` · T ${f.toTriggerPct >= 0 ? '+' : ''}${f.toTriggerPct.toFixed(1)}%`;
-            return `Range ${r}${t}`;
-        }
-        function setHidden(el, hidden) {
-            if (el && el.classList.contains('hidden') !== !!hidden) el.classList.toggle('hidden', !!hidden);
+            return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive };
         }
 
         function flashElement(el) {
@@ -1965,9 +1523,9 @@
 
         function setTextAndFlash(el, newText) {
             if (!el) return;
-            if (el.textContent === newText) return;
+            const oldText = el.textContent;
             el.textContent = newText;
-            flashElement(el);
+            if (oldText !== newText) flashElement(el);
         }
 
         function setTextIfChanged(el, newText) {
@@ -1975,26 +1533,9 @@
             if (el.textContent !== newText) el.textContent = newText;
         }
 
-        // Fade in the freshly rendered cards/rows once, without leaving an animation class on them.
-        function markFreshRender(container) {
-            if (!container) return;
-            container.classList.add('fresh-render');
-            setTimeout(() => container.classList.remove('fresh-render'), 400);
-        }
-
-        const cardClass = (f) => `result-card glass-card rounded-xl px-3 py-2 ${f.statusClass}`;
-        const rowClassFor = (f) => `result-row rounded-lg px-2.5 py-2 ${f.rowClass}`;
-        const exitBtnCardClass = (f) => `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
-        const exitBtnRowClass = (f) => `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
-        const earnBadgeClass = 'text-[8px] font-bold text-red-300 bg-red-950/60 border border-red-500/40 rounded px-1 py-px leading-none whitespace-nowrap';
-
-        function syncExitButton(exitBtn, f) {
-            if (!exitBtn) return;
-            exitBtn.dataset.price = f.c;
-            exitBtn.dataset.shares = f.shares;
-            exitBtn.dataset.stop = f.stopPrice;
-            exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
-            exitBtn.dataset.long = f.isGreenDay;
+        function setClassIfChanged(el, newClass) {
+            if (!el) return;
+            if (el.className !== newClass) el.className = newClass;
         }
 
         function renderCard(item, risk, slippage, container) {
@@ -2008,40 +1549,33 @@
                 : '';
             const card = document.createElement('div');
             card.id = `card-${f.ticker}`;
-            card.className = cardClass(f);
+            card.className = `glass-card rounded-xl px-3 py-2 animate-fade-in ${f.statusClass}`;
             card.innerHTML = `
                 <div class="flex items-start justify-between gap-2 mb-1.5">
                     <div class="flex items-start gap-2 min-w-0">
                         <input type="checkbox" class="trade-check mt-1" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)" title="Select for batch CSV">
                         <div>
                             <h2 class="text-xl font-black text-white tracking-tight leading-none">${f.ticker}</h2>
-                            <div class="flex items-center gap-1 mt-1 leading-none">
-                                <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
-                                <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠ signal ${f.signalSide || ''}</span>
-                            </div>
-                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                            <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase">${f.setupType}</div>
                         </div>
                     </div>
                     ${triggerBadge}
                     <div class="self-center text-right font-mono-num text-[9px] leading-tight text-gray-400 px-0.5">
                         <div>H <span data-field="high" class="text-gray-200">${f.h.toFixed(2)}</span></div>
                         <div>L <span data-field="low" class="text-gray-200">${f.l.toFixed(2)}</span></div>
-                        <div data-field="range" class="${showRangePct ? '' : 'hidden '}text-cyan-300/80">${rangeText(f)}</div>
                     </div>
                     <div class="text-right">
                         <div data-field="lastPrice" class="text-xl font-black text-blue-400 leading-none font-mono-num">$${f.c.toFixed(2)}</div>
                         <div class="text-[9px] font-mono-num mt-0.5">
                             <span data-field="changePct" class="${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold">${f.changePct > 0 ? '+' : ''}${f.changePct}%</span>
-                            <span data-field="bidAskWrap" class="${f.hasBidAsk ? '' : 'hidden'}">
-                                <span class="text-gray-500 mx-0.5">·</span>
-                                <span data-field="bid" class="text-blue-300">B $${f.bidText}</span>
-                                <span data-field="ask" class="text-indigo-300 ml-1">A $${f.askText}</span>
-                            </span>
+                            <span class="text-gray-500 mx-0.5">·</span>
+                            <span data-field="bid" class="text-blue-300">B $${f.bidText}</span>
+                            <span data-field="ask" class="text-indigo-300 ml-1">A $${f.askText}</span>
                         </div>
                     </div>
                 </div>
                 <div class="flex items-stretch gap-1.5">
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1">
                         Exit<br>Orders
                     </button>
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
@@ -2050,12 +1584,10 @@
                             <span data-field="shares" class="share-val">${f.shares.toLocaleString()}</span>
                             <span class="copy-msg absolute inset-0 text-emerald-400 text-[10px] flex items-center justify-center opacity-0">COPIED!</span>
                         </div>
-                        <div data-field="notional" class="text-[8px] text-cyan-500/70 font-mono-num leading-none">${fmtMoneyShort(f.notional)}</div>
                     </div>
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">Stop</div>
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
-                        <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
                 </div>
             `;
@@ -2064,43 +1596,44 @@
 
         function updateCard(card, item, risk, slippage) {
             const f = getRealtimeFields(item, risk, slippage);
-            const newCardClass = cardClass(f);
+            const newCardClass = `glass-card rounded-xl px-3 py-2 ${f.statusClass}`;
             if (card.className !== newCardClass) card.className = newCardClass;
-            const q = (sel) => card.querySelector(`[data-field="${sel}"]`);
-            const setupType = q('setupType');
+            const setupType = card.querySelector('[data-field="setupType"]');
             if (setupType) {
                 setTextIfChanged(setupType, f.setupType);
-                const newSetupClass = `text-[10px] font-black ${f.typeColor} leading-none uppercase`;
+                const newSetupClass = `text-[10px] font-black ${f.typeColor} mt-1 leading-none uppercase`;
                 if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
             }
-            const sideWarn = q('sideWarn');
-            if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
-            const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
-            setTextIfChanged(q('high'), f.h.toFixed(2));
-            setTextIfChanged(q('low'), f.l.toFixed(2));
-            const range = q('range');
-            if (range) { setTextIfChanged(range, rangeText(f)); setHidden(range, !showRangePct); }
-            setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
-            const changePct = q('changePct');
+            const high = card.querySelector('[data-field="high"]');
+            if (high) setTextIfChanged(high, f.h.toFixed(2));
+            const low = card.querySelector('[data-field="low"]');
+            if (low) setTextIfChanged(low, f.l.toFixed(2));
+            const lastPrice = card.querySelector('[data-field="lastPrice"]');
+            if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
+            const changePct = card.querySelector('[data-field="changePct"]');
             if (changePct) {
                 setTextIfChanged(changePct, `${f.changePct > 0 ? '+' : ''}${f.changePct}%`);
                 const newChangeClass = `${f.isGreenDay ? 'text-emerald-400' : 'text-red-400'} font-bold`;
                 if (changePct.className !== newChangeClass) changePct.className = newChangeClass;
             }
-            setHidden(q('bidAskWrap'), !f.hasBidAsk);
-            setTextIfChanged(q('bid'), `B $${f.bidText}`);
-            setTextIfChanged(q('ask'), `A $${f.askText}`);
-            setTextAndFlash(q('shares'), f.shares.toLocaleString());
-            setTextIfChanged(q('notional'), fmtMoneyShort(f.notional));
-            setTextIfChanged(q('stopPrice'), f.stopPrice.toFixed(2));
-            setTextIfChanged(q('rps'), `R/sh ${f.riskPerShare.toFixed(2)}`);
+            const bid = card.querySelector('[data-field="bid"]');
+            if (bid) setTextIfChanged(bid, `B $${f.bidText}`);
+            const ask = card.querySelector('[data-field="ask"]');
+            if (ask) setTextIfChanged(ask, `A $${f.askText}`);
+            const shares = card.querySelector('[data-field="shares"]');
+            if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
+            const stopPrice = card.querySelector('[data-field="stopPrice"]');
+            if (stopPrice) setTextIfChanged(stopPrice, f.stopPrice.toFixed(2));
             const copyBox = card.querySelector('.copy-hover');
             if (copyBox) copyBox.dataset.shares = f.shares;
             const exitBtn = card.querySelector('[data-action="open-exit-orders"]');
             if (exitBtn) {
-                syncExitButton(exitBtn, f);
-                const newExitClass = exitBtnCardClass(f);
+                exitBtn.dataset.price = f.c;
+                exitBtn.dataset.shares = f.shares;
+                exitBtn.dataset.stop = f.stopPrice;
+                exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
+                exitBtn.dataset.long = f.isGreenDay;
+                const newExitClass = `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
         }
@@ -2125,27 +1658,21 @@
             const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
             const row = document.createElement('div');
             row.id = `table-row-${f.ticker}`;
-            row.className = rowClassFor(f);
+            row.className = `rounded-lg px-2.5 py-2 animate-fade-in ${f.rowClass}`;
             row.innerHTML = `
                 <div class="flex items-center gap-1.5">
                     <input type="checkbox" class="trade-check shrink-0" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)">
                     <div class="w-[54px] shrink-0">
                         <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${f.ticker}</div>
-                        <div class="flex items-center gap-1 mt-0.5 leading-none">
-                            <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
-                            <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠</span>
-                        </div>
-                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                        <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase mt-0.5">${f.setupType}</div>
                     </div>
                     <div class="shrink-0">
                         <div data-field="lastPrice" class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${f.c.toFixed(2)}</div>
-                        <div data-field="bidAsk" class="${f.hasBidAsk ? '' : 'hidden '}text-[8px] text-gray-400 font-mono-num mt-0.5">B ${f.bidText} A ${f.askText}</div>
-                        <div data-field="range" class="${showRangePct ? '' : 'hidden '}text-[8px] text-cyan-300/80 font-mono-num mt-0.5">${rangeText(f)}</div>
+                        <div data-field="bidAsk" class="text-[8px] text-gray-400 font-mono-num mt-0.5">B ${f.bidText} A ${f.askText}</div>
                     </div>
                     <div class="shrink-0 text-[8px] font-mono-num text-gray-500 leading-tight w-[46px]">
                         <div data-field="high">H ${f.h.toFixed(2)}</div>
                         <div data-field="low">L ${f.l.toFixed(2)}</div>
-                        <div data-field="rps" class="text-gray-600">R ${f.riskPerShare.toFixed(2)}</div>
                     </div>
                     <div class="shrink-0 text-center w-[52px]">
                         <div class="text-[7px] text-gray-500 uppercase font-bold leading-none">Trigger</div>
@@ -2155,13 +1682,12 @@
                         <div class="text-[8px] text-cyan-500 uppercase font-bold leading-none">Sh</div>
                         <span data-field="shares" class="share-val block text-lg font-black font-mono-num text-cyan-300 leading-none">${f.shares.toLocaleString()}</span>
                         <span class="copy-msg hidden text-[9px] text-emerald-400">OK</span>
-                        <div data-field="notional" class="text-[7px] text-cyan-500/70 font-mono-num leading-none">${fmtMoneyShort(f.notional)}</div>
                     </button>
                     <div class="shrink-0 w-[48px] text-right">
                         <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}">Ord</button>
                 </div>
             `;
             return row;
@@ -2169,36 +1695,38 @@
 
         function updateTableRow(row, item, risk, slippage) {
             const f = getRealtimeFields(item, risk, slippage);
-            const newRowClass = rowClassFor(f);
+            const newRowClass = `rounded-lg px-2.5 py-2 ${f.rowClass}`;
             if (row.className !== newRowClass) row.className = newRowClass;
-            const q = (sel) => row.querySelector(`[data-field="${sel}"]`);
-            const setupType = q('setupType');
+            const setupType = row.querySelector('[data-field="setupType"]');
             if (setupType) {
                 setTextIfChanged(setupType, f.setupType);
-                const newSetupClass = `text-[9px] font-black ${f.typeColor} uppercase leading-none`;
+                const newSetupClass = `text-[9px] font-black ${f.typeColor} uppercase mt-0.5`;
                 if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
             }
-            setHidden(q('sideWarn'), !f.sideMismatch);
-            const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
-            setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
-            const bidAsk = q('bidAsk');
-            if (bidAsk) { setTextIfChanged(bidAsk, `B ${f.bidText} A ${f.askText}`); setHidden(bidAsk, !f.hasBidAsk); }
-            const range = q('range');
-            if (range) { setTextIfChanged(range, rangeText(f)); setHidden(range, !showRangePct); }
-            setTextIfChanged(q('high'), `H ${f.h.toFixed(2)}`);
-            setTextIfChanged(q('low'), `L ${f.l.toFixed(2)}`);
-            setTextIfChanged(q('rps'), `R ${f.riskPerShare.toFixed(2)}`);
-            setTextIfChanged(q('trigger'), f.trigger ? `$${f.trigger.toFixed(2)}` : '--');
-            setTextAndFlash(q('shares'), f.shares.toLocaleString());
-            setTextIfChanged(q('notional'), fmtMoneyShort(f.notional));
+            const lastPrice = row.querySelector('[data-field="lastPrice"]');
+            if (lastPrice) setTextAndFlash(lastPrice, `$${f.c.toFixed(2)}`);
+            const bidAsk = row.querySelector('[data-field="bidAsk"]');
+            if (bidAsk) setTextIfChanged(bidAsk, `B ${f.bidText} A ${f.askText}`);
+            const high = row.querySelector('[data-field="high"]');
+            if (high) setTextIfChanged(high, `H ${f.h.toFixed(2)}`);
+            const low = row.querySelector('[data-field="low"]');
+            if (low) setTextIfChanged(low, `L ${f.l.toFixed(2)}`);
+            const trigger = row.querySelector('[data-field="trigger"]');
+            if (trigger) setTextIfChanged(trigger, f.trigger ? `$${f.trigger.toFixed(2)}` : '--');
+            const shares = row.querySelector('[data-field="shares"]');
+            if (shares) setTextAndFlash(shares, f.shares.toLocaleString());
             const copyBtn = row.querySelector('.copy-hover');
             if (copyBtn) copyBtn.dataset.shares = f.shares;
-            setTextIfChanged(q('stopPrice'), f.stopPrice.toFixed(2));
+            const stopPrice = row.querySelector('[data-field="stopPrice"]');
+            if (stopPrice) setTextIfChanged(stopPrice, f.stopPrice.toFixed(2));
             const exitBtn = row.querySelector('[data-action="open-exit-orders"]');
             if (exitBtn) {
-                syncExitButton(exitBtn, f);
-                const newExitClass = exitBtnRowClass(f);
+                exitBtn.dataset.price = f.c;
+                exitBtn.dataset.shares = f.shares;
+                exitBtn.dataset.stop = f.stopPrice;
+                exitBtn.dataset.ref = f.isGreenDay ? f.l : f.h;
+                exitBtn.dataset.long = f.isGreenDay;
+                const newExitClass = `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
         }
@@ -2229,7 +1757,7 @@
             const { ticker, trigger, error } = item;
             const div = document.createElement('div');
             div.id = `card-${ticker || 'error'}`;
-            div.className = "result-card glass-card rounded-xl px-3 py-2 border-rose-500/40 bg-rose-950/30";
+            div.className = "glass-card rounded-xl px-3 py-2 animate-fade-in border-rose-500/40 bg-rose-950/30";
             div.innerHTML = `
                 <div class="flex items-start justify-between gap-2 mb-1.5">
                     <div class="flex items-start gap-2 min-w-0">
@@ -2246,7 +1774,7 @@
                            </div>`
                         : ''}
                     <div class="self-center text-right max-w-[140px]">
-                        <div class="text-[10px] font-bold text-rose-200 leading-tight">${escapeHtml(error)}</div>
+                        <div class="text-[10px] font-bold text-rose-200 leading-tight">${error}</div>
                     </div>
                 </div>
             `;
@@ -2300,8 +1828,6 @@
 
                 fillStrategySelect(document.getElementById('modalStrategySelect'), currentModalState.strategyId, currentModalState.isLong);
                 document.getElementById('modalLongStrategySection').classList.remove('hidden');
-                timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
-                syncTimedExitInputs();
                 recalcModalOrders();
             } catch (err) {
                 console.error('openStrategyModal error:', err);
@@ -2323,41 +1849,6 @@
 
         function handleModalBackdropClick(e) {
             if (e.target.id === 'strategyModalOverlay') closeStrategyModal();
-        }
-
-        // Keep every "Day-N exit" box (modal / batch / builder) in sync with the setting + chosen date.
-        function syncTimedExitInputs() {
-            if (timedExitEnabled && timedExitDate === null) timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
-            document.querySelectorAll('.timed-exit-box').forEach(box => {
-                box.classList.toggle('hidden', !timedExitEnabled);
-                const d = box.querySelector('.timed-exit-days'); if (d) d.textContent = maxHoldDays;
-                const t = box.querySelector('.timed-exit-time'); if (t) t.textContent = timedExitTime === 'MOC' ? 'MOC' : timedExitTime;
-                const inp = box.querySelector('.timed-exit-date'); if (inp && timedExitDate && inp.value !== timedExitDate) inp.value = timedExitDate;
-            });
-        }
-
-        function onTimedExitDateInput(el) {
-            timedExitDate = el.value;
-            syncTimedExitInputs();
-            recalcModalOrders();
-            renderBatchPreview();
-            document.querySelectorAll('#builderRows .builder-row').forEach(refreshBuilderPreview);
-        }
-
-        function timedExitSummaryHtml(built) {
-            if (!built || !built.ok || !built.timedExit) return '';
-            const t = built.timedExit;
-            return `<div class="text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1">⏱ ${t.time === 'MOC' ? 'MOC' : 'MKT @ ' + t.time + ' ET'} on ${t.date}: scheduled exit for each exported leg. Verify partial-fill reduction in TWS; not linked to your live position.</div>`;
-        }
-
-        function buildNotesHtml(built) {
-            if (!built || !built.notes || !built.notes.length) return '';
-            return built.notes.map(n => `<div class="text-[10px] text-amber-300">⚠ ${n}</div>`).join('');
-        }
-
-        function stopLabelHtml(p) {
-            if (p.adjStop === null || p.adjStop === undefined) return `STP $${p.stop.toFixed(2)}`;
-            return `STP $${p.stop.toFixed(2)} <span class="text-amber-300">→ $${p.adjStop.toFixed(2)} once $${p.adjTrigger.toFixed(2)} prints</span>`;
         }
 
         function onModalStrategyChange() {
@@ -2393,15 +1884,15 @@
                 cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
                 return;
             }
-            ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + `Exit by day ${maxHoldDays}. TIF GTC.`;
+            ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + 'Exit at the 5th day. TIF GTC.';
             cardsContainer.innerHTML = built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
                         <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
                         <div class="text-xs font-black text-white">
-                            ${stopLabelHtml(p)}
+                            STP $${p.stop.toFixed(2)}
                             <span class="text-gray-500">+</span>
-                            LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
+                            LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${i})">
                             <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span>
                         </div>
                     </div>
@@ -2410,7 +1901,7 @@
                         <button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
                     </div>
                 </div>
-            `).join('') + timedExitSummaryHtml(built) + buildNotesHtml(built);
+            `).join('');
         }
 
         function copySingleValue(val, btnElement) {
@@ -2465,10 +1956,6 @@
         // TWS BASKETTRADER CSV GENERATOR (PURE EXIT OCA)
         // ========================================================
         const TWS_CSV_HEADERS = ["Action", "Quantity", "Symbol", "SecType", "Exchange", "Currency", "TimeInForce", "OrderType", "LmtPrice", "AuxPrice", "BasketTag", "OcaGroup"];
-        // Extra TWS fields, only emitted when a row uses them (timed exit / adjustable stops).
-        // Names follow the TWS order attributes; change here if your TWS export uses different headers.
-        const TWS_EXTRA_HEADERS = ["GoodAfter", "Adj Order Type", "Trigger Price", "Adj Stop Price", "OcaType"];
-        const TWS_COL = { GAT: 12, ADJ_TYPE: 13, TRIGGER: 14, ADJ_STOP: 15, OCA_TYPE: 16 };
 
         function splitSharesByPct(total, pcts) {
             const raw = pcts.map(p => (total * p) / 100);
@@ -2490,141 +1977,49 @@
         }
 
         function validateTradeParams(isLong, entry, shares, stop) {
-            if (!Number.isSafeInteger(shares) || shares <= 0) return 'Shares must be a positive whole number';
-            if (!Number.isFinite(entry) || entry <= 0) return 'Entry must be > 0';
-            if (!Number.isFinite(stop) || stop <= 0) return 'Stop must be > 0';
+            if (!shares || shares <= 0) return 'Shares must be > 0';
+            if (!entry || entry <= 0) return 'Entry must be > 0';
+            if (!stop || stop <= 0) return 'Stop must be > 0';
             if (isLong && !(entry > stop)) return 'Long: entry must be above stop';
             if (!isLong && !(stop > entry)) return 'Short: stop must be above entry';
             return null;
         }
 
-        // Strategy legs must add up to exactly 100% of the position.
-        function strategyLegsError(strat) {
-            const legs = (strat && strat.legs) || [];
-            if (!Array.isArray(legs) || !legs.length) return 'Strategy has no legs';
-            if (legs.some(l => !l || !Number.isFinite(Number(l.pct)) || Number(l.pct) < 0)) return 'Leg percentages must be non-negative numbers';
-            const sum = legs.reduce((a, l) => a + Number(l.pct), 0);
-            if (Math.abs(sum - 100) > 0.000001) return `Strategy legs total ${Math.round(sum * 100) / 100}% (must be 100%)`;
-            if (legs.some(l => !Number.isFinite(Number(l.rr)) || !(Number(l.rr) > 0))) return 'Each leg needs a TP (R) above 0';
-            if (legs.some(l => !['fixed', 'breakeven', 'plus1'].includes(l.stopMode || 'fixed'))) return 'Unknown stop mode';
-            return null;
-        }
-
-        // Unique-per-export suffix so OCA groups never collide with an older live order set.
-        let ocaSequence = 0;
-        function ocaSuffix() {
-            const unique = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${++ocaSequence}`;
-            return `_${unique}`;
-        }
-
-        function timedExitConfig(override) {
-            if (override) return override;
-            if (!timedExitEnabled) return null;
-            const date = timedExitDate ?? addTradingDays(nyDateStr(), maxHoldDays);
-            return { enabled: true, date, time: timedExitTime };
-        }
-
-        // TWS GoodAfterTime: "YYYYMMDD HH:MM:SS US/Eastern"
-        function goodAfterTimeStr(dateStr, hhmm) {
-            return `${String(dateStr).replace(/-/g, '')} ${hhmm}:00 US/Eastern`;
-        }
-
-        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, opts = {}) {
+        function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps) {
             const err = validateTradeParams(isLong, entry, shares, stop);
             if (err) return { ok: false, error: err, rows: [], preview: [] };
             const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
-            const legErr = strategyLegsError(strat);
-            if (legErr) return { ok: false, error: legErr, rows: [], preview: [] };
             const rps = isLong ? (entry - stop) : (stop - entry);
             const action = isLong ? 'SELL' : 'BUY';
             const pcts = strat.legs.map(l => Number(l.pct) || 0);
             const qtys = splitSharesByPct(shares, pcts);
-            const suffix = opts.ocaSuffix !== undefined ? opts.ocaSuffix : ocaSuffix();
-            const timed = timedExitConfig(opts.timedExit);
-            const timedEnabled = !!(timed && timed.enabled);
-            if (timedEnabled && (!isNYSEMarketOpenDay(timed.date) || !TIMED_EXIT_TIMES.includes(timed.time) || Number(String(timed.date).slice(0, 4)) > 2030)) {
-                return { ok: false, error: 'Choose a valid trading date through 2030 and a scheduled market-exit time.', rows: [], preview: [] };
-            }
-            if (timedEnabled && (timed.date < nyDateStr() || (timed.date === nyDateStr() && timed.time <= `${String(nyNow().h).padStart(2, '0')}:${String(nyNow().m).padStart(2, '0')}`))) {
-                return { ok: false, error: 'Scheduled exit must be in the future.', rows: [], preview: [] };
-            }
-            if (timedEnabled && NYSE_EARLY_CLOSE.has(timed.date)) {
-                return { ok: false, error: 'The selected date closes at 1 PM ET. Choose another date; late-afternoon scheduling is unavailable that day.', rows: [], preview: [] };
-            }
             const rows = [];
             const preview = [];
-            const notes = [];
             strat.legs.forEach((leg, i) => {
                 const qty = qtys[i];
                 if (!qty) return;
                 const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
                 const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
                 const tp = customTp || defaultTp;
-                const oca = `${ticker}_${strat.id}_L${i + 1}${suffix}`;
-                let stopMode = leg.stopMode || 'fixed';
-                let stp = stop;
-                let adjStop = null, adjTrigger = null;
-                if (stopMode !== 'fixed') {
-                    const prevLeg = preview[preview.length - 1];
-                    if (prevLeg) {
-                        // Adjustable stop: sits at the original stop until the previous leg's TP prints, then moves.
-                        adjStop = stopPriceForLeg(isLong, entry, stop, stopMode);
-                        adjTrigger = Number(prevLeg.tp.toFixed(2));
-                    } else {
-                        notes.push(`Leg ${i + 1}: "${stopMode}" stop has no prior leg to trigger on — placed as a fixed stop.`);
-                        stopMode = 'fixed';
-                    }
-                }
-                const stpRow = [action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", '', stp.toFixed(2), ticker, oca];
-                if (adjStop !== null) {
-                    stpRow[TWS_COL.ADJ_TYPE] = 'STP';
-                    stpRow[TWS_COL.TRIGGER] = adjTrigger.toFixed(2);
-                    stpRow[TWS_COL.ADJ_STOP] = adjStop.toFixed(2);
-                }
-                rows.push(stpRow);
+                const stp = stopPriceForLeg(isLong, entry, stop, leg.stopMode || 'fixed');
+                const oca = `${ticker}_${strat.id}_L${i + 1}`;
+                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "STP", '', stp.toFixed(2), ticker, oca]);
                 rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
-                if (timedEnabled) {
-                    const isMoc = timed.time === 'MOC';
-                    const exitRow = [action, qty, ticker, "STK", "SMART", "USD", isMoc ? "DAY" : "GTC", isMoc ? "MOC" : "MKT", '', '', ticker, oca];
-                    exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
-                    rows.push(exitRow);
-                }
-                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode, adjStop, adjTrigger, legIndex: i });
-                if (isLong ? tp <= entry : tp >= entry) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode: leg.stopMode || 'fixed' });
             });
-            if (preview.some(p => !Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0)) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
-            if (timedEnabled || preview.some(p => p.adjStop !== null)) {
-                rows.forEach(r => { r[TWS_COL.OCA_TYPE] = 2; });
-                notes.push('EXPERIMENTAL: validate all fields and proportional OCA reduction in TWS paper, including partial fills. These orders do not read account positions or cancel unrelated orders.');
-            }
             if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
-            return { ok: true, error: null, rows, preview, strategy: strat, rps, notes, timedExit: timedEnabled ? { date: timed.date, time: timed.time } : null };
+            return { ok: true, error: null, rows, preview, strategy: strat, rps };
         }
 
-        // Header is the classic 12 columns unless a row actually uses an extra TWS field.
-        function csvHeaderForRows(rows) {
-            const used = TWS_EXTRA_HEADERS.filter((_, i) => rows.some(r => r[TWS_CSV_HEADERS.length + i] !== undefined && r[TWS_CSV_HEADERS.length + i] !== ''));
-            return TWS_CSV_HEADERS.concat(used);
-        }
-
-        function csvTextForRows(rows) {
-            const header = csvHeaderForRows(rows);
-            const base = TWS_CSV_HEADERS.length;
-            const extraIdx = header.slice(base).map(name => base + TWS_EXTRA_HEADERS.indexOf(name));
-            const lines = rows.map(r => {
-                const cells = r.slice(0, base).map(v => v === undefined ? '' : v);
-                extraIdx.forEach(i => cells.push(r[i] === undefined ? '' : r[i]));
-                return cells.join(',');
-            });
-            return [header.join(','), ...lines].join('\n');
+        function appendExitOcaRows(rows, ticker, isLong, entry, shares, stop, strategyId) {
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId);
+            if (!built.ok) return false;
+            built.rows.forEach(r => rows.push(r));
+            return true;
         }
 
         function triggerCsvDownload(filename, rows) {
-            if (rows.some(r => r[TWS_COL.GAT] || r[TWS_COL.ADJ_TYPE]) && !document.getElementById('advancedCsvAck')?.checked) {
-                alert('Before exporting advanced orders, acknowledge the TWS paper-validation requirement in Settings. Standard Option 1/2 exit exports are unchanged.');
-                return;
-            }
-            const csvContent = csvTextForRows(rows);
+            const csvContent = [TWS_CSV_HEADERS.join(","), ...rows.map(r => r.join(","))].join("\n");
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
@@ -2649,7 +2044,7 @@
                 alert(built.error);
                 return;
             }
-            triggerCsvDownload(`${ticker}_TWS_Exit_${nyDateStr()}.csv`, built.rows);
+            triggerCsvDownload(`${ticker}_TWS_Exit_Basket.csv`, built.rows);
         }
 
         function snapshotTradeFromItem(item, risk, slippage) {
@@ -2718,11 +2113,11 @@
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
                     <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
-                    <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
+                    <span class="text-red-300 w-16 text-center">STP ${p.stop.toFixed(2)}</span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${i}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
                     <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
                 </div>
-            `)).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
+            `)).join('');
         }
 
         function openBatchReviewDrawer() {
@@ -2736,14 +2131,10 @@
                 .filter(t => t && selectedTickers.has(t.ticker));
             const isAllLong = trades.length > 0 && trades.every(t => t.isLong);
             const globalStrategySel = document.getElementById('batchGlobalStrategy');
-            if (globalStrategySel) fillStrategySelect(globalStrategySel, AUTO_STRATEGY, isAllLong, true);
-            timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
-            syncTimedExitInputs();
+            if (globalStrategySel) fillStrategySelect(globalStrategySel, defaultStrategyId(isAllLong), isAllLong);
             if (!trades.length) {
                 list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
-                const ov = document.getElementById('batchReviewOverlay');
-                ov.classList.remove('hidden');
-                ov.style.display = 'flex';
+                document.getElementById('batchReviewOverlay').classList.remove('hidden');
                 renderBatchPreview();
                 return;
             }
@@ -2790,8 +2181,7 @@
                 const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
-                const globalVal = globalStrategyEl && globalStrategyEl.value;
-                const strategyId = (globalVal && globalVal !== AUTO_STRATEGY) ? globalVal : defaultStrategyId(isLong);
+                const strategyId = (globalStrategyEl && globalStrategyEl.value) || defaultStrategyId(isLong);
                 const customTps = batchCustomTps[ticker] || [];
                 const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
                 if (!built.ok) errors.push(`${ticker}: ${built.error}`);
@@ -2822,7 +2212,7 @@
             }
             const rows = [];
             trades.forEach(t => t.built.rows.forEach(r => rows.push(r)));
-            triggerCsvDownload(`Batch_TWS_Exit_${nyDateStr()}.csv`, rows);
+            triggerCsvDownload('Batch_TWS_Exit_Basket.csv', rows);
         }
 
         function selectedSnapshotTrades() {
@@ -2843,11 +2233,7 @@
                 id: Date.now() + Math.random(),
                 ticker: t.ticker,
                 side: t.isLong ? 'LONG' : 'SHORT',
-                strategyId: strat.id,
-                marketRegime: globalMarketRegime,
-                holdLimit: maxHoldDays,
-                targets: tps,
-                entryDate: nyDateStr(),
+                entryDate: new Date().toISOString().split('T')[0],
                 entryPrice: t.entry,
                 shares: t.shares,
                 stopPrice: t.stop,
@@ -2910,9 +2296,7 @@
             const box = el.querySelector('.b-preview');
             const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId);
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ')
-                + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
-                + buildNotesHtml(built);
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ');
         }
 
         function collectBuilderTrades() {
@@ -2940,7 +2324,7 @@
             });
             if (errors.length) { alert(errors.join('\n')); return; }
             if (!rows.length) { alert('Add at least one complete trade.'); return; }
-            triggerCsvDownload(`Manual_TWS_Exit_${nyDateStr()}.csv`, rows);
+            triggerCsvDownload('Manual_TWS_Exit_Basket.csv', rows);
         }
 
         function logAllBuilderTrades() {
@@ -2973,14 +2357,11 @@
             alert(`Trade for ${ticker} logged successfully in Active Trades!`);
         }
 
-        const AUTO_STRATEGY = '__auto';
-        function fillStrategySelect(sel, selectedId, isLong, includeAuto = false) {
+        function fillStrategySelect(sel, selectedId, isLong) {
             if (!sel) return;
             const list = allStrategies().filter(s => isLong ? !s.short : true);
-            const autoOpt = includeAuto ? `<option value="${AUTO_STRATEGY}" ${selectedId===AUTO_STRATEGY?'selected':''}>Auto · per side &amp; regime</option>` : '';
-            sel.innerHTML = autoOpt + list.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${escapeHtml(s.name)}</option>`).join('');
-            const valid = (includeAuto && selectedId === AUTO_STRATEGY) || list.some(s => s.id === selectedId);
-            if (selectedId && !valid) sel.value = includeAuto ? AUTO_STRATEGY : (list[0] ? list[0].id : '');
+            sel.innerHTML = list.map(s => `<option value="${s.id}" ${s.id===selectedId?'selected':''}>${s.name}</option>`).join('');
+            if (selectedId && !list.some(s => s.id === selectedId) && list[0]) sel.value = list[0].id;
         }
 
         function refreshStrategySelects() {
@@ -3028,15 +2409,13 @@
                     </div>`).join('');
                 return `<div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 space-y-1.5" data-sid="${s.id}">
                     <div class="flex items-center gap-2">
-                        <input ${locked?'disabled':''} class="flex-1 bg-slate-800 text-white text-xs font-bold rounded px-2 py-1 border border-slate-600 strat-name" value="${escapeHtml(s.name)}">
+                        <input ${locked?'disabled':''} class="flex-1 bg-slate-800 text-white text-xs font-bold rounded px-2 py-1 border border-slate-600 strat-name" value="${s.name.replace(/"/g,'&quot;')}">
                         ${locked ? '<span class="text-[9px] text-gray-500 uppercase">Built-in</span>' :
                             `<button onclick="addStrategyLeg('${s.id}')" class="text-[10px] text-blue-300 font-bold">+ Leg</button>
                              <button onclick="deleteStrategy('${s.id}')" class="text-[10px] text-red-400 font-bold">Del</button>`}
                     </div>
                     <div class="grid grid-cols-3 gap-1 text-[8px] text-gray-500 uppercase font-bold"><span>% of pos</span><span>TP (R)</span><span>Stop after</span></div>
                     ${legs}
-                    <div class="strat-warn text-[10px] text-red-300 font-bold ${strategyLegsError(s) ? '' : 'hidden'}">⚠ ${strategyLegsError(s) || ''}</div>
-                    ${!locked && (s.legs || []).some((l, i) => l.stopMode && l.stopMode !== 'fixed') ? '<div class="text-[9px] text-amber-300/80">Non-fixed stops export as TWS adjustable stops (trigger = previous leg\'s TP). Verify once in a paper account.</div>' : ''}
                 </div>`;
             };
             box.innerHTML = DEFAULT_STRATEGIES.filter(s => !s.short).map(s => renderOne(s, true)).join('') +
@@ -3059,13 +2438,6 @@
             if (el.dataset.k === 'pct' || el.dataset.k === 'rr') s.legs[i][el.dataset.k] = parseFloat(el.value) || 0;
             else s.legs[i][el.dataset.k] = el.value;
             persistCustomStrategies();
-            const card = el.closest('[data-sid]');
-            const warn = card && card.querySelector('.strat-warn');
-            if (warn) {
-                const msg = strategyLegsError(s);
-                warn.textContent = msg ? `⚠ ${msg}` : '';
-                warn.classList.toggle('hidden', !msg);
-            }
         }
 
         function addStrategyLeg(id) {
@@ -3105,100 +2477,34 @@
             '2030-01-01', '2030-01-21', '2030-02-18', '2030-04-19', '2030-05-27', '2030-06-19', '2030-07-04', '2030-09-02', '2030-11-28', '2030-12-25'
         ]);
 
-        // NYSE 1:00 PM early closes (2024 - 2030)
-        const NYSE_EARLY_CLOSE = new Set([
-            '2024-07-03', '2024-11-29', '2024-12-24',
-            '2025-07-03', '2025-11-28', '2025-12-24',
-            '2026-11-27', '2026-12-24',
-            '2027-11-26',
-            '2028-07-03', '2028-11-24',
-            '2029-07-03', '2029-11-23', '2029-12-24',
-            '2030-07-03', '2030-11-29', '2030-12-24'
-        ]);
-
-        // ========================================================
-        // NEW YORK TIME CORE (all market-time logic goes through here)
-        // ========================================================
-        const NY_TZ = 'America/New_York';
-        const NY_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
-            timeZone: NY_TZ, hourCycle: 'h23', weekday: 'short',
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-        const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const MARKET_OPEN_MIN = 9 * 60 + 30;
-
-        function nyNow(d = new Date()) {
-            const p = {};
-            NY_PARTS_FMT.formatToParts(d).forEach(x => { p[x.type] = x.value; });
-            const h = parseInt(p.hour, 10) % 24;
-            const m = parseInt(p.minute, 10);
-            const s = parseInt(p.second, 10);
-            const date = `${p.year}-${p.month}-${p.day}`;
-            const weekday = WEEKDAYS.indexOf(p.weekday);
-            const minutesOfDay = h * 60 + m;
-            const closeMin = NYSE_EARLY_CLOSE.has(date) ? 13 * 60 : 16 * 60;
-            const isTradingDay = isNYSEMarketOpenDay(date);
-            const isRTH = isTradingDay && minutesOfDay >= MARKET_OPEN_MIN && minutesOfDay < closeMin;
-            return { date, h, m, s, weekday, minutesOfDay, closeMin, isTradingDay, isRTH };
-        }
-
-        function nyDateStr() { return nyNow().date; }
-
-        function ymdToUtc(dateStr) {
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) return new Date(NaN);
-            const [y, mo, d] = dateStr.split('-').map(Number);
-            const date = new Date(Date.UTC(y, mo - 1, d));
-            return utcToYmd(date) === dateStr && y >= 2000 && y <= 2100 ? date : new Date(NaN);
-        }
-        function utcToYmd(dt) {
-            return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
-        }
-
-        function isNYSEMarketOpenDay(dateStr) {
-            const dt = ymdToUtc(dateStr);
-            const day = dt.getUTCDay();
-            if (isNaN(dt) || day === 0 || day === 6) return false;
-            return !NYSE_HOLIDAYS.has(utcToYmd(dt));
-        }
-
-        // Number of NYSE trading days strictly after startDateStr up to and including endDateStr.
-        // Entry day counts as Day 0.
-        function tradingDaysBetween(startDateStr, endDateStr) {
-            const end = ymdToUtc(endDateStr);
-            const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || isNaN(end) || cur >= end) return 0;
-            let count = 0;
-            while (cur < end) {
-                cur.setUTCDate(cur.getUTCDate() + 1);
-                if (isNYSEMarketOpenDay(utcToYmd(cur))) count++;
-            }
-            return count;
-        }
-
-        // Date string that is n trading days after startDateStr.
-        function addTradingDays(startDateStr, n) {
-            const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || !Number.isInteger(n) || n < 0 || n > 260) return '';
-            let added = 0;
-            while (added < n) {
-                cur.setUTCDate(cur.getUTCDate() + 1);
-                if (isNYSEMarketOpenDay(utcToYmd(cur))) added++;
-            }
-            return utcToYmd(cur);
+        function isNYSEMarketOpenDay(dateObj) {
+            const day = dateObj.getDay();
+            if (day === 0 || day === 6) return false;
+            const iso = dateObj.toISOString().split('T')[0];
+            if (NYSE_HOLIDAYS.has(iso)) return false;
+            return true;
         }
 
         function calculateMarketDaysElapsed(startDateStr) {
-            return tradingDaysBetween(startDateStr, nyDateStr());
+            const start = new Date(startDateStr);
+            const now = new Date();
+            let count = 1;
+            let cur = new Date(start);
+            while (cur < now) {
+                cur.setDate(cur.getDate() + 1);
+                if (isNYSEMarketOpenDay(cur) && cur <= now) {
+                    count++;
+                }
+            }
+            return count;
         }
 
         let activeTradesPriceCache = {};
 
         function getTradePrice(ticker) {
-            const cached = activeTradesPriceCache[ticker];
-            const live = realtimeQuotes[ticker];
-            if (live?.c > 0 && (!cached || (lastTradeAt[ticker] || 0) > cached.at)) return live.c;
-            return cached?.price || live?.c || null;
+            if (activeTradesPriceCache[ticker]) return activeTradesPriceCache[ticker];
+            if (realtimeQuotes[ticker] && realtimeQuotes[ticker].c) return realtimeQuotes[ticker].c;
+            return null;
         }
 
         function getPnlBadgeHtml(trade) {
@@ -3209,11 +2515,15 @@
             const rMult = rps > 0 ? (isLong ? (curPrice - trade.entryPrice) / rps : (trade.entryPrice - curPrice) / rps) : 0;
             const pnlDollars = (isLong ? (curPrice - trade.entryPrice) : (trade.entryPrice - curPrice)) * trade.shares;
 
-            const atStop = isLong ? curPrice <= trade.stopPrice : curPrice >= trade.stopPrice;
-            const atTp2 = trade.tp2 && (isLong ? curPrice >= trade.tp2 : curPrice <= trade.tp2);
-            const atTp1 = trade.tp1 && (isLong ? curPrice >= trade.tp1 : curPrice <= trade.tp1);
-            const level = atStop ? 'AT STOP LEVEL' : atTp2 ? 'AT TARGET LEVEL' : atTp1 ? 'AT TP1 LEVEL' : '';
-            const statusTag = level ? `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-950 text-amber-300 border border-amber-500/40">${level}</span>` : '';
+            let statusTag = '';
+            if (isLong) {
+                if (curPrice <= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice >= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP2 HIT</span>`;
+                else if (trade.tp1 && curPrice >= trade.tp1) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-950 text-amber-300 border border-amber-500/40">⭐ TP1 HIT</span>`;
+            } else {
+                if (curPrice >= trade.stopPrice) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-red-950 text-red-300 border border-red-500/40">🛑 STOPPED</span>`;
+                else if (trade.tp2 && curPrice <= trade.tp2) statusTag = `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">🎯 TP HIT</span>`;
+            }
 
             const rText = `${rMult >= 0 ? '+' : ''}${rMult.toFixed(2)}R`;
             const dollarText = `${pnlDollars >= 0 ? '+$' : '-$'}${Math.abs(pnlDollars).toFixed(0)}`;
@@ -3234,24 +2544,17 @@
             const provider = document.getElementById('apiProvider').value;
             const config = API_CONFIGS[provider];
             const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
-            const tickers = [...new Set(activeTradesLog.filter(t => t.status === 'ACTIVE').map(t => t.ticker))];
-            if (!apiKey) {
-                if (btn) btn.innerText = 'Refresh Prices';
-                alert('Save an API key in Settings first.');
-                return;
-            }
-            let failed = 0;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+
             try {
-                const promises = tickers.map(async ticker => {
+                const promises = activeTrades.map(async t => {
                     try {
-                        const data = await fetchTickerData(ticker, provider, apiKey);
-                        if (data && Number.isFinite(data.c) && data.c > 0) activeTradesPriceCache[ticker] = { price: data.c, at: Date.now() };
-                        else failed++;
-                    } catch (e) { failed++; }
+                        const data = await fetchTickerData(t.ticker, provider, apiKey);
+                        if (data && data.c) activeTradesPriceCache[t.ticker] = data.c;
+                    } catch (e) {}
                 });
                 await Promise.all(promises);
                 renderActiveTradesPage();
-                if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
             } finally {
                 if (btn) btn.innerText = '🔄 Refresh Prices';
@@ -3313,130 +2616,10 @@
             `;
         }
 
-        let tradesTab = 'active';
-        let closingTradeId = null;
-
-        function journalResult(trade) {
-            const risk = Math.abs(trade.entryPrice - trade.stopPrice) * trade.shares;
-            const pnl = (trade.side === 'LONG' ? 1 : -1) * (trade.exitPrice - trade.entryPrice) * trade.shares - (Number(trade.fees) || 0);
-            return { pnl, rMultiple: risk > 0 ? pnl / risk : 0, holdDays: tradingDaysBetween(trade.entryDate, trade.exitDate) };
-        }
-
-        function setTradesTab(tab) {
-            tradesTab = tab === 'history' ? 'history' : 'active';
-            closingTradeId = null;
-            renderActiveTradesPage();
-        }
-
-        function toggleTradeClose(id) {
-            closingTradeId = closingTradeId === id ? null : id;
-            renderActiveTradesPage();
-        }
-
-        function tradeCloseForm(trade) {
-            if (closingTradeId !== trade.id) return '';
-            const quote = getTradePrice(trade.ticker);
-            return `<form onsubmit="event.preventDefault(); submitTradeClose(${trade.id})" class="border-t border-white/10 pt-2 space-y-2 text-[11px]">
-                <p class="text-gray-400">Enter the quantity-weighted average exit price across ALL shares, including partial exits. A quote prefill is only an estimate; use your actual fills.</p>
-                <div class="grid grid-cols-2 gap-2">
-                    <label>Average exit $<input id="closePrice-${trade.id}" type="number" min="0.0001" step="any" required value="${quote ? quote.toFixed(2) : ''}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
-                    <label>Total fees $<input id="closeFees-${trade.id}" type="number" min="0" step="0.01" required value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
-                    <label>Entry date<input id="closeEntryDate-${trade.id}" type="date" required value="${escapeHtml(trade.entryDate)}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
-                    <label>Final exit date<input id="closeDate-${trade.id}" type="date" required value="${nyDateStr()}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
-                </div>
-                <label class="block">Note<textarea id="closeNote-${trade.id}" maxlength="2000" rows="2" class="w-full bg-slate-800 border border-slate-600 rounded p-1">${escapeHtml(trade.note || '')}</textarea></label>
-                <button type="submit" class="bg-emerald-700 rounded px-3 py-1.5 font-bold">RECORD CLOSE</button>
-                <button type="button" onclick="toggleTradeClose(${trade.id})" class="text-gray-400 px-2">Cancel</button>
-            </form>`;
-        }
-
-        function submitTradeClose(id) {
-            const trade = activeTradesLog.find(t => t.id === id && t.status === 'ACTIVE');
-            if (!trade) return;
-            const exitPrice = Number(document.getElementById(`closePrice-${id}`).value);
-            const fees = Number(document.getElementById(`closeFees-${id}`).value);
-            const entryDate = document.getElementById(`closeEntryDate-${id}`).value;
-            const exitDate = document.getElementById(`closeDate-${id}`).value;
-            if (!Number.isFinite(exitPrice) || exitPrice <= 0 || !Number.isFinite(fees) || fees < 0 || isNaN(ymdToUtc(entryDate)) || isNaN(ymdToUtc(exitDate)) || exitDate < entryDate || exitDate > nyDateStr()) {
-                alert('Enter a valid exit price, non-negative fees, and dates between entry and today.');
-                return;
-            }
-            const before = { ...trade };
-            Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
-            Object.assign(trade, journalResult(trade));
-            try { saveActiveTradesLog(); } catch (error) {
-                activeTradesLog[activeTradesLog.indexOf(trade)] = before;
-                alert('Could not save the journal. Export a backup and check browser storage.');
-                return;
-            }
-            closingTradeId = null;
-            updateActiveTradesCountBadge();
-            renderActiveTradesPage();
-            showUndoToast(`Recorded ${trade.ticker} in History.`, () => {
-                const idx = activeTradesLog.findIndex(t => t.id === id);
-                if (idx >= 0) activeTradesLog[idx] = before;
-                saveActiveTradesLog();
-                updateActiveTradesCountBadge();
-                renderActiveTradesPage();
-            });
-        }
-
-        function journalHistoryHtml(trades) {
-            if (!trades.length) return '<p class="text-center text-gray-400 py-8 text-xs">No closed trades yet.</p>';
-            const results = trades.map(journalResult);
-            const sum = key => results.reduce((n, r) => n + r[key], 0);
-            const stats = [
-                ['Closed', trades.length], ['Win rate', `${Math.round(results.filter(r => r.pnl > 0).length / trades.length * 100)}%`],
-                ['Avg R', (sum('rMultiple') / trades.length).toFixed(2)], ['Total R', sum('rMultiple').toFixed(2)],
-                ['Net P&L', `$${sum('pnl').toFixed(2)}`], ['Avg days', (sum('holdDays') / trades.length).toFixed(1)]
-            ];
-            return `<div class="grid grid-cols-3 gap-2">${stats.map(([label, value]) => `<div class="bg-slate-900/60 rounded p-2 text-center"><div class="text-[9px] text-gray-400">${label}</div><strong class="text-xs">${value}</strong></div>`).join('')}</div>` + trades.map((trade, i) => {
-                const result = results[i];
-                return `<div class="bg-slate-900/60 rounded-xl border border-white/10 p-3 space-y-1 text-xs">
-                    <div class="flex justify-between gap-2"><strong>${escapeHtml(trade.ticker)} ${escapeHtml(trade.side)}</strong><strong class="${result.pnl >= 0 ? 'text-emerald-300' : 'text-red-300'}">$${result.pnl.toFixed(2)} / ${result.rMultiple.toFixed(2)}R</strong></div>
-                    <div class="text-gray-400">${trade.shares} shares @ $${Number(trade.entryPrice).toFixed(2)} / Avg exit $${Number(trade.exitPrice).toFixed(2)} / Fees $${(Number(trade.fees) || 0).toFixed(2)}</div>
-                    <div class="text-gray-400">${escapeHtml(trade.entryDate)} to ${escapeHtml(trade.exitDate)} / ${result.holdDays} trading days</div>
-                    <div class="text-gray-400">${escapeHtml(trade.regime)}</div>
-                    ${trade.note ? `<p class="whitespace-pre-wrap break-words text-gray-300">${escapeHtml(trade.note)}</p>` : ''}
-                    <button onclick="deleteTrade(${trade.id})" class="text-red-400 text-[10px]">Remove record</button>
-                </div>`;
-            }).join('');
-        }
-
-        function csvCell(value) {
-            let text = String(value ?? '');
-            if (typeof value === 'string' && /^[\s]*[=+@-]/.test(text)) text = "'" + text;
-            return /[,"\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
-        }
-
-        function downloadText(filename, text, type) {
-            const url = URL.createObjectURL(new Blob([text], { type }));
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-        }
-
-        function exportJournalCsv() {
-            const closed = activeTradesLog.filter(t => t.status === 'CLOSED');
-            if (!closed.length) { alert('No closed trades to export.'); return; }
-            const header = ['Ticker', 'Side', 'Strategy', 'Regime', 'EntryDate', 'ExitDate', 'Shares', 'EntryPrice', 'AverageExitPrice', 'Fees', 'NetPnL', 'RMultiple', 'HoldDays', 'Note'];
-            const rows = closed.map(t => {
-                const r = journalResult(t);
-                return [t.ticker, t.side, t.regime, t.marketRegime || '', t.entryDate, t.exitDate, t.shares, t.entryPrice, t.exitPrice, Number(t.fees) || 0, Number(r.pnl.toFixed(2)), Number(r.rMultiple.toFixed(4)), r.holdDays, t.note || ''];
-            });
-            downloadText(`Trade_Journal_${nyDateStr()}.csv`, [header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
-        }
-
         function tradeCardHtml(trade) {
             const dayCount = calculateMarketDaysElapsed(trade.entryDate);
             const isLong = trade.side === 'LONG';
-            const holdLimit = boundedHoldDays(trade.holdLimit || maxHoldDays);
-            const isDay5 = dayCount >= holdLimit;
-            const targets = [...new Set((Array.isArray(trade.targets) ? trade.targets : [trade.tp1, trade.tp2]).filter(p => Number.isFinite(Number(p)) && Number(p) > 0).map(p => Number(p).toFixed(2)))];
+            const isDay5 = dayCount >= 5;
             const pnlHtml = getPnlBadgeHtml(trade);
             const progressHtml = getTradeProgressBarHtml(trade);
 
@@ -3446,27 +2629,23 @@
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="text-lg font-black text-white">${trade.ticker}</span>
                             <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
-                            <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(trade.regime)}</span>
+                            <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${trade.regime}</span>
                         </div>
                         <span class="text-[11px] font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
-                            Day ${dayCount} of ${holdLimit} ${isDay5 ? (dayCount > holdLimit ? '· EXIT OVERDUE' : '· EXIT DUE') : ''}
+                            Day ${dayCount} of 5 ${isDay5 ? '· EXIT TODAY' : ''}
                         </span>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">$${Number(trade.stopPrice).toFixed(2)}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${trade.tp1 ? `$${Number(trade.tp1).toFixed(2)} / $${Number(trade.tp2).toFixed(2)}` : `$${Number(trade.tp2).toFixed(2)}`}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${trade.entryDate}</span></div>
                     </div>
                     ${progressHtml}
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div>${pnlHtml}</div>
-                        <div class="flex gap-2 text-[11px] font-bold">
-                            <button onclick="toggleTradeClose(${trade.id})" class="text-emerald-300 px-2 py-1">Record close</button>
-                            <button onclick="deleteTrade(${trade.id})" class="text-red-400 px-2 py-1">Remove</button>
-                        </div>
+                        <button onclick="deleteTrade(${trade.id})" class="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded hover:bg-red-950/40 transition-colors">Close / Remove</button>
                     </div>
-                    ${tradeCloseForm(trade)}
                 </div>
             `;
         }
@@ -3474,15 +2653,6 @@
         function renderActiveTradesPage() {
             const container = document.getElementById('activeTradesPageList');
             if (!container) return;
-            ['active', 'history'].forEach(tab => {
-                const button = document.getElementById(tab === 'active' ? 'tradesActiveTab' : 'tradesHistoryTab');
-                if (button) button.className = `rounded px-3 py-1.5 ${tab === tradesTab ? 'bg-blue-600' : 'bg-slate-800'}`;
-            });
-            if (tradesTab === 'history') {
-                const closed = activeTradesLog.filter(t => t.status === 'CLOSED').sort((a, b) => b.exitDate.localeCompare(a.exitDate) || b.id - a.id);
-                container.innerHTML = journalHistoryHtml(closed);
-                return;
-            }
             const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
             if (!activeTrades.length) {
                 container.innerHTML = `<div class="p-8 text-center text-gray-400 space-y-2">
@@ -3496,7 +2666,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.0.0",
+                version: "1.0.2",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -3506,9 +2676,7 @@
                 slippageValue: localStorage.getItem('slippageValue'),
                 selectedProvider: localStorage.getItem('selectedProvider'),
                 collapseAfterCalc: localStorage.getItem('collapseAfterCalc'),
-                preferredViewMode: localStorage.getItem('preferredViewMode'),
-                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, localStorage.getItem(k)])),
-                scanner: snapshotScannerInputs()
+                preferredViewMode: localStorage.getItem('preferredViewMode')
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -3521,132 +2689,147 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
-
-        function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
-            const values = {};
-            BACKUP_SETTINGS.forEach(key => {
-                if (data[key] === undefined || data[key] === null) return;
-                const value = String(data[key]);
-                if (key === 'riskValue' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid risk');
-                if (key === 'slippageValue' && (!Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error('Invalid slippage');
-                if (key === 'selectedProvider' && !Object.hasOwn(API_CONFIGS, value)) throw new Error('Unknown quote provider');
-                if (key === 'preferredViewMode' && !['cards', 'table'].includes(value)) throw new Error('Unknown view');
-                if (key === 'maxHoldDays' && boundedHoldDays(value) !== Number(value)) throw new Error('Invalid hold days');
-                if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'preferredViewMode', 'maxHoldDays', 'timedExitTime'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
-                values[key] = value;
-            });
-            if (data.globalMarketRegime !== undefined) {
-                if (!['expanding', 'declining'].includes(data.globalMarketRegime)) throw new Error('Unknown market regime');
-                values.globalMarketRegime = data.globalMarketRegime;
-            }
-            const strategies = data.customStrategies ?? customStrategies;
-            if (!Array.isArray(strategies)) throw new Error('Invalid custom strategies');
-            strategies.forEach(s => {
-                if (!s || !/^[a-zA-Z0-9_-]+$/.test(s.id) || typeof s.name !== 'string' || !Array.isArray(s.legs)) throw new Error('Invalid custom strategy');
-                if (s.legs.some(l => !l || !Number.isFinite(Number(l.pct)) || Number(l.pct) < 0 || !Number.isFinite(Number(l.rr)) || Number(l.rr) < 0 || !['fixed', 'breakeven', 'plus1'].includes(l.stopMode || 'fixed'))) throw new Error('Invalid strategy leg');
-            });
-            const ids = [...DEFAULT_STRATEGIES, ...strategies].map(s => s.id);
-            if (new Set(ids).size !== ids.length) throw new Error('Duplicate strategy ID');
-            if (data.customStrategies !== undefined) values.customStrategies = JSON.stringify(strategies);
-            if (data.regimeStrategyMap !== undefined) {
-                const map = data.regimeStrategyMap;
-                if (!map || !ids.includes(map.expanding) || !ids.includes(map.declining)) throw new Error('Unknown regime strategy');
-                values.regimeStrategyMap = JSON.stringify({ expanding: map.expanding, declining: map.declining });
-            }
-            if (data.activeTradesLog !== undefined) {
-                if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
-                data.activeTradesLog.forEach(t => {
-                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || isNaN(ymdToUtc(t.entryDate)) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
-                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || isNaN(ymdToUtc(t.exitDate)) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
-                });
-                if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
-                values.activeTradesLog = JSON.stringify(data.activeTradesLog);
-            }
-            if (data.scanner !== undefined) {
-                const scan = data.scanner;
-                if (!scan || !Array.isArray(scan.tickers) || !Array.isArray(scan.triggers) || scan.tickers.length > 9 || scan.triggers.length > 9 || ![3, 6, 9].includes(scan.visibleCount)) throw new Error('Invalid scanner grid');
-                const sides = {};
-                for (let i = 0; i < 9; i++) {
-                    const ticker = String(scan.tickers[i] || '');
-                    const trigger = String(scan.triggers[i] ?? '');
-                    if (ticker && !/^[A-Za-z][A-Za-z0-9.-]{0,9}$/.test(ticker)) throw new Error('Invalid ticker');
-                    if (trigger && (!Number.isFinite(Number(trigger)) || Number(trigger) <= 0)) throw new Error('Invalid trigger');
-                    values[`ticker_${i}`] = ticker.toUpperCase();
-                    values[`trigger_${i}`] = trigger;
-                    if (['LONG', 'SHORT'].includes(scan.sides?.[i])) sides[i] = scan.sides[i];
-                }
-                values.visibleCount = String(scan.visibleCount);
-                values.signalSides = JSON.stringify(sides);
-            }
-            return values;
-        }
-
         function importSettingsJson(e) {
             const file = e.target.files[0];
             if (!file) return;
-            e.target.value = '';
-            if (file.size > 5 * 1024 * 1024) { alert('Backup exceeds the 5 MB limit.'); return; }
             const reader = new FileReader();
             reader.onload = (event) => {
                 try {
-                    const values = prepareBackup(JSON.parse(event.target.result));
-                    if (!confirm('Replace the settings and trade records included in this backup? Export your current backup first if needed.')) return;
-                    const before = Object.fromEntries(Object.keys(values).map(k => [k, localStorage.getItem(k)]));
-                    try {
-                        Object.entries(values).forEach(([k, v]) => localStorage.setItem(k, v));
-                    } catch (error) {
-                        Object.entries(before).forEach(([k, v]) => v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v));
-                        throw error;
+                    const data = JSON.parse(event.target.result);
+                    if (data.customStrategies) {
+                        customStrategies = data.customStrategies;
+                        localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
                     }
-                    resetScanState();
-                    customStrategies = JSON.parse(localStorage.getItem('customStrategies') || '[]');
-                    regimeStrategyMap = JSON.parse(localStorage.getItem('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
-                    activeTradesLog = JSON.parse(localStorage.getItem('activeTradesLog') || '[]');
-                    timedExitDate = null;
-                    earningsCache = {};
-                    document.getElementById('advancedCsvAck').checked = false;
+                    if (data.regimeStrategyMap) {
+                        regimeStrategyMap = data.regimeStrategyMap;
+                        localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+                    }
+                    if (data.activeTradesLog) {
+                        activeTradesLog = data.activeTradesLog;
+                        localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+                    }
+                    if (data.globalMarketRegime) {
+                        globalMarketRegime = data.globalMarketRegime;
+                        localStorage.setItem('globalMarketRegime', globalMarketRegime);
+                    }
+                    if (data.riskValue) localStorage.setItem('riskValue', data.riskValue);
+                    if (data.slippageValue) localStorage.setItem('slippageValue', data.slippageValue);
+                    if (data.selectedProvider) localStorage.setItem('selectedProvider', data.selectedProvider);
+                    if (data.collapseAfterCalc) localStorage.setItem('collapseAfterCalc', data.collapseAfterCalc);
+                    if (data.preferredViewMode) localStorage.setItem('preferredViewMode', data.preferredViewMode);
+
                     loadSettings();
+                    alert('Settings and Active Trades restored successfully!');
                     navigateTo('scanner');
-                    alert('Backup restored. API keys were not imported.');
                 } catch (err) {
-                    alert('Could not restore backup: ' + err.message);
+                    alert('Invalid backup JSON file: ' + err.message);
                 }
             };
-            reader.onerror = () => alert('Could not read the backup file.');
             reader.readAsText(file);
+            e.target.value = '';
         }
 
-        // Remove a trade record without journaling it (with Undo).
+        function openActiveTradesModal() {
+            navigateTo('active-trades');
+            const container = document.getElementById('activeTradesListContainer');
+            if (!container) return;
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+
+            if (activeTrades.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-gray-400 bg-slate-900/40 rounded-2xl border border-white/5 space-y-2">
+                        <span class="text-3xl block">📋</span>
+                        <div class="font-bold text-white text-base">No Active Logged Trades</div>
+                        <div class="text-xs text-gray-500">When you enter a position, click "Log Trade" inside the Strategy Orders popup to track it here.</div>
+                    </div>
+                `;
+            } else {
+                let html = '';
+                activeTrades.forEach(trade => {
+                    const dayCount = calculateMarketDaysElapsed(trade.entryDate);
+                    const isLong = trade.side === 'LONG';
+                    const isDay5 = dayCount >= 5;
+
+                    html += `
+                        <div class="bg-slate-900/60 p-4 rounded-xl border border-white/10 space-y-3 font-mono-num">
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="text-xl font-black text-white">${trade.ticker}</span>
+                                    <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                                    <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${trade.regime}</span>
+                                </div>
+                                
+                                <div class="text-right">
+                                    <span class="text-xs font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2.5 py-1 rounded-full">
+                                        Day ${dayCount} of 5 ${isDay5 ? '🚨 (EXIT TODAY)' : ''}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 border-t border-white/5">
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span>
+                                    <span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${trade.entryPrice.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span>
+                                    <span class="text-red-400 font-bold">$${trade.stopPrice.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span>
+                                    <span class="text-emerald-400 font-bold">${trade.tp1 ? `$${trade.tp1.toFixed(2)} / $${trade.tp2.toFixed(2)}` : `$${trade.tp2.toFixed(2)}`}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span>
+                                    <span class="text-gray-300">${trade.entryDate}</span>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end pt-1">
+                                <button onclick="deleteTrade(${trade.id})" class="text-[11px] text-red-400 hover:text-red-300 font-bold px-2 py-1 rounded hover:bg-red-950/40 transition-colors">
+                                    Close / Remove Trade
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            }
+
+            document.getElementById('activeTradesModalOverlay').classList.remove('hidden');
+        }
+
+        function closeActiveTradesModal() {
+            document.getElementById('activeTradesModalOverlay').classList.add('hidden');
+        }
+
+        function handleActiveTradesBackdropClick(e) {
+            if (e.target.id === 'activeTradesModalOverlay') closeActiveTradesModal();
+        }
+
         function deleteTrade(id) {
-            const idx = activeTradesLog.findIndex(t => t.id === id);
-            if (idx < 0) return;
-            const removed = activeTradesLog[idx];
-            activeTradesLog.splice(idx, 1);
-            saveActiveTradesLog();
-            updateActiveTradesCountBadge();
-            renderActiveTradesPage();
-            showUndoToast(`Removed ${removed.ticker} ${removed.side}.`, () => {
-                activeTradesLog.splice(Math.min(idx, activeTradesLog.length), 0, removed);
+            if (confirm('Close and remove this active trade?')) {
+                activeTradesLog = activeTradesLog.filter(t => t.id !== id);
                 saveActiveTradesLog();
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
-            });
+                const leftover = document.getElementById('activeTradesListContainer');
+                if (leftover) leftover.innerHTML = activeTradesLog.filter(t => t.status === 'ACTIVE').map(tradeCardHtml).join('') || leftover.innerHTML;
+            }
         }
 
         // Keyboard Shortcut Handler (ESC to close modals)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeStrategyModal();
+                closeActiveTradesModal();
                 closeBatchReviewDrawer();
                 closeNavMenu();
             }
         });
 
-        // Open Strategy Orders modal (cards are updated in place, so a normal click is safe)
-        document.addEventListener('click', (e) => {
+        // Open Strategy Orders modal on pointerdown to beat live DOM re-renders
+        document.addEventListener('pointerdown', (e) => {
             const btn = e.target.closest('[data-action="open-exit-orders"]');
             if (!btn) return;
             e.stopPropagation();
@@ -3660,52 +2843,7 @@
             );
         });
 
-        let installPrompt = null;
-        async function installApp() {
-            if (!installPrompt) return;
-            const prompt = installPrompt;
-            installPrompt = null;
-            setHidden(document.getElementById('installAppBtn'), true);
-            try { await prompt.prompt(); } catch (e) {
-                document.getElementById('installAppStatus').textContent = 'Use your browser menu to install this app.';
-            }
-        }
-
-        function initializeInstallSupport() {
-            if (!window.location || typeof window.addEventListener !== 'function') return;
-            const status = document.getElementById('installAppStatus');
-            if (window.location.protocol === 'file:') {
-                status.textContent = 'File mode: the calculator works, but installation/offline caching needs HTTPS or localhost. Browser data is separate for each address.';
-                return;
-            }
-            window.addEventListener('beforeinstallprompt', event => {
-                event.preventDefault();
-                installPrompt = event;
-                setHidden(document.getElementById('installAppBtn'), false);
-            });
-            window.addEventListener('appinstalled', () => {
-                installPrompt = null;
-                setHidden(document.getElementById('installAppBtn'), true);
-                status.textContent = 'Installed. Quotes still require an internet connection.';
-            });
-            if (!window.isSecureContext || !('serviceWorker' in navigator)) return;
-            const register = async () => {
-                try {
-                    await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
-                    await navigator.serviceWorker.ready;
-                    status.textContent = 'Offline shell ready. Use the browser install option if available. Quotes need internet; offline data is not live.';
-                } catch (e) {
-                    status.textContent = 'Offline support unavailable. The online calculator still works.';
-                }
-            };
-            if (document.readyState === 'complete') register();
-            else window.addEventListener('load', register, { once: true });
-        }
-
         loadSettings();
-        setInterval(updateClock, 1000);
-        updateClock();
-        initializeInstallSupport();
     </script>
 </body>
 </html>

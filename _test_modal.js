@@ -54,6 +54,8 @@ try {
   console.log('openStrategyModal executed successfully!');
   console.log('strategyModalOverlay className after open:', elements['strategyModalOverlay'].className);
   console.log('modalOrdersCardsContainer innerHTML:', elements['modalOrdersCardsContainer'].innerHTML);
+  process.exit(0);
 } catch (e) {
   console.error('Error during execution:', e);
+  process.exit(1);
 }

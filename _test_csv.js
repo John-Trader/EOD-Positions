@@ -118,6 +118,7 @@ try {
   console.log('CSV header:', csvLines[0]);
   console.log('Sample STP row:', csvLines[1]);
   console.log('Sample LMT row:', csvLines[2]);
+  process.exit(0);
 } catch (e) {
   console.error('CSV test failed:', e);
   process.exit(1);

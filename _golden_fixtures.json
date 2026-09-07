@@ -1,0 +1,4404 @@
+{
+ "headers": [
+  "Action",
+  "Quantity",
+  "Symbol",
+  "SecType",
+  "Exchange",
+  "Currency",
+  "TimeInForce",
+  "OrderType",
+  "LmtPrice",
+  "AuxPrice",
+  "BasketTag",
+  "OcaGroup"
+ ],
+ "legs": {
+  "opt1|L|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "224.34",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 67,
+     "stop": 172.54,
+     "tp": 224.34000000000003,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 67,
+     "stop": 172.54,
+     "tp": 269.90999999999997,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "17.26",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1000,
+     "stop": 13.41,
+     "tp": 17.260000000000005,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1000,
+     "stop": 13.41,
+     "tp": 20.94,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "52.68",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 333,
+     "stop": 41.2,
+     "tp": 52.68000000000001,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 333,
+     "stop": 41.2,
+     "tp": 64.26,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "202.85",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 202.85000000000008,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "236.33",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 236.32500000000002,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.14",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7,
+     "stop": 29.5,
+     "tp": 33.14,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7,
+     "stop": 29.5,
+     "tp": 45.03,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.96",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 12500,
+     "stop": 33.68,
+     "tp": 33.959999999999994,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|L|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 12500,
+     "stop": 33.68,
+     "tp": 50.58,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "128.14",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 67,
+     "stop": 179.94,
+     "tp": 128.13999999999996,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 67,
+     "stop": 179.94,
+     "tp": 269.90999999999997,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "10.11",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1000,
+     "stop": 13.96,
+     "tp": 10.109999999999996,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1000,
+     "stop": 13.96,
+     "tp": 20.94,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "31.36",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 333,
+     "stop": 42.84,
+     "tp": 31.36,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 333,
+     "stop": 42.84,
+     "tp": 64.26,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "104.70",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 104.69999999999993,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "236.33",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 236.32500000000002,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "26.38",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7,
+     "stop": 30.02,
+     "tp": 26.380000000000003,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7,
+     "stop": 30.02,
+     "tp": 45.03,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.44",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 12500,
+     "stop": 33.72,
+     "tp": 33.440000000000005,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt1|S|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt1_L1"
+    ],
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_opt1_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 12500,
+     "stop": 33.72,
+     "tp": 50.58,
+     "rr": 6,
+     "oca": "TST_opt1_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "187.34",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "224.34",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 27,
+     "stop": 172.54,
+     "tp": 187.34,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 40,
+     "stop": 172.54,
+     "tp": 224.34000000000003,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "224.34",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 27,
+     "stop": 172.54,
+     "tp": 269.90999999999997,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 40,
+     "stop": 172.54,
+     "tp": 224.34000000000003,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "14.51",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "17.26",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 400,
+     "stop": 13.41,
+     "tp": 14.510000000000002,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 600,
+     "stop": 13.41,
+     "tp": 17.260000000000005,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "17.26",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 400,
+     "stop": 13.41,
+     "tp": 20.94,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 600,
+     "stop": 13.41,
+     "tp": 17.260000000000005,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "44.48",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "52.68",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 133,
+     "stop": 41.2,
+     "tp": 44.480000000000004,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 200,
+     "stop": 41.2,
+     "tp": 52.68000000000001,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "52.68",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 133,
+     "stop": 41.2,
+     "tp": 64.26,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 200,
+     "stop": 41.2,
+     "tp": 52.68000000000001,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "202.85",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 202.85000000000008,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "202.85",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 202.85000000000008,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "30.54",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.14",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 3,
+     "stop": 29.5,
+     "tp": 30.54,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 4,
+     "stop": 29.5,
+     "tp": 33.14,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.14",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 3,
+     "stop": 29.5,
+     "tp": 45.03,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 4,
+     "stop": 29.5,
+     "tp": 33.14,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.76",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.96",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 5000,
+     "stop": 33.68,
+     "tp": 33.76,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7500,
+     "stop": 33.68,
+     "tp": 33.959999999999994,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|L|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "SELL",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "SELL",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.96",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 5000,
+     "stop": 33.68,
+     "tp": 50.58,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7500,
+     "stop": 33.68,
+     "tp": 33.959999999999994,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "165.14",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "128.14",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 27,
+     "stop": 179.94,
+     "tp": 165.14,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 40,
+     "stop": 179.94,
+     "tp": 128.13999999999996,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     27,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     40,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "128.14",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 27,
+     "stop": 179.94,
+     "tp": 269.90999999999997,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 40,
+     "stop": 179.94,
+     "tp": 128.13999999999996,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "12.86",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "10.11",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 400,
+     "stop": 13.96,
+     "tp": 12.86,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 600,
+     "stop": 13.96,
+     "tp": 10.109999999999996,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     400,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     600,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "10.11",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 400,
+     "stop": 13.96,
+     "tp": 20.94,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 600,
+     "stop": 13.96,
+     "tp": 10.109999999999996,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "39.56",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "31.36",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 133,
+     "stop": 42.84,
+     "tp": 39.56,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 200,
+     "stop": 42.84,
+     "tp": 31.36,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     133,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     200,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "31.36",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 133,
+     "stop": 42.84,
+     "tp": 64.26,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 200,
+     "stop": 42.84,
+     "tp": 31.36,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "104.70",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 104.69999999999993,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "104.70",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 104.69999999999993,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "28.98",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "26.38",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 3,
+     "stop": 30.02,
+     "tp": 28.98,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 4,
+     "stop": 30.02,
+     "tp": 26.380000000000003,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     3,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     4,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "26.38",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 3,
+     "stop": 30.02,
+     "tp": 45.03,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 4,
+     "stop": 30.02,
+     "tp": 26.380000000000003,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.64",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.44",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 5000,
+     "stop": 33.72,
+     "tp": 33.64,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7500,
+     "stop": 33.72,
+     "tp": 33.440000000000005,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "opt2|S|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     5000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_opt2_L1"
+    ],
+    [
+     "BUY",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_opt2_L2"
+    ],
+    [
+     "BUY",
+     7500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.44",
+     "",
+     "TST",
+     "TST_opt2_L2"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 5000,
+     "stop": 33.72,
+     "tp": 50.58,
+     "rr": 1,
+     "oca": "TST_opt2_L1",
+     "stopMode": "fixed"
+    },
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7500,
+     "stop": 33.72,
+     "tp": 33.440000000000005,
+     "rr": 6,
+     "oca": "TST_opt2_L2",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "224.34",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 67,
+     "stop": 172.54,
+     "tp": 224.34000000000003,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "172.54",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 67,
+     "stop": 172.54,
+     "tp": 269.90999999999997,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "17.26",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1000,
+     "stop": 13.41,
+     "tp": 17.260000000000005,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.41",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1000,
+     "stop": 13.41,
+     "tp": 20.94,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "52.68",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 333,
+     "stop": 41.2,
+     "tp": 52.68000000000001,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "41.20",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 333,
+     "stop": 41.2,
+     "tp": 64.26,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "202.85",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 202.85000000000008,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "150.00",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "236.33",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 1,
+     "stop": 150,
+     "tp": 236.32500000000002,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.14",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7,
+     "stop": 29.5,
+     "tp": 33.14,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "29.50",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 7,
+     "stop": 29.5,
+     "tp": 45.03,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.96",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 12500,
+     "stop": 33.68,
+     "tp": 33.959999999999994,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|L|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.68",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "SELL",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "SELL",
+     "qty": 12500,
+     "stop": 33.68,
+     "tp": 50.58,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|0|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "128.14",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 67,
+     "stop": 179.94,
+     "tp": 128.13999999999996,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|0|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "179.94",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     67,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "269.91",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 67,
+     "stop": 179.94,
+     "tp": 269.90999999999997,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|1|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "10.11",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1000,
+     "stop": 13.96,
+     "tp": 10.109999999999996,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|1|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "13.96",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     1000,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "20.94",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1000,
+     "stop": 13.96,
+     "tp": 20.94,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|2|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "31.36",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 333,
+     "stop": 42.84,
+     "tp": 31.36,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|2|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "42.84",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     333,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "64.26",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 333,
+     "stop": 42.84,
+     "tp": 64.26,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|3|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "104.70",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 104.69999999999993,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|3|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "157.55",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     1,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "236.33",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 1,
+     "stop": 157.55,
+     "tp": 236.32500000000002,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|4|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "26.38",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7,
+     "stop": 30.02,
+     "tp": 26.380000000000003,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|4|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "30.02",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     7,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "45.03",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 7,
+     "stop": 30.02,
+     "tp": 45.03,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|5|default": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "33.44",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 12500,
+     "stop": 33.72,
+     "tp": 33.440000000000005,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  },
+  "short16|S|5|custom": {
+   "ok": true,
+   "error": null,
+   "rows": [
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "STP",
+     "",
+     "33.72",
+     "TST",
+     "TST_short16_L1"
+    ],
+    [
+     "BUY",
+     12500,
+     "TST",
+     "STK",
+     "SMART",
+     "USD",
+     "GTC",
+     "LMT",
+     "50.58",
+     "",
+     "TST",
+     "TST_short16_L1"
+    ]
+   ],
+   "preview": [
+    {
+     "ticker": "TST",
+     "action": "BUY",
+     "qty": 12500,
+     "stop": 33.72,
+     "tp": 50.58,
+     "rr": 6,
+     "oca": "TST_short16_L1",
+     "stopMode": "fixed"
+    }
+   ]
+  }
+ },
+ "csv": {
+  "opt1|L|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt1_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,224.34,,TST,TST_opt1_L1",
+  "opt1|L|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt1_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_opt1_L1",
+  "opt1|L|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt1_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,17.26,,TST,TST_opt1_L1",
+  "opt1|L|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt1_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_opt1_L1",
+  "opt1|L|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt1_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,52.68,,TST,TST_opt1_L1",
+  "opt1|L|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt1_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_opt1_L1",
+  "opt1|L|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_opt1_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,202.85,,TST,TST_opt1_L1",
+  "opt1|L|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_opt1_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_opt1_L1",
+  "opt1|L|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt1_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,33.14,,TST,TST_opt1_L1",
+  "opt1|L|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt1_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_opt1_L1",
+  "opt1|L|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt1_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,33.96,,TST,TST_opt1_L1",
+  "opt1|L|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt1_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_opt1_L1",
+  "opt1|S|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt1_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,128.14,,TST,TST_opt1_L1",
+  "opt1|S|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt1_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_opt1_L1",
+  "opt1|S|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt1_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,10.11,,TST,TST_opt1_L1",
+  "opt1|S|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt1_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_opt1_L1",
+  "opt1|S|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt1_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,31.36,,TST,TST_opt1_L1",
+  "opt1|S|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt1_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_opt1_L1",
+  "opt1|S|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_opt1_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,104.70,,TST,TST_opt1_L1",
+  "opt1|S|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_opt1_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_opt1_L1",
+  "opt1|S|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt1_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_opt1_L1",
+  "opt1|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt1_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_opt1_L1",
+  "opt1|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt1_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_opt1_L1",
+  "opt1|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt1_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_opt1_L1",
+  "opt2|L|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,27,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt2_L1\nSELL,27,TST,STK,SMART,USD,GTC,LMT,187.34,,TST,TST_opt2_L1\nSELL,40,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt2_L2\nSELL,40,TST,STK,SMART,USD,GTC,LMT,224.34,,TST,TST_opt2_L2",
+  "opt2|L|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,27,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt2_L1\nSELL,27,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_opt2_L1\nSELL,40,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_opt2_L2\nSELL,40,TST,STK,SMART,USD,GTC,LMT,224.34,,TST,TST_opt2_L2",
+  "opt2|L|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,400,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt2_L1\nSELL,400,TST,STK,SMART,USD,GTC,LMT,14.51,,TST,TST_opt2_L1\nSELL,600,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt2_L2\nSELL,600,TST,STK,SMART,USD,GTC,LMT,17.26,,TST,TST_opt2_L2",
+  "opt2|L|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,400,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt2_L1\nSELL,400,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_opt2_L1\nSELL,600,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_opt2_L2\nSELL,600,TST,STK,SMART,USD,GTC,LMT,17.26,,TST,TST_opt2_L2",
+  "opt2|L|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,133,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt2_L1\nSELL,133,TST,STK,SMART,USD,GTC,LMT,44.48,,TST,TST_opt2_L1\nSELL,200,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt2_L2\nSELL,200,TST,STK,SMART,USD,GTC,LMT,52.68,,TST,TST_opt2_L2",
+  "opt2|L|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,133,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt2_L1\nSELL,133,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_opt2_L1\nSELL,200,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_opt2_L2\nSELL,200,TST,STK,SMART,USD,GTC,LMT,52.68,,TST,TST_opt2_L2",
+  "opt2|L|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_opt2_L2\nSELL,1,TST,STK,SMART,USD,GTC,LMT,202.85,,TST,TST_opt2_L2",
+  "opt2|L|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_opt2_L2\nSELL,1,TST,STK,SMART,USD,GTC,LMT,202.85,,TST,TST_opt2_L2",
+  "opt2|L|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,3,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt2_L1\nSELL,3,TST,STK,SMART,USD,GTC,LMT,30.54,,TST,TST_opt2_L1\nSELL,4,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt2_L2\nSELL,4,TST,STK,SMART,USD,GTC,LMT,33.14,,TST,TST_opt2_L2",
+  "opt2|L|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,3,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt2_L1\nSELL,3,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_opt2_L1\nSELL,4,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_opt2_L2\nSELL,4,TST,STK,SMART,USD,GTC,LMT,33.14,,TST,TST_opt2_L2",
+  "opt2|L|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,5000,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt2_L1\nSELL,5000,TST,STK,SMART,USD,GTC,LMT,33.76,,TST,TST_opt2_L1\nSELL,7500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt2_L2\nSELL,7500,TST,STK,SMART,USD,GTC,LMT,33.96,,TST,TST_opt2_L2",
+  "opt2|L|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,5000,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt2_L1\nSELL,5000,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_opt2_L1\nSELL,7500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_opt2_L2\nSELL,7500,TST,STK,SMART,USD,GTC,LMT,33.96,,TST,TST_opt2_L2",
+  "opt2|S|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,27,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt2_L1\nBUY,27,TST,STK,SMART,USD,GTC,LMT,165.14,,TST,TST_opt2_L1\nBUY,40,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt2_L2\nBUY,40,TST,STK,SMART,USD,GTC,LMT,128.14,,TST,TST_opt2_L2",
+  "opt2|S|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,27,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt2_L1\nBUY,27,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_opt2_L1\nBUY,40,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_opt2_L2\nBUY,40,TST,STK,SMART,USD,GTC,LMT,128.14,,TST,TST_opt2_L2",
+  "opt2|S|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,400,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt2_L1\nBUY,400,TST,STK,SMART,USD,GTC,LMT,12.86,,TST,TST_opt2_L1\nBUY,600,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt2_L2\nBUY,600,TST,STK,SMART,USD,GTC,LMT,10.11,,TST,TST_opt2_L2",
+  "opt2|S|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,400,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt2_L1\nBUY,400,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_opt2_L1\nBUY,600,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_opt2_L2\nBUY,600,TST,STK,SMART,USD,GTC,LMT,10.11,,TST,TST_opt2_L2",
+  "opt2|S|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,133,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt2_L1\nBUY,133,TST,STK,SMART,USD,GTC,LMT,39.56,,TST,TST_opt2_L1\nBUY,200,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt2_L2\nBUY,200,TST,STK,SMART,USD,GTC,LMT,31.36,,TST,TST_opt2_L2",
+  "opt2|S|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,133,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt2_L1\nBUY,133,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_opt2_L1\nBUY,200,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_opt2_L2\nBUY,200,TST,STK,SMART,USD,GTC,LMT,31.36,,TST,TST_opt2_L2",
+  "opt2|S|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_opt2_L2\nBUY,1,TST,STK,SMART,USD,GTC,LMT,104.70,,TST,TST_opt2_L2",
+  "opt2|S|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_opt2_L2\nBUY,1,TST,STK,SMART,USD,GTC,LMT,104.70,,TST,TST_opt2_L2",
+  "opt2|S|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,3,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L1\nBUY,3,TST,STK,SMART,USD,GTC,LMT,28.98,,TST,TST_opt2_L1\nBUY,4,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L2\nBUY,4,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_opt2_L2",
+  "opt2|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,3,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L1\nBUY,3,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_opt2_L1\nBUY,4,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L2\nBUY,4,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_opt2_L2",
+  "opt2|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,5000,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L1\nBUY,5000,TST,STK,SMART,USD,GTC,LMT,33.64,,TST,TST_opt2_L1\nBUY,7500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L2\nBUY,7500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_opt2_L2",
+  "opt2|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,5000,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L1\nBUY,5000,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_opt2_L1\nBUY,7500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L2\nBUY,7500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_opt2_L2",
+  "short16|L|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,224.34,,TST,TST_short16_L1",
+  "short16|L|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_short16_L1",
+  "short16|L|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,17.26,,TST,TST_short16_L1",
+  "short16|L|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_short16_L1",
+  "short16|L|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,52.68,,TST,TST_short16_L1",
+  "short16|L|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_short16_L1",
+  "short16|L|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,202.85,,TST,TST_short16_L1",
+  "short16|L|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_short16_L1",
+  "short16|L|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,33.14,,TST,TST_short16_L1",
+  "short16|L|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_short16_L1",
+  "short16|L|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,33.96,,TST,TST_short16_L1",
+  "short16|L|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_short16_L1",
+  "short16|S|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,128.14,,TST,TST_short16_L1",
+  "short16|S|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_short16_L1",
+  "short16|S|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,10.11,,TST,TST_short16_L1",
+  "short16|S|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_short16_L1",
+  "short16|S|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,31.36,,TST,TST_short16_L1",
+  "short16|S|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_short16_L1",
+  "short16|S|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,104.70,,TST,TST_short16_L1",
+  "short16|S|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_short16_L1",
+  "short16|S|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_short16_L1",
+  "short16|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_short16_L1",
+  "short16|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_short16_L1",
+  "short16|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_short16_L1"
+ },
+ "fields": {
+  "0|500|0": {
+   "isGreenDay": true,
+   "stopPrice": 138.08,
+   "shares": 31,
+   "changePct": "2.76",
+   "statusClass": "status-active-long",
+   "rowClass": "table-row-long",
+   "isActive": true,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "0|500|0.02": {
+   "isGreenDay": true,
+   "stopPrice": 138.08,
+   "shares": 31,
+   "changePct": "2.76",
+   "statusClass": "status-active-long",
+   "rowClass": "table-row-long",
+   "isActive": true,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "0|850|0": {
+   "isGreenDay": true,
+   "stopPrice": 138.08,
+   "shares": 52,
+   "changePct": "2.76",
+   "statusClass": "status-active-long",
+   "rowClass": "table-row-long",
+   "isActive": true,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "0|850|0.02": {
+   "isGreenDay": true,
+   "stopPrice": 138.08,
+   "shares": 52,
+   "changePct": "2.76",
+   "statusClass": "status-active-long",
+   "rowClass": "table-row-long",
+   "isActive": true,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "1|500|0": {
+   "isGreenDay": false,
+   "stopPrice": 41.48,
+   "shares": 25000,
+   "changePct": "-1.29",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "41.45",
+   "askText": "41.47"
+  },
+  "1|500|0.02": {
+   "isGreenDay": false,
+   "stopPrice": 41.48,
+   "shares": 12500,
+   "changePct": "-1.29",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "41.45",
+   "askText": "41.47"
+  },
+  "1|850|0": {
+   "isGreenDay": false,
+   "stopPrice": 41.48,
+   "shares": 42500,
+   "changePct": "-1.29",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "41.45",
+   "askText": "41.47"
+  },
+  "1|850|0.02": {
+   "isGreenDay": false,
+   "stopPrice": 41.48,
+   "shares": 21250,
+   "changePct": "-1.29",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "41.45",
+   "askText": "41.47"
+  },
+  "2|500|0": {
+   "isGreenDay": true,
+   "stopPrice": 13.49,
+   "shares": 1063,
+   "changePct": "0.43",
+   "statusClass": "glass-card",
+   "rowClass": "",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "2|500|0.02": {
+   "isGreenDay": true,
+   "stopPrice": 13.49,
+   "shares": 1020,
+   "changePct": "0.43",
+   "statusClass": "glass-card",
+   "rowClass": "",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "2|850|0": {
+   "isGreenDay": true,
+   "stopPrice": 13.49,
+   "shares": 1808,
+   "changePct": "0.43",
+   "statusClass": "glass-card",
+   "rowClass": "",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "2|850|0.02": {
+   "isGreenDay": true,
+   "stopPrice": 13.49,
+   "shares": 1734,
+   "changePct": "0.43",
+   "statusClass": "glass-card",
+   "rowClass": "",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "3|500|0": {
+   "isGreenDay": false,
+   "stopPrice": 100.01,
+   "shares": 49999,
+   "changePct": "0.00",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "3|500|0.02": {
+   "isGreenDay": false,
+   "stopPrice": 100.01,
+   "shares": 16666,
+   "changePct": "0.00",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "3|850|0": {
+   "isGreenDay": false,
+   "stopPrice": 100.01,
+   "shares": 84999,
+   "changePct": "0.00",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  },
+  "3|850|0.02": {
+   "isGreenDay": false,
+   "stopPrice": 100.01,
+   "shares": 28333,
+   "changePct": "0.00",
+   "statusClass": "status-wait",
+   "rowClass": "table-row-wait",
+   "isActive": false,
+   "bidText": "--",
+   "askText": "--"
+  }
+ },
+ "split": {
+  "1|100": [
+   1
+  ],
+  "1|40-60": [
+   0,
+   1
+  ],
+  "1|33-33-34": [
+   0,
+   0,
+   1
+  ],
+  "7|100": [
+   7
+  ],
+  "7|40-60": [
+   3,
+   4
+  ],
+  "7|33-33-34": [
+   2,
+   2,
+   3
+  ],
+  "67|100": [
+   67
+  ],
+  "67|40-60": [
+   27,
+   40
+  ],
+  "67|33-33-34": [
+   22,
+   22,
+   23
+  ],
+  "333|100": [
+   333
+  ],
+  "333|40-60": [
+   133,
+   200
+  ],
+  "333|33-33-34": [
+   110,
+   110,
+   113
+  ],
+  "1000|100": [
+   1000
+  ],
+  "1000|40-60": [
+   400,
+   600
+  ],
+  "1000|33-33-34": [
+   330,
+   330,
+   340
+  ]
+ }
+}
