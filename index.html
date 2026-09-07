@@ -3021,17 +3021,17 @@
                 const isLong = !!t.isLong;
                 list.insertAdjacentHTML('beforeend', `
                     <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${isLong}">
-                        <div class="shrink-0 w-14 leading-none">
+                        <div class="shrink-0 flex items-center gap-1">
                             <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>
                             <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
                                 <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
                                 <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
                             </select>
                         </div>
-                        <div class="grid grid-cols-3 gap-1 flex-1 min-w-0">
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.entry) || 0).toFixed(2)}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${Number(t.shares) || 0}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.stop) || 0).toFixed(2)}"></label>
+                        <div class="flex items-center gap-1 flex-1 min-w-0">
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-16 bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.entry) || 0).toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-12 bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${Number(t.shares) || 0}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-16 bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.stop) || 0).toFixed(2)}"></label>
                         </div>
                     </div>
                 `);
