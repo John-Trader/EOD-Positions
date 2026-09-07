@@ -237,7 +237,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.3</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.4</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -263,7 +263,7 @@
             <div class="space-y-0.5 flex flex-col items-center">
                 <label for="riskValue" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
                 <div class="w-full max-w-[140px]">
-                    <input type="number" id="riskValue" class="super-input risk-input" placeholder="500" value="500">
+                    <input type="number" id="riskValue" autocomplete="off" class="super-input risk-input" placeholder="500" value="500">
                 </div>
             </div>
 
@@ -392,7 +392,7 @@
                         <option value="stockdata">StockData.org</option>
                     </select>
                     <div class="flex gap-2">
-                        <input type="password" id="apiKeyInput" aria-label="API Key" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                        <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
                     </div>
@@ -415,7 +415,7 @@
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label for="slippageValue" class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
-                        <input type="number" id="slippageValue" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
+                        <input type="number" id="slippageValue" autocomplete="off" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
                     </div>
                     <div class="space-y-1.5 pt-1">
                         <label class="text-[10px] font-bold text-gray-400 uppercase block">Interface</label>
@@ -676,6 +676,8 @@
         let resyncTimer = null;            // periodic REST resync of HOD/LOD while streaming
         let lastTradeAt = {};              // ticker -> ms timestamp of last WebSocket print
         let triggerActiveState = {};       // ticker -> bool, for "trigger just became active" alerts
+        let activeFetchSession = null;     // AbortController for current scan/resync fetches
+        let activeTradesSession = null;    // AbortController for active-trade price refresh
         const RESYNC_INTERVAL_MS = 5 * 60 * 1000;
         const MAX_RECONNECT_ATTEMPTS = 8;
 
@@ -1107,8 +1109,14 @@
                 if (i < visibleCount) group.classList.remove('hidden');
                 else group.classList.add('hidden');
             }
-            document.querySelectorAll('.ticker-input').forEach((el, i) => el.setAttribute('aria-label', `Ticker symbol ${i + 1}`));
-            document.querySelectorAll('.trigger-input').forEach((el, i) => el.setAttribute('aria-label', `Trigger price ${i + 1}`));
+            document.querySelectorAll('.ticker-input').forEach((el, i) => {
+                el.setAttribute('aria-label', `Ticker symbol ${i + 1}`);
+                el.setAttribute('autocomplete', 'off');
+            });
+            document.querySelectorAll('.trigger-input').forEach((el, i) => {
+                el.setAttribute('aria-label', `Trigger price ${i + 1}`);
+                el.setAttribute('autocomplete', 'off');
+            });
             const btn = document.getElementById('addRowBtn');
             if (visibleCount >= 9) btn.classList.add('hidden');
             else btn.classList.remove('hidden');
@@ -1694,17 +1702,17 @@
             try { _storage.removeItem(key); } catch (e) {}
         }
 
-        async function fetchTickerData(ticker, provider, apiKey) {
-            const data = await fetchProviderQuote(ticker, provider, apiKey);
+        async function fetchTickerData(ticker, provider, apiKey, signal) {
+            const data = await fetchProviderQuote(ticker, provider, apiKey, signal);
             if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
             return data;
         }
 
-        async function fetchProviderQuote(ticker, provider, apiKey) {
+        async function fetchProviderQuote(ticker, provider, apiKey, signal) {
             ticker = sanitizeTicker(ticker);
             if (!ticker) throw new Error('Empty ticker');
             if (provider === 'twelvedata') {
-                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`, { signal });
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d = await quote.json();
                 if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
@@ -1719,7 +1727,7 @@
                     ask: (ask && ask > 0) ? ask : null
                 };
             } else if (provider === 'finnhub') {
-                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`, { signal });
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`Quote API error (${quote.status})`);
                 const d = await quote.json();
@@ -1735,7 +1743,7 @@
                     ask: ask
                 };
             } else if (provider === 'stockdata') {
-                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`);
+                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`, { signal });
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d_res = await quote.json();
@@ -1757,6 +1765,7 @@
 
         function disconnectWebSocket() {
             streamGeneration++;
+            if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
@@ -1828,18 +1837,26 @@
 
         async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal) {
             if (gen !== streamGeneration || !nyNow().isRTH) return;
+            const controller = new AbortController();
+            activeFetchSession = controller;
             const changed = new Set();
-            for (const t of realtimeTasks) {
-                if (gen !== streamGeneration) return;
-                if (!realtimeQuotes[t.ticker]) continue;
-                try {
-                    const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration || !nyNow().isRTH) return;
-                    if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
-                } catch (e) {
-                    console.warn(`Resync failed for ${t.ticker}:`, e.message);
+            try {
+                for (const t of realtimeTasks) {
+                    if (gen !== streamGeneration || controller.signal.aborted) break;
+                    if (!realtimeQuotes[t.ticker]) continue;
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        if (gen !== streamGeneration || controller.signal.aborted || !nyNow().isRTH) break;
+                        if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
+                    } catch (e) {
+                        if ((e && e.name === 'AbortError') || controller.signal.aborted) break;
+                        console.warn(`Resync failed for ${t.ticker}:`, e.message);
+                    }
+                    await new Promise(r => setTimeout(r, 250));
+                    if (controller.signal.aborted) break;
                 }
-                await new Promise(r => setTimeout(r, 250));
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
             }
             if (gen === streamGeneration && changed.size) tickRealtimeSnapshot(container, riskVal, slippageVal, changed);
         }
@@ -1907,20 +1924,26 @@
             triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
+            const controller = new AbortController();
+            activeFetchSession = controller;
             let anySuccess = false;
-            const fetchPromises = realtimeTasks.map(async (t) => {
-                try {
-                    const data = await fetchTickerData(t.ticker, provider, apiKey);
-                    if (gen !== streamGeneration) return;
-                    realtimeQuotes[t.ticker] = data;
-                    anySuccess = true;
-                } catch (e) {
-                    if (gen !== streamGeneration) return;
-                    console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
-                    realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
-                }
-            });
-            await Promise.all(fetchPromises);
+            try {
+                const fetchPromises = realtimeTasks.map(async (t) => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        if (gen !== streamGeneration) return;
+                        realtimeQuotes[t.ticker] = data;
+                        anySuccess = true;
+                    } catch (e) {
+                        if (gen !== streamGeneration || (e && e.name === 'AbortError') || controller.signal.aborted) return;
+                        console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
+                        realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                    }
+                });
+                await Promise.all(fetchPromises);
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
+            }
             if (gen !== streamGeneration) return; // a newer CALCULATE / CLEAR superseded this one
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
@@ -2087,11 +2110,13 @@
                 setCalcBtnStreaming(false);
                 if (btn) btn.innerText = 'FETCHING...';
                 const startTime = performance.now();
+                const controller = new AbortController();
+                activeFetchSession = controller;
 
                 try {
                     const promises = tasks.map(async (task) => {
                         try {
-                            const data = await fetchTickerData(task.ticker, provider, apiKey);
+                            const data = await fetchTickerData(task.ticker, provider, apiKey, controller.signal);
                             return { ...task, data, success: true };
                         } catch (e) {
                             return { ...task, error: e.message, success: false };
@@ -2134,9 +2159,12 @@
                     container.appendChild(metricDiv);
 
                 } catch (e) {
-                    errorMsg.innerText = "Critical Error: " + e.message;
-                    errorMsg.classList.remove('hidden');
+                    if (e && e.name !== 'AbortError') {
+                        errorMsg.innerText = "Critical Error: " + e.message;
+                        errorMsg.classList.remove('hidden');
+                    }
                 } finally {
+                    if (activeFetchSession === controller) activeFetchSession = null;
                     if (gen === streamGeneration) {
                         setCalcBtnStreaming(false);
                         if (collapseAfterCalc) setScannerCollapsed(true);
@@ -3215,6 +3243,7 @@
             if (entryInput) entryInput.value = (Number(p.entry) > 0 ? Number(p.entry).toFixed(2) : '');
             if (sharesInput) sharesInput.value = (Number(p.shares) > 0 ? p.shares : '');
             if (stopInput) stopInput.value = (Number(p.stop) > 0 ? Number(p.stop).toFixed(2) : '');
+            div.querySelectorAll('input, select').forEach(el => el.setAttribute('autocomplete', 'off'));
             wrap.appendChild(div);
 
             if (p.explicitLegs && p.explicitLegs.length) {
@@ -3685,24 +3714,28 @@
                 alert('Save an API key in Settings first.');
                 return;
             }
+            if (activeTradesSession) { try { activeTradesSession.abort(); } catch (e) {} activeTradesSession = null; }
+            const controller = new AbortController();
+            activeTradesSession = controller;
             let failed = 0;
             try {
                 const promises = tickers.map(async ticker => {
                     try {
-                        const data = await fetchTickerData(ticker, provider, apiKey);
+                        const data = await fetchTickerData(ticker, provider, apiKey, controller.signal);
                         if (data && Number.isFinite(data.c) && data.c > 0) activeTradesPriceCache[ticker] = { price: data.c, at: Date.now() };
                         else failed++;
-                    } catch (e) { failed++; }
+                    } catch (e) { if (!controller.signal.aborted && !(e && e.name === 'AbortError')) failed++; }
                 });
                 await Promise.all(promises);
                 // Drop stale cache entries for tickers no longer active.
                 const activeSet = new Set(tickers);
                 Object.keys(activeTradesPriceCache).forEach(k => { if (!activeSet.has(k)) delete activeTradesPriceCache[k]; });
-                renderActiveTradesPage();
+                updateActiveTradeCards();
                 if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
                 console.warn('Active trade price refresh failed:', e);
             } finally {
+                if (activeTradesSession === controller) activeTradesSession = null;
                 if (btn) btn.innerText = '🔄 Refresh Prices';
             }
         }
@@ -3915,9 +3948,9 @@
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
                     </div>
-                    ${progressHtml}
+                    <div data-trade-progress="${trade.id}">${progressHtml}</div>
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
-                        <div>${pnlHtml}</div>
+                        <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
                         <div class="flex gap-2 text-[11px] font-bold">
                             <button onclick="toggleTradeClose(${trade.id})" class="text-emerald-300 px-2 py-1">Record close</button>
                             <button onclick="deleteTrade(${trade.id})" class="text-red-400 px-2 py-1">Remove</button>
@@ -3951,9 +3984,20 @@
             container.innerHTML = activeTrades.map(tradeCardHtml).join('');
         }
 
+        function updateActiveTradeCards() {
+            const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            if (!activeTrades.length) return;
+            activeTrades.forEach(trade => {
+                const pnlEl = document.querySelector(`[data-trade-pnl="${trade.id}"]`);
+                const progressEl = document.querySelector(`[data-trade-progress="${trade.id}"]`);
+                if (pnlEl) pnlEl.innerHTML = getPnlBadgeHtml(trade);
+                if (progressEl) progressEl.innerHTML = getTradeProgressBarHtml(trade);
+            });
+        }
+
         function exportSettingsJson() {
             const backupData = {
-                version: "2.1.3",
+                version: "2.1.4",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -3981,7 +4025,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4170,6 +4214,17 @@
         const clockInterval = setInterval(updateClock, 1000);
         updateClock();
         initializeInstallSupport();
+
+        if (typeof window.addEventListener === 'function') {
+            window.addEventListener('beforeunload', () => {
+                if (clockInterval) clearInterval(clockInterval);
+                if (resyncTimer) clearInterval(resyncTimer);
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
+                if (activeTradesSession) { try { activeTradesSession.abort(); } catch (e) {} activeTradesSession = null; }
+                disconnectWebSocket();
+            });
+        }
     </script>
 </body>
 </html>
