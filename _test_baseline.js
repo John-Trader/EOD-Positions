@@ -26,6 +26,7 @@ function mockElement(id) {
       querySelector: () => null,
       appendChild: (ch) => { if (ch) elements[id].children.push(ch); },
       removeChild: (ch) => { elements[id].children = elements[id].children.filter(x => x !== ch); },
+      remove: () => { delete elements[id]; },
       addEventListener: () => {},
       setAttribute: (k, v) => { elements[id][k] = v; },
       getAttribute: (k) => elements[id][k],

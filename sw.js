@@ -1,6 +1,6 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v2.1.4`;
+const CACHE_NAME = `${CACHE_PREFIX}v2.1.5`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
@@ -65,7 +65,14 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
   })());
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 async function networkFirstShell(request, asset) {

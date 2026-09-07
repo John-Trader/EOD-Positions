@@ -237,7 +237,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.4</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.5</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1274,6 +1274,22 @@
             undoToastTimer = setTimeout(hide, ms);
         }
 
+        // ---------- PWA update toast ----------
+        function showUpdateToast(worker) {
+            let toast = document.getElementById('updateToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'updateToast';
+                toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] glass-modal rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xl';
+                document.body.appendChild(toast);
+            }
+            toast.innerHTML = `<span class="text-gray-200">A new version is ready.</span><button id="updateToastBtn" class="text-emerald-300 font-bold uppercase text-[11px] hover:text-white">Refresh</button><button id="updateToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
+            toast.style.display = 'flex';
+            const hide = () => { toast.style.display = 'none'; };
+            toast.querySelector('#updateToastBtn').onclick = () => { if (worker) worker.postMessage({ type: 'SKIP_WAITING' }); window.location.reload(); };
+            toast.querySelector('#updateToastClose').onclick = hide;
+        }
+
         function parseSignalText(text) {
             const source = String(text || '').slice(0, 30000)
                 // Strip Discord/Markdown bold stars around tickers so the existing parser sees $AMPL.
@@ -1862,17 +1878,35 @@
         }
 
         function renderRealtimeSnapshot(container, riskVal, slippageVal) {
-            container.innerHTML = '';
-            markFreshRender(container);
+            if (!container) return;
+            const { risk, slippage } = currentRiskAndSlippage();
             const results = buildSnapshotResults();
             lastRenderedSnapshot = results;
+            markFreshRender(container);
 
             if (currentViewMode === 'table') {
-                renderTableContainer(results, riskVal, slippageVal, container);
+                renderTableContainer(results, risk, slippage, container);
             } else {
+                const seen = new Set();
                 results.forEach(res => {
-                    if (res.success) renderCard(res, riskVal, slippageVal, container);
-                    else renderError(res, container);
+                    if (res.success) {
+                        seen.add(res.ticker);
+                        const card = container.querySelector(`#card-${res.ticker}`);
+                        if (card) updateCard(card, res, risk, slippage);
+                        else renderCard(res, risk, slippage, container);
+                    } else {
+                        seen.add('error-' + res.ticker);
+                        const id = `card-${res.ticker}`;
+                        const existing = container.querySelector(`#${id}`);
+                        if (existing && typeof existing.remove === 'function') existing.remove();
+                        renderError(res, container);
+                    }
+                });
+                // Remove stale cards (ticker removed or error resolved)
+                Array.from(container.children).forEach(el => {
+                    if (!el.id || !el.id.startsWith('card-')) return;
+                    const t = el.id.replace(/^card-/, '');
+                    if (!seen.has(t) && !seen.has('error-' + t)) el.remove();
                 });
             }
 
@@ -1891,14 +1925,14 @@
                 changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success);
                     if (!result) return;
-                    const row = document.getElementById(`table-row-${ticker}`);
+                    const row = wrap.querySelector(`#table-row-${ticker}`);
                     if (row) updateTableRow(row, result, risk, slippage);
                 });
             } else {
                 changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success);
                     if (!result) return;
-                    const card = document.getElementById(`card-${ticker}`);
+                    const card = container.querySelector(`#card-${ticker}`);
                     if (card) updateCard(card, result, risk, slippage);
                 });
             }
@@ -1945,6 +1979,7 @@
                 if (activeFetchSession === controller) activeFetchSession = null;
             }
             if (gen !== streamGeneration) return; // a newer CALCULATE / CLEAR superseded this one
+            container.querySelector('#scanFetchingMsg')?.remove();
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
@@ -2094,7 +2129,7 @@
                 updateBatchBar();
 
                 errorMsg.classList.add('hidden');
-                container.innerHTML = `<div class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
+                container.innerHTML = `<div id="scanFetchingMsg" class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
 
                 // Handle WebSocket stream for supported providers when live update is active
                 if (config.supportsWs && liveUpdateEnabled) {
@@ -2136,17 +2171,8 @@
                         if (r.success) realtimeQuotes[r.ticker] = r.data;
                         else realtimeQuoteErrors[r.ticker] = r.error;
                     });
-                    container.innerHTML = '';
-                    markFreshRender(container);
-
-                    if (currentViewMode === 'table') {
-                        renderTableContainer(results, riskVal, slippageVal, container);
-                    } else {
-                        results.forEach(res => {
-                            if (res.success) renderCard(res, riskVal, slippageVal, container);
-                            else renderError(res, container);
-                        });
-                    }
+                    container.querySelector('#scanFetchingMsg')?.remove();
+                    renderRealtimeSnapshot(container, riskVal, slippageVal);
 
                     speakResults(results);
                     applyFocusMode();
@@ -2383,16 +2409,41 @@
         function renderTableContainer(results, risk, slippage, container) {
             const validResults = results.filter(r => r.success);
             const errorResults = results.filter(r => !r.success);
-            const wrap = document.createElement('div');
-            wrap.id = 'tableWrap';
-            wrap.className = 'space-y-1.5';
+            const seen = new Set();
+
+            let wrap = document.getElementById('tableWrap');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'tableWrap';
+                wrap.className = 'space-y-1.5';
+                container.appendChild(wrap);
+            }
 
             validResults.forEach(item => {
-                wrap.appendChild(createTableRow(item, risk, slippage));
+                seen.add(item.ticker);
+                const row = wrap.querySelector(`#table-row-${item.ticker}`);
+                if (row) updateTableRow(row, item, risk, slippage);
+                else wrap.appendChild(createTableRow(item, risk, slippage));
             });
 
-            if (validResults.length) container.appendChild(wrap);
-            errorResults.forEach(res => renderError(res, container));
+            Array.from(wrap.children).forEach(row => {
+                const t = row.id.replace(/^table-row-/, '');
+                if (!seen.has(t)) row.remove();
+            });
+
+            errorResults.forEach(res => {
+                seen.add('error-' + res.ticker);
+                const id = `card-${res.ticker}`;
+                const existing = container.querySelector(`#${id}`);
+                if (existing && typeof existing.remove === 'function') existing.remove();
+                renderError(res, container);
+            });
+
+            // Remove stale error cards when a ticker recovers or is removed.
+            container.querySelectorAll('[id^="card-"]').forEach(el => {
+                const t = el.id.replace(/^card-/, '');
+                if (!seen.has(t) && !seen.has('error-' + t)) el.remove();
+            });
         }
 
         function createTableRow(item, risk, slippage) {
@@ -2700,7 +2751,9 @@
 
         function onModalTpInput(el, i) {
             const v = parseFloat(el.value);
-            if (Number.isFinite(v) && v > 0) {
+            const valid = Number.isFinite(v) && v > 0;
+            if (el.classList && typeof el.classList.toggle === 'function') el.classList.toggle('border-red-500', !valid);
+            if (valid) {
                 currentModalState.customTps[i] = v;
             } else {
                 currentModalState.customTps[i] = null;
@@ -2990,8 +3043,10 @@
             const ticker = el.dataset.ticker;
             const i = parseInt(el.dataset.legIdx);
             const v = parseFloat(el.value);
+            const valid = Number.isFinite(v) && v > 0;
+            if (el.classList && typeof el.classList.toggle === 'function') el.classList.toggle('border-red-500', !valid);
             if (!batchCustomTps[ticker]) batchCustomTps[ticker] = [];
-            batchCustomTps[ticker][i] = (Number.isFinite(v) && v > 0) ? v : null;
+            batchCustomTps[ticker][i] = valid ? v : null;
         }
 
         function onBatchGlobalStrategyChange(el) {
@@ -3276,13 +3331,28 @@
         function refreshBuilderPreview(el) {
             const id = el.dataset.id;
             const isLong = el.querySelector('.b-side').value === 'long';
-            const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
-            const shares = parseInt(el.querySelector('.b-shares').value) || 0;
-            const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
+            const ticker = sanitizeTicker(el.querySelector('.b-ticker').value) || '';
+            const entryIn = el.querySelector('.b-entry');
+            const sharesIn = el.querySelector('.b-shares');
+            const stopIn = el.querySelector('.b-stop');
+            const entry = parseFloat(entryIn.value) || 0;
+            const shares = parseInt(sharesIn.value) || 0;
+            const stop = parseFloat(stopIn.value) || 0;
+            [el.querySelector('.b-ticker'), entryIn, sharesIn, stopIn].forEach(inp => { if (inp) inp.classList.remove('border-red-500'); });
+            const err = ticker ? validateTradeParams(isLong, entry, shares, stop) : 'Ticker is required';
+            if (err) {
+                if (err.includes('Shares')) sharesIn.classList.add('border-red-500');
+                if (err.includes('Entry')) entryIn.classList.add('border-red-500');
+                if (err.includes('Stop')) stopIn.classList.add('border-red-500');
+                if (err.includes('Long:') || err.includes('Short:')) { entryIn.classList.add('border-red-500'); stopIn.classList.add('border-red-500'); }
+                if (err.includes('Ticker')) el.querySelector('.b-ticker').classList.add('border-red-500');
+                el.querySelector('.b-preview').innerText = err;
+                return;
+            }
             const explicit = builderExplicitLegs[id] || null;
             const strategyId = explicit ? 'pasted' : el.querySelector('.b-opt').value;
             const box = el.querySelector('.b-preview');
-            const built = buildExitLegs(sanitizeTicker(el.querySelector('.b-ticker').value) || 'TICK', isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
             box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
@@ -3997,7 +4067,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.1.4",
+                version: "2.1.5",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4025,7 +4095,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4199,9 +4269,18 @@
             if (!window.isSecureContext || !('serviceWorker' in navigator)) return;
             const register = async () => {
                 try {
-                    await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+                    const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
                     await navigator.serviceWorker.ready;
                     status.textContent = 'Offline shell ready. Use the browser install option if available. Quotes need internet; offline data is not live.';
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        if (!newWorker) return;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showUpdateToast(newWorker);
+                            }
+                        });
+                    });
                 } catch (e) {
                     status.textContent = 'Offline support unavailable. The online calculator still works.';
                 }
