@@ -717,7 +717,7 @@
                 if (status) status.textContent = 'Earnings warnings are off.';
                 return;
             }
-            const key = localStorage.getItem(API_CONFIGS.finnhub.storageKey);
+            const key = safeStorageGet(API_CONFIGS.finnhub.storageKey);
             if (!key) {
                 if (status) status.textContent = 'Save a Finnhub API key to check earnings. EARN ? means unavailable, not clear.';
                 return;
@@ -725,7 +725,7 @@
             const from = nyDateStr();
             const to = addTradingDays(from, maxHoldDays);
             try {
-                const saved = JSON.parse(localStorage.getItem('earningsCalendarCache') || '{}');
+                const saved = JSON.parse(safeStorageGet('earningsCalendarCache') || '{}');
                 if (saved && typeof saved === 'object' && !Array.isArray(saved)) earningsCache = { ...saved, ...earningsCache };
             } catch (e) {}
             const tickers = [...new Set(realtimeTasks.map(t => t.ticker))];
@@ -750,12 +750,16 @@
                 } finally {
                     clearTimeout(timeout);
                 }
-                refreshAllVisible(document.getElementById('resultsContainer'));
             }
             if (requestId !== earningsRequestId) return;
             const unavailable = tickers.filter(t => earningsCache[t]?.status !== 'ok').length;
             if (status && tickers.length) status.textContent = unavailable ? `${unavailable} calendar lookup(s) unavailable. EARN ? is not an all-clear.` : `Checked ${from} through ${to}. Dates may change; confirm with the company.`;
-            try { localStorage.setItem('earningsCalendarCache', JSON.stringify(earningsCache)); } catch (e) {}
+            // Keep the cache bounded so localStorage does not grow forever.
+            const entries = Object.entries(earningsCache).sort((a, b) => (b[1].checkedAt || 0) - (a[1].checkedAt || 0));
+            if (entries.length > 100) {
+                earningsCache = Object.fromEntries(entries.slice(0, 100));
+            }
+            safeStorageSet('earningsCalendarCache', JSON.stringify(earningsCache));
             refreshAllVisible(document.getElementById('resultsContainer'));
         }
 
@@ -1245,7 +1249,7 @@
                 toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] glass-modal rounded-xl px-4 py-2.5 flex items-center gap-3 text-xs shadow-2xl';
                 document.body.appendChild(toast);
             }
-            toast.innerHTML = `<span class="text-gray-200">${message}</span><button id="undoToastBtn" class="text-blue-300 font-bold uppercase text-[11px] hover:text-white">Undo</button><button id="undoToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
+            toast.innerHTML = `<span class="text-gray-200">${escapeHtml(message)}</span><button id="undoToastBtn" class="text-blue-300 font-bold uppercase text-[11px] hover:text-white">Undo</button><button id="undoToastClose" class="text-gray-500 hover:text-white font-bold leading-none">&times;</button>`;
             toast.style.display = 'flex';
             const hide = () => { toast.style.display = 'none'; if (undoToastTimer) { clearTimeout(undoToastTimer); undoToastTimer = null; } };
             toast.querySelector('#undoToastBtn').onclick = () => { hide(); undoFn(); };
@@ -1463,17 +1467,17 @@
             const tradeHtml = parsed.trades.map((t, i) => `
                 <div class="exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
-                        <span class="font-bold">${t.ticker}</span>
+                        <span class="font-bold">${escapeHtml(t.ticker)}</span>
                         <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
                             <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
                             <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
                         </select>
                     </div>
-                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + l.label + ')' : ''}`).join(' | ')}</div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
                 </div>
             `).join('');
 
-            document.getElementById('exitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            document.getElementById('exitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.map(escapeHtml).join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
             return parsed;
         }
 
@@ -1667,6 +1671,19 @@
 
         function sanitizeTicker(raw) {
             return String(raw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10);
+        }
+
+        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
+        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
+        const _storage = localStorage;
+        function safeStorageSet(key, value) {
+            try { _storage.setItem(key, value); return true; } catch (e) { console.warn('Storage save failed:', key, e); return false; }
+        }
+        function safeStorageGet(key) {
+            try { return _storage.getItem(key); } catch (e) { return null; }
+        }
+        function safeStorageRemove(key) {
+            try { _storage.removeItem(key); } catch (e) {}
         }
 
         async function fetchTickerData(ticker, provider, apiKey) {
@@ -2224,12 +2241,12 @@
                     <div class="flex items-start gap-2 min-w-0">
                         <input type="checkbox" class="trade-check mt-1" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)" title="Select for batch CSV">
                         <div>
-                            <h2 class="text-xl font-black text-white tracking-tight leading-none">${f.ticker}</h2>
+                            <h2 class="text-xl font-black text-white tracking-tight leading-none">${escapeHtml(f.ticker)}</h2>
                             <div class="flex items-center gap-1 mt-1 leading-none">
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
-                                <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠ signal ${f.signalSide || ''}</span>
+                                <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
                             </div>
-                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn || ''}</div>
+                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                         </div>
                     </div>
                     ${triggerBadge}
@@ -2340,12 +2357,12 @@
                 <div class="flex items-center gap-1.5">
                     <input type="checkbox" class="trade-check shrink-0" ${checked} onchange="toggleTickerSelect('${f.ticker}', this.checked)">
                     <div class="w-[54px] shrink-0">
-                        <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${f.ticker}</div>
+                        <div class="text-[13px] font-black text-white leading-none font-mono-num truncate">${escapeHtml(f.ticker)}</div>
                         <div class="flex items-center gap-1 mt-0.5 leading-none">
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
-                            <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠</span>
+                            <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
                         </div>
-                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn || ''}</div>
+                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                     </div>
                     <div class="shrink-0">
                         <div data-field="lastPrice" class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${f.c.toFixed(2)}</div>
@@ -2445,7 +2462,7 @@
                     <div class="flex items-start gap-2 min-w-0">
                         <div class="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-black shrink-0">!</div>
                         <div>
-                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${ticker}</h2>
+                            <h2 class="text-xl font-black text-rose-300 tracking-tight leading-none">${escapeHtml(ticker)}</h2>
                             <div class="text-[10px] font-black text-rose-400/80 mt-1 leading-none uppercase">ERROR</div>
                         </div>
                     </div>
@@ -2562,7 +2579,7 @@
 
         function buildNotesHtml(built) {
             if (!built || !built.notes || !built.notes.length) return '';
-            return built.notes.map(n => `<div class="text-[10px] text-amber-300">⚠ ${n}</div>`).join('');
+            return built.notes.map(n => `<div class="text-[10px] text-amber-300">⚠ ${escapeHtml(n)}</div>`).join('');
         }
 
         function stopLabelHtml(p) {
@@ -2600,7 +2617,7 @@
 
             const built = buildExitLegs(currentModalState.ticker, isLong, entry, shares, stop, strategyId, currentModalState.customTps);
             if (!built.ok) {
-                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${built.error}</div>`;
+                cardsContainer.innerHTML = `<div class="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-xs text-center font-bold">${escapeHtml(built.error)}</div>`;
                 return;
             }
             ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + `Exit by day ${maxHoldDays}. TIF GTC.`;
@@ -2944,10 +2961,10 @@
             body.innerHTML = trades.map(t => {
                 const rows = t.built.preview.map((p, i) => `
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
-                    <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
+                    <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${p.label}</span>` : ''}</span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>
                     <span class="text-gray-500 w-20 text-right truncate">${p.oca}</span>
                 </div>
             `).join('');
@@ -3005,7 +3022,7 @@
                 list.insertAdjacentHTML('beforeend', `
                     <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${isLong}">
                         <div class="shrink-0 w-14 leading-none">
-                            <div class="font-black font-mono-num text-white text-sm">${t.ticker}</div>
+                            <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>
                             <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
                                 <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
                                 <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
@@ -3131,8 +3148,13 @@
         function logSelectedTrades() {
             const trades = selectedSnapshotTrades();
             if (!trades.length) { alert('Select one or more tickers first.'); return; }
+            const beforeLen = activeTradesLog.length;
             trades.forEach(logTradeRecord);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(0, activeTradesLog.length - beforeLen);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Logged ${trades.length} trade(s) to Active Trades.`);
         }
@@ -3145,21 +3167,30 @@
             div.className = 'bg-slate-900/50 border border-white/10 rounded-lg p-2 builder-row';
             div.dataset.id = id;
             const isLong = p.isLong !== false;
+            const ticker = sanitizeTicker(p.ticker);
             div.innerHTML = `
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-[9px] font-bold text-gray-400 uppercase">Trade #${id}</span>
                     <button onclick="removeBuilderRow(this)" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
                 </div>
                 <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" value="${p.ticker||''}" placeholder="TICK"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" placeholder="TICK"></label>
                     <label class="text-[8px] text-gray-500 uppercase font-bold">Side<select class="b-side w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5">${isLong?'<option value="long" selected>LONG</option><option value="short">SHORT</option>':'<option value="long">LONG</option><option value="short" selected>SHORT</option>'}</select></label>
                     <label class="text-[8px] text-gray-500 uppercase font-bold">Strategy<select class="b-opt w-full bg-slate-800 text-white text-[11px] font-bold rounded px-1 py-1 border border-slate-600 mt-0.5"></select></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.entry||''}"></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5" value="${p.shares||''}"></label>
-                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5" value="${p.stop||''}"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Entry $<input type="number" step="0.01" class="b-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Shares<input type="number" step="1" class="b-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-1 border border-slate-600 text-center mt-0.5"></label>
+                    <label class="text-[8px] text-gray-500 uppercase font-bold">Stop $<input type="number" step="0.01" class="b-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold text-center rounded px-1 py-1 border border-slate-600 mt-0.5"></label>
                 </div>
                 <div class="b-preview mt-1 text-[9px] font-mono-num text-gray-400"></div>
             `;
+            const tickerInput = div.querySelector('.b-ticker');
+            const entryInput = div.querySelector('.b-entry');
+            const sharesInput = div.querySelector('.b-shares');
+            const stopInput = div.querySelector('.b-stop');
+            if (tickerInput) tickerInput.value = ticker || '';
+            if (entryInput) entryInput.value = (Number(p.entry) > 0 ? Number(p.entry).toFixed(2) : '');
+            if (sharesInput) sharesInput.value = (Number(p.shares) > 0 ? p.shares : '');
+            if (stopInput) stopInput.value = (Number(p.stop) > 0 ? Number(p.stop).toFixed(2) : '');
             wrap.appendChild(div);
 
             if (p.explicitLegs && p.explicitLegs.length) {
@@ -3198,9 +3229,9 @@
             const explicit = builderExplicitLegs[id] || null;
             const strategyId = explicit ? 'pasted' : el.querySelector('.b-opt').value;
             const box = el.querySelector('.b-preview');
-            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
+            const built = buildExitLegs(sanitizeTicker(el.querySelector('.b-ticker').value) || 'TICK', isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + p.label : ''}`).join(' <span class="text-gray-600">|</span> ')
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
@@ -3209,7 +3240,7 @@
             const out = [];
             document.querySelectorAll('#builderRows .builder-row').forEach(el => {
                 const id = el.dataset.id;
-                const ticker = (el.querySelector('.b-ticker').value || '').trim().toUpperCase();
+                const ticker = sanitizeTicker(el.querySelector('.b-ticker').value);
                 const isLong = el.querySelector('.b-side').value === 'long';
                 const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.b-shares').value) || 0;
@@ -3266,17 +3297,17 @@
             const tradeHtml = parsed.trades.map((t, i) => `
                 <div class="builder-exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
-                        <span class="font-bold">${t.ticker}</span>
+                        <span class="font-bold">${escapeHtml(t.ticker)}</span>
                         <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
                             <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
                             <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
                         </select>
                     </div>
-                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + l.label + ')' : ''}`).join(' | ')}</div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
                 </div>
             `).join('');
 
-            document.getElementById('builderExitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            document.getElementById('builderExitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.map(escapeHtml).join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
             return parsed;
         }
 
@@ -3293,14 +3324,16 @@
             const existingRows = Array.from(document.querySelectorAll('#builderRows .builder-row'));
             const existingByTicker = new Map();
             existingRows.forEach(row => {
-                const ticker = (row.querySelector('.b-ticker').value || '').trim().toUpperCase();
-                if (ticker) existingByTicker.set(ticker.toUpperCase(), row);
+                const ticker = sanitizeTicker(row.querySelector('.b-ticker').value);
+                if (ticker) existingByTicker.set(ticker, row);
             });
 
             parsedTrades.forEach(t => {
-                const row = existingByTicker.get(t.ticker.toUpperCase());
+                const ticker = sanitizeTicker(t.ticker);
+                const row = existingByTicker.get(ticker);
                 if (row) {
                     const id = row.dataset.id;
+                    row.querySelector('.b-ticker').value = ticker;
                     row.querySelector('.b-side').value = t.isLong ? 'long' : 'short';
                     row.querySelector('.b-stop').value = t.stop.toFixed(2);
                     builderExplicitLegs[id] = t.legs;
@@ -3309,7 +3342,7 @@
                     opt.disabled = true;
                     refreshBuilderPreview(row);
                 } else {
-                    addBuilderRow({ ticker: t.ticker, isLong: t.isLong, stop: t.stop, explicitLegs: t.legs });
+                    addBuilderRow({ ticker, isLong: t.isLong, stop: t.stop, explicitLegs: t.legs });
                 }
             });
         }
@@ -3325,8 +3358,13 @@
         function logAllBuilderTrades() {
             const trades = collectBuilderTrades();
             if (!trades.length) { alert('Add at least one complete trade.'); return; }
+            const beforeLen = activeTradesLog.length;
             trades.forEach(logTradeRecord);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(0, activeTradesLog.length - beforeLen);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Logged ${trades.length} trade(s) to Active Trades.`);
         }
@@ -3347,7 +3385,11 @@
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             const tpValues = built.ok ? built.preview.map(p => p.tp) : null;
             logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId }, tpValues);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.shift();
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             alert(`Trade for ${ticker} logged successfully in Active Trades!`);
         }
@@ -3462,7 +3504,7 @@
         }
 
         function saveActiveTradesLog() {
-            localStorage.setItem('activeTradesLog', JSON.stringify(activeTradesLog));
+            return safeStorageSet('activeTradesLog', JSON.stringify(activeTradesLog));
         }
 
         function updateActiveTradesCountBadge() {
@@ -3612,7 +3654,7 @@
             if (btn) btn.innerText = 'Refreshing...';
             const provider = document.getElementById('apiProvider').value;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
             const tickers = [...new Set(activeTradesLog.filter(t => t.status === 'ACTIVE').map(t => t.ticker))];
             if (!apiKey) {
                 if (btn) btn.innerText = 'Refresh Prices';
@@ -3629,6 +3671,9 @@
                     } catch (e) { failed++; }
                 });
                 await Promise.all(promises);
+                // Drop stale cache entries for tickers no longer active.
+                const activeSet = new Set(tickers);
+                Object.keys(activeTradesPriceCache).forEach(k => { if (!activeSet.has(k)) delete activeTradesPriceCache[k]; });
                 renderActiveTradesPage();
                 if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
@@ -3642,7 +3687,10 @@
             const isLong = trade.side === 'LONG';
             const entry = Number(trade.entryPrice);
             const stop = Number(trade.stopPrice);
-            const target = Number(trade.tp2 || (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry)));
+            const targets = (Array.isArray(trade.targets) ? trade.targets : [trade.tp1, trade.tp2])
+                .map(p => Number(p))
+                .filter(p => Number.isFinite(p) && p > 0);
+            const target = targets.length ? targets[targets.length - 1] : (isLong ? entry + 6 * Math.abs(entry - stop) : entry - 6 * Math.abs(stop - entry));
 
             if (!curPrice) {
                 return `
@@ -3736,14 +3784,16 @@
             const fees = Number(document.getElementById(`closeFees-${id}`).value);
             const entryDate = document.getElementById(`closeEntryDate-${id}`).value;
             const exitDate = document.getElementById(`closeDate-${id}`).value;
-            if (!Number.isFinite(exitPrice) || exitPrice <= 0 || !Number.isFinite(fees) || fees < 0 || isNaN(ymdToUtc(entryDate)) || isNaN(ymdToUtc(exitDate)) || exitDate < entryDate || exitDate > nyDateStr()) {
+            const dtEntry = ymdToUtc(entryDate);
+            const dtExit = ymdToUtc(exitDate);
+            if (!Number.isFinite(exitPrice) || exitPrice <= 0 || !Number.isFinite(fees) || fees < 0 || !Number.isFinite(dtEntry.getTime()) || !Number.isFinite(dtExit.getTime()) || exitDate < entryDate || exitDate > nyDateStr()) {
                 alert('Enter a valid exit price, non-negative fees, and dates between entry and today.');
                 return;
             }
             const before = { ...trade };
             Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
             Object.assign(trade, journalResult(trade));
-            try { saveActiveTradesLog(); } catch (error) {
+            if (!saveActiveTradesLog()) {
                 activeTradesLog[activeTradesLog.indexOf(trade)] = before;
                 alert('Could not save the journal. Export a backup and check browser storage.');
                 return;
@@ -3754,7 +3804,10 @@
             showUndoToast(`Recorded ${trade.ticker} in History.`, () => {
                 const idx = activeTradesLog.findIndex(t => t.id === id);
                 if (idx >= 0) activeTradesLog[idx] = before;
-                saveActiveTradesLog();
+                if (!saveActiveTradesLog()) {
+                    alert('Could not save the undo. Export a backup and check browser storage.');
+                    return;
+                }
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
             });
@@ -3823,8 +3876,8 @@
                 <div class="bg-slate-900/60 p-3 rounded-xl border border-white/10 space-y-2 font-mono-num">
                     <div class="flex justify-between items-start gap-2">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-lg font-black text-white">${trade.ticker}</span>
-                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${trade.side}</span>
+                            <span class="text-lg font-black text-white">${escapeHtml(trade.ticker)}</span>
+                            <span class="text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${isLong ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}">${escapeHtml(trade.side)}</span>
                             <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(trade.regime)}</span>
                         </div>
                         <span class="text-[11px] font-bold ${isDay5 ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -3835,7 +3888,7 @@
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">$${Number(trade.stopPrice).toFixed(2)}</span></div>
                         <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${trade.entryDate}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
                     </div>
                     ${progressHtml}
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
@@ -4004,12 +4057,19 @@
             if (idx < 0) return;
             const removed = activeTradesLog[idx];
             activeTradesLog.splice(idx, 1);
-            saveActiveTradesLog();
+            if (!saveActiveTradesLog()) {
+                activeTradesLog.splice(idx, 0, removed);
+                alert('Could not save the journal. Export a backup and check browser storage.');
+                return;
+            }
             updateActiveTradesCountBadge();
             renderActiveTradesPage();
             showUndoToast(`Removed ${removed.ticker} ${removed.side}.`, () => {
                 activeTradesLog.splice(Math.min(idx, activeTradesLog.length), 0, removed);
-                saveActiveTradesLog();
+                if (!saveActiveTradesLog()) {
+                    alert('Could not save the undo. Export a backup and check browser storage.');
+                    return;
+                }
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
             });
@@ -4082,7 +4142,7 @@
         }
 
         loadSettings();
-        setInterval(updateClock, 1000);
+        const clockInterval = setInterval(updateClock, 1000);
         updateClock();
         initializeInstallSupport();
     </script>
