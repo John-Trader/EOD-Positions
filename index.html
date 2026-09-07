@@ -233,7 +233,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.0.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -265,10 +265,11 @@
 
             <div class="space-y-1.5">
                 <div class="flex flex-wrap items-center gap-1 mb-0.5">
-                    <div class="flex items-center justify-between w-full">
-                        <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5">PASTE SIGNALS</button>
-                        <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-2 py-0.5 rounded-full font-bold transition-all">+ ADD ROW</button>
-                        <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
+                    <div class="grid grid-cols-4 gap-1 w-full">
+                        <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-1 py-0.5 rounded-full font-bold transition-all whitespace-nowrap">+ ADD ROW</button>
+                        <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5 whitespace-nowrap">PASTE SIGNALS</button>
+                        <button onclick="toggleExitPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5 whitespace-nowrap">PASTE EXITS</button>
+                        <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors whitespace-nowrap">CLEAR ALL</button>
                     </div>
                 </div>
                 
@@ -279,6 +280,16 @@
                     <div class="flex gap-3 text-[11px] font-bold">
                         <button onclick="applySignalPaste()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
                         <button onclick="toggleSignalPaste(false)" class="text-gray-400">CANCEL</button>
+                    </div>
+                </div>
+
+                <div id="exitPastePanel" class="hidden rounded-lg bg-slate-900/60 border border-blue-500/30 p-2 space-y-2">
+                    <label for="exitPasteText" class="text-xs text-gray-300">Paste exit orders (stop, partial %, target prices). Shares and entry are filled after paste.</label>
+                    <textarea id="exitPasteText" rows="6" maxlength="30000" oninput="previewExitPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="1) $AMPL - Stop (GTC): $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82"></textarea>
+                    <div id="exitPastePreview" class="text-[11px] text-cyan-300 font-mono-num space-y-1" aria-live="polite"></div>
+                    <div class="flex gap-3 text-[11px] font-bold">
+                        <button onclick="applyExitPasteToBatch()" class="bg-blue-600 rounded px-3 py-1">OPEN BATCH REVIEW</button>
+                        <button onclick="toggleExitPaste(false)" class="text-gray-400">CANCEL</button>
                     </div>
                 </div>
                 <!-- Dynamic Grid -->
@@ -323,9 +334,14 @@
                 </div>
             </div>
 
-            <button onclick="calculateAll()" id="calcBtn" class="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2.5 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
-                CALCULATE
-            </button>
+            <div class="flex gap-2 items-center">
+                <button onclick="calculateAll()" id="calcBtn" class="flex-1 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2 rounded-xl font-black text-lg shadow-md shadow-blue-900/40 transition-all active:scale-95 uppercase tracking-wide">
+                    CALCULATE
+                </button>
+                <button id="viewToggleBtn" onclick="toggleViewMode()" class="shrink-0 bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
+                    <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
+                </button>
+            </div>
             
             <p id="errorMsg" class="text-red-400 font-bold text-sm text-center bg-red-900/20 py-2 rounded hidden"></p>
             </div><!-- /scannerFormBody -->
@@ -339,11 +355,7 @@
             <button onclick="openBatchReviewDrawer()" class="bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Export CSV</button>
             <button onclick="logSelectedTrades()" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase">Log Trades</button>
         </div>
-        <div></div>
         <div class="flex items-center gap-1.5">
-            <button id="viewToggleBtn" onclick="toggleViewMode()" class="bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
-                <span id="viewToggleIcon">📑</span> <span id="viewToggleText">Table</span>
-            </button>
             <button id="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
                 👁 Focus
             </button>
@@ -510,7 +522,19 @@
                     <input type="date" class="timed-exit-date bg-slate-800 text-white font-mono-num text-[10px] px-1.5 py-0.5 rounded border border-slate-600" oninput="onTimedExitDateInput(this)">
                 </div>
                 <div id="builderRows" class="space-y-2"></div>
-                <button onclick="addBuilderRow()" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                <div class="flex gap-2">
+                    <button onclick="addBuilderRow()" class="flex-1 text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">+ ADD TRADE</button>
+                    <button onclick="toggleBuilderExitPaste()" class="text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-3 py-2 rounded-lg font-bold">PASTE EXITS</button>
+                </div>
+                <div id="builderExitPastePanel" class="hidden rounded-lg bg-slate-900/60 border border-blue-500/30 p-2 space-y-2">
+                    <label for="builderExitPasteText" class="text-xs text-gray-300">Paste exit orders. Shares and entry are filled after paste.</label>
+                    <textarea id="builderExitPasteText" rows="6" maxlength="30000" oninput="previewBuilderExitPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="1) $AMPL - Stop (GTC): $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82"></textarea>
+                    <div id="builderExitPastePreview" class="text-[11px] text-cyan-300 font-mono-num space-y-1" aria-live="polite"></div>
+                    <div class="flex gap-3 text-[11px] font-bold">
+                        <button onclick="applyExitPasteToBuilder()" class="bg-blue-600 rounded px-3 py-1">ADD TO BUILDER</button>
+                        <button onclick="toggleBuilderExitPaste(false)" class="text-gray-400">CANCEL</button>
+                    </div>
+                </div>
                 <div class="flex flex-wrap gap-2">
                     <button onclick="downloadBuilderCombinedCSV()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
                     <button onclick="logAllBuilderTrades()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold">💾 Log All</button>
@@ -661,6 +685,9 @@
         let selectedTickers = new Set();
         let lastRenderedSnapshot = [];
         let builderRowId = 0;
+        let builderExplicitLegs = {}; // rowId -> [{pct, tp, label}, ...]
+        let lastExitPasteResult = null;
+        let lastBuilderExitPasteResult = null;
         let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
         let isStreamingLive = false;
         let maxHoldDays = parseInt(localStorage.getItem('maxHoldDays'), 10) || 5;
@@ -768,6 +795,7 @@
 
         // Batch review custom TP overrides (ticker -> number[])
         let batchCustomTps = {};
+        let batchExplicitLegs = {}; // ticker -> [{pct, tp, label}, ...]
 
         // Current active modal data
         let currentModalState = {
@@ -1270,11 +1298,123 @@
             return { signals: signals.slice(0, 9), warnings };
         }
 
+        function parseExitOrderText(text) {
+            const raw = String(text || '').slice(0, 30000)
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/^Stops,\s*BE alarms,?\s*TP orders:?\s*$/gim, '')
+                // Strip Discord/Markdown bold stars around tickers.
+                .replace(/\$\s*(\*+)\s*([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
+                         (m, starsBefore, ticker) => '$' + ticker)
+                .replace(/(\*+)\s*(\$[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
+                         (m, starsBefore, token) => token)
+                .replace(/(\*+)\s*([A-Z][A-Z0-9.-]{0,9})\s*(\*+)(?=\s*\$?\s*\d)/gi,
+                         (m, starsBefore, ticker) => ticker);
+
+            const blocks = raw
+                .split(/\n\s*\n|\n\s*\d+\s*[).\-]\s*/)
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            const STOP_WORDS = new Set(['STOP','STP','GTC','DAY','SELL','BUY','TO','COVER','LMT','PARTIAL','TP','STOPS','BE','ALARMS','ORDERS']);
+            const PRICE_RE = '(\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?)';
+            const priceNum = (s) => s ? Number(s.replace(/,/g, '')) : 0;
+
+            const trades = [];
+            const warnings = [];
+            const seen = new Set();
+
+            for (const block of blocks) {
+                let ticker = null;
+                let m = /\$([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\b/i.exec(block);
+                if (m) {
+                    ticker = m[1].toUpperCase();
+                } else {
+                    const words = [...block.matchAll(/\b([A-Z][A-Z0-9.-]{1,10})\b/g)];
+                    const cand = words.find(w => !STOP_WORDS.has(w[1]));
+                    if (cand) ticker = cand[1].toUpperCase();
+                }
+                if (!ticker) {
+                    warnings.push('Skipped a line without a ticker.');
+                    continue;
+                }
+
+                const stopMatch = new RegExp('Stop\\s*(?:\\([^)]*\\))?\\s*[:\\-]\\s*\\$?' + PRICE_RE, 'i').exec(block);
+                const stop = stopMatch ? priceNum(stopMatch[1]) : 0;
+                if (!stop) {
+                    warnings.push(`${ticker}: missing stop price.`);
+                    continue;
+                }
+
+                const legs = [];
+                const legRe = new RegExp('(?:\\(([^)]+)\\))?\\s*(Sell|Buy\\s+to\\s+Cover|Buy)?\\s*LMT\\s*:\\s*\\$?' + PRICE_RE, 'gi');
+                let lm;
+                while ((lm = legRe.exec(block)) !== null) {
+                    const label = (lm[1] || '').trim();
+                    const actionRaw = (lm[2] || '').trim().toLowerCase();
+                    const action = actionRaw === 'buy to cover' ? 'BUY' : (actionRaw === 'buy' ? 'BUY' : 'SELL');
+                    const tp = priceNum(lm[3]);
+                    if (!tp) {
+                        warnings.push(`${ticker}: invalid target price.`);
+                        continue;
+                    }
+                    const pctMatch = label.match(/(\d+)\s*(?:%|Partial)/i);
+                    const pct = pctMatch ? Number(pctMatch[1]) : 0;
+                    legs.push({ pct, tp, label, action });
+                }
+
+                if (!legs.length) {
+                    warnings.push(`${ticker}: no LMT legs found.`);
+                    continue;
+                }
+
+                const explicitPcts = legs.map(l => l.pct);
+                const sumPct = explicitPcts.reduce((a, b) => a + b, 0);
+                if (sumPct > 100) {
+                    warnings.push(`${ticker}: leg percentages sum to ${sumPct}% — skipped.`);
+                    continue;
+                }
+
+                const implicitLegs = legs.filter(l => l.pct === 0);
+                let remainder = 100 - sumPct;
+                if (implicitLegs.length) {
+                    const each = remainder / implicitLegs.length;
+                    implicitLegs.forEach(l => l.pct = each);
+                } else if (remainder > 0) {
+                    // All legs explicit but total < 100; add remainder to last leg.
+                    legs[legs.length - 1].pct += remainder;
+                    warnings.push(`${ticker}: leg percentages total ${sumPct}%; remainder added to last leg.`);
+                }
+
+                // Round and force the total to exactly 100% on the last leg.
+                legs.forEach(l => l.pct = Number(l.pct.toFixed(4)));
+                const roundedSum = legs.reduce((a, l) => a + l.pct, 0);
+                if (legs.length && Math.abs(roundedSum - 100) > 0.000001) {
+                    legs[legs.length - 1].pct = Number((legs[legs.length - 1].pct + (100 - roundedSum)).toFixed(4));
+                }
+
+                const hasSell = legs.some(l => l.action === 'SELL');
+                const hasBuy = legs.some(l => l.action === 'BUY');
+                const isLong = hasBuy ? false : (hasSell ? true : true);
+
+                if (seen.has(ticker)) {
+                    warnings.push(`Duplicate ${ticker} ignored (first exit kept).`);
+                    continue;
+                }
+                seen.add(ticker);
+
+                trades.push({ ticker, isLong, side: isLong ? 'LONG' : 'SHORT', entry: 0, shares: 0, stop, legs });
+            }
+
+            return { trades, warnings };
+        }
+
         function toggleSignalPaste(open) {
             const panel = document.getElementById('signalPastePanel');
             const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
             setHidden(panel, !show);
             if (show) {
+                setHidden(document.getElementById('exitPastePanel'), true);
                 document.getElementById('signalPasteText').focus();
                 previewSignalPaste();
             }
@@ -1288,6 +1428,70 @@
                 ...(!parsed.signals.length ? ['No matching signals yet.'] : [])
             ].join('\n');
             return parsed;
+        }
+
+        function toggleExitPaste(open) {
+            const panel = document.getElementById('exitPastePanel');
+            const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
+            setHidden(panel, !show);
+            if (show) {
+                document.getElementById('exitPasteText').value = '';
+                document.getElementById('exitPastePreview').innerHTML = '';
+                lastExitPasteResult = null;
+                document.getElementById('exitPasteText').focus();
+                if (!panel.classList.contains('hidden')) setHidden(document.getElementById('signalPastePanel'), true);
+            }
+        }
+
+        function previewExitPaste() {
+            const text = document.getElementById('exitPasteText').value;
+            const parsed = parseExitOrderText(text);
+
+            // Preserve side overrides from previous parse when ticker still present.
+            if (lastExitPasteResult) {
+                const oldSides = new Map(lastExitPasteResult.trades.map((t, i) => [t.ticker, { isLong: t.isLong, side: t.side, idx: i }]));
+                parsed.trades.forEach((t, i) => {
+                    const old = oldSides.get(t.ticker);
+                    if (old && old.idx === i) {
+                        t.isLong = old.isLong;
+                        t.side = old.side;
+                    }
+                });
+            }
+            lastExitPasteResult = parsed;
+
+            const tradeHtml = parsed.trades.map((t, i) => `
+                <div class="exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold">${t.ticker}</span>
+                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        </select>
+                    </div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + l.label + ')' : ''}`).join(' | ')}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('exitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            return parsed;
+        }
+
+        function updateExitPasteSide(select) {
+            const idx = parseInt(select.closest('.exit-paste-trade').dataset.idx);
+            if (lastExitPasteResult && lastExitPasteResult.trades[idx]) {
+                const isLong = select.value === 'long';
+                lastExitPasteResult.trades[idx].isLong = isLong;
+                lastExitPasteResult.trades[idx].side = isLong ? 'LONG' : 'SHORT';
+            }
+        }
+
+        function applyExitPasteToBatch() {
+            if (!lastExitPasteResult) previewExitPaste();
+            const parsed = lastExitPasteResult;
+            if (!parsed || !parsed.trades.length) { alert('No valid exit orders to apply.'); return; }
+            toggleExitPaste(false);
+            openBatchReviewDrawer('paste', parsed.trades);
         }
 
         function applySignalPaste() {
@@ -1992,7 +2196,7 @@
         const rowClassFor = (f) => `result-row rounded-lg px-2.5 py-2 ${f.rowClass}`;
         const exitBtnCardClass = (f) => `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
         const exitBtnRowClass = (f) => `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
-        const earnBadgeClass = 'text-[8px] font-bold text-red-300 bg-red-950/60 border border-red-500/40 rounded px-1 py-px leading-none whitespace-nowrap';
+        const earnBadgeClass = 'text-[8px] font-bold text-amber-300 leading-none whitespace-nowrap';
 
         function syncExitButton(exitBtn, f) {
             if (!exitBtn) return;
@@ -2025,7 +2229,7 @@
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
                                 <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠ signal ${f.signalSide || ''}</span>
                             </div>
-                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                            <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn || ''}</div>
                         </div>
                     </div>
                     ${triggerBadge}
@@ -2082,7 +2286,7 @@
             const sideWarn = q('sideWarn');
             if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
             const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
+            if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
             setTextIfChanged(q('low'), f.l.toFixed(2));
             const range = q('range');
@@ -2141,7 +2345,7 @@
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
                             <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${f.signalSide || ''}">⚠</span>
                         </div>
-                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}">${f.earn || ''}</div>
+                        <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn || ''}</div>
                     </div>
                     <div class="shrink-0">
                         <div data-field="lastPrice" class="text-[13px] font-black font-mono-num text-blue-300 leading-none">$${f.c.toFixed(2)}</div>
@@ -2186,7 +2390,7 @@
             }
             setHidden(q('sideWarn'), !f.sideMismatch);
             const earn = q('earn');
-            if (earn) { setTextIfChanged(earn, f.earn || ''); setHidden(earn, !f.earn); }
+            if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
             const bidAsk = q('bidAsk');
             if (bidAsk) { setTextIfChanged(bidAsk, `B ${f.bidText} A ${f.askText}`); setHidden(bidAsk, !f.hasBidAsk); }
@@ -2408,7 +2612,7 @@
                             ${stopLabelHtml(p)}
                             <span class="text-gray-500">+</span>
                             LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
-                            <span class="text-emerald-400">(${p.rr}R${p.stopMode!=='fixed'?' · stop '+p.stopMode:''})</span>
+                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop '+p.stopMode:'') + ')' : (p.stopMode!=='fixed'?'(stop '+p.stopMode+')':'')}</span>
                         </div>
                     </div>
                     <div class="flex gap-1">
@@ -2462,7 +2666,7 @@
             const customTps = readCustomTpsFromDom();
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) { alert(built.error); return; }
-            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)} (${p.rr}R)`).join(' | ');
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
             navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
         }
@@ -2536,13 +2740,28 @@
         }
 
         function buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, opts = {}) {
-            const err = validateTradeParams(isLong, entry, shares, stop);
-            if (err) return { ok: false, error: err, rows: [], preview: [] };
-            const strat = getStrategyById(strategyId || defaultStrategyId(isLong));
+            const explicit = Array.isArray(opts.explicitLegs) ? opts.explicitLegs : null;
+            const allowNoEntry = explicit && (Number(entry) === 0);
+            if (allowNoEntry) {
+                if (!Number.isSafeInteger(shares) || shares <= 0) return { ok: false, error: 'Shares must be a positive whole number', rows: [], preview: [] };
+                if (!Number.isFinite(stop) || stop <= 0) return { ok: false, error: 'Stop must be > 0', rows: [], preview: [] };
+            } else {
+                const err = validateTradeParams(isLong, entry, shares, stop);
+                if (err) return { ok: false, error: err, rows: [], preview: [] };
+            }
+            const rps = allowNoEntry ? 0 : (isLong ? (entry - stop) : (stop - entry));
+            const action = isLong ? 'SELL' : 'BUY';
+            const strat = explicit ? {
+                id: 'pasted',
+                name: 'Pasted',
+                legs: explicit.map(l => ({
+                    pct: l.pct,
+                    rr: (rps > 0 && l.tp > 0) ? Math.abs(l.tp - entry) / rps : ((allowNoEntry && l.tp > 0) ? 1 : 0),
+                    stopMode: 'fixed'
+                }))
+            } : getStrategyById(strategyId || defaultStrategyId(isLong));
             const legErr = strategyLegsError(strat);
             if (legErr) return { ok: false, error: legErr, rows: [], preview: [] };
-            const rps = isLong ? (entry - stop) : (stop - entry);
-            const action = isLong ? 'SELL' : 'BUY';
             const pcts = strat.legs.map(l => Number(l.pct) || 0);
             const qtys = splitSharesByPct(shares, pcts);
             const suffix = opts.ocaSuffix !== undefined ? opts.ocaSuffix : ocaSuffix();
@@ -2564,8 +2783,9 @@
                 const qty = qtys[i];
                 if (!qty) return;
                 const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
                 const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
-                const tp = customTp || defaultTp;
+                const tp = customTp || explicitTp || defaultTp;
                 const oca = `${ticker}_${strat.id}_L${i + 1}${suffix}`;
                 let stopMode = leg.stopMode || 'fixed';
                 let stp = stop;
@@ -2595,8 +2815,9 @@
                     exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
                     rows.push(exitRow);
                 }
-                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, oca, stopMode, adjStop, adjTrigger, legIndex: i });
-                if (isLong ? tp <= entry : tp >= entry) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                const trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
+                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null });
+                if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
             });
             if (preview.some(p => !Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0)) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
             if (timedEnabled || preview.some(p => p.adjStop !== null)) {
@@ -2720,31 +2941,52 @@
                 body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-2">No valid trades to preview.</div>';
                 return;
             }
-            body.innerHTML = trades.flatMap(t => t.built.preview.map((p, i) => `
+            body.innerHTML = trades.map(t => {
+                const rows = t.built.preview.map((p, i) => `
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
                     <span class="text-white font-bold w-14 truncate">${p.ticker}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-14 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"></span>
-                    <span class="text-gray-500 w-24 text-right truncate">${p.oca}</span>
+                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${p.label}</span>` : ''}</span>
+                    <span class="text-gray-500 w-20 text-right truncate">${p.oca}</span>
                 </div>
-            `)).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
+            `).join('');
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${rows}</div>`;
+            }).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
         }
 
-        function openBatchReviewDrawer() {
-            const risk = parseFloat(document.getElementById('riskValue').value) || 500;
-            const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+        function openBatchReviewDrawer(source, parsedTrades) {
+            const isPaste = source === 'paste';
             const list = document.getElementById('batchReviewList');
             list.innerHTML = '';
             batchCustomTps = {};
-            const trades = lastRenderedSnapshot
-                .map(item => snapshotTradeFromItem(item, risk, slippage))
-                .filter(t => t && selectedTickers.has(t.ticker));
+            batchExplicitLegs = {}; // clear stale explicit legs for any new batch session
+
+            let trades = [];
+            if (isPaste && Array.isArray(parsedTrades)) {
+                trades = parsedTrades.map(t => ({ ...t, entry: Number(t.entry) || 0, shares: Number(t.shares) || 0 }));
+            } else {
+                const risk = parseFloat(document.getElementById('riskValue').value) || 500;
+                const slippage = parseFloat(document.getElementById('slippageValue').value) || 0;
+                trades = lastRenderedSnapshot
+                    .map(item => snapshotTradeFromItem(item, risk, slippage))
+                    .filter(t => t && selectedTickers.has(t.ticker));
+            }
+
             const isAllLong = trades.length > 0 && trades.every(t => t.isLong);
             const globalStrategySel = document.getElementById('batchGlobalStrategy');
-            if (globalStrategySel) fillStrategySelect(globalStrategySel, AUTO_STRATEGY, isAllLong, true);
+            if (globalStrategySel) {
+                if (isPaste) {
+                    globalStrategySel.style.display = 'none';
+                } else {
+                    globalStrategySel.style.display = '';
+                    fillStrategySelect(globalStrategySel, AUTO_STRATEGY, isAllLong, true);
+                }
+            }
+
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
+
             if (!trades.length) {
                 list.innerHTML = '<div class="text-center text-gray-400 text-xs py-6">Select one or more tickers on the scanner first.</div>';
                 const ov = document.getElementById('batchReviewOverlay');
@@ -2753,17 +2995,26 @@
                 renderBatchPreview();
                 return;
             }
+
+            if (isPaste) {
+                parsedTrades.forEach(t => { batchExplicitLegs[t.ticker] = t.legs; });
+            }
+
             trades.forEach((t, idx) => {
+                const isLong = !!t.isLong;
                 list.insertAdjacentHTML('beforeend', `
-                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${t.isLong}">
+                    <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-2" data-ticker="${t.ticker}" data-long="${isLong}">
                         <div class="shrink-0 w-14 leading-none">
                             <div class="font-black font-mono-num text-white text-sm">${t.ticker}</div>
-                            <div class="text-[9px] font-black ${t.isLong ? 'text-emerald-400' : 'text-rose-400'}">${t.isLong ? 'LONG' : 'SHORT'}</div>
+                            <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
+                                <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
+                                <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
+                            </select>
                         </div>
                         <div class="grid grid-cols-3 gap-1 flex-1 min-w-0">
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.entry.toFixed(2)}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.shares}"></label>
-                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${t.stop.toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Entry<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-entry w-full bg-slate-800 text-white text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.entry) || 0).toFixed(2)}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Shrs<input type="number" step="1" oninput="onBatchInput(this)" class="batch-shares w-full bg-slate-800 text-cyan-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${Number(t.shares) || 0}"></label>
+                            <label class="text-[8px] text-gray-500 uppercase leading-none">Stop<input type="number" step="0.01" oninput="onBatchInput(this)" class="batch-stop w-full bg-slate-800 text-red-300 text-[11px] font-mono-num font-bold rounded px-1 py-0.5 border border-slate-600 text-center" value="${(Number(t.stop) || 0).toFixed(2)}"></label>
                         </div>
                     </div>
                 `);
@@ -2792,14 +3043,16 @@
             const globalStrategyEl = document.getElementById('batchGlobalStrategy');
             document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
                 const ticker = el.dataset.ticker;
-                const isLong = el.dataset.long === 'true';
+                const sideEl = el.querySelector('.batch-side');
+                const isLong = sideEl ? (sideEl.value === 'long') : (el.dataset.long === 'true');
                 const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
-                const globalVal = globalStrategyEl && globalStrategyEl.value;
-                const strategyId = (globalVal && globalVal !== AUTO_STRATEGY) ? globalVal : defaultStrategyId(isLong);
+                const explicit = batchExplicitLegs[ticker] || null;
+                const globalVal = globalStrategyEl && globalStrategyEl.style.display !== 'none' ? globalStrategyEl.value : null;
+                const strategyId = explicit ? null : ((globalVal && globalVal !== AUTO_STRATEGY) ? globalVal : defaultStrategyId(isLong));
                 const customTps = batchCustomTps[ticker] || [];
-                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+                const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { explicitLegs: explicit });
                 if (!built.ok) errors.push(`${ticker}: ${built.error}`);
                 else trades.push({ ticker, isLong, entry, shares, stop, strategyId, customTps, built });
             });
@@ -2841,10 +3094,21 @@
 
         function logTradeRecord(t, tpValues) {
             const rps = t.isLong ? (t.entry - t.stop) : (t.stop - t.entry);
-            const strat = getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
+            const explicit = Array.isArray(t.explicitLegs) ? t.explicitLegs : null;
+            const strat = explicit ? {
+                id: 'pasted',
+                name: 'Pasted',
+                legs: explicit.map(l => ({
+                    pct: l.pct,
+                    rr: rps > 0 && l.tp > 0 ? Math.abs(l.tp - t.entry) / rps : 0,
+                    stopMode: 'fixed'
+                }))
+            } : getStrategyById(t.strategyId || defaultStrategyId(t.isLong));
             const tps = Array.isArray(tpValues)
                 ? tpValues
-                : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
+                : explicit
+                    ? explicit.map(l => l.tp)
+                    : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
             activeTradesLog.unshift({
                 id: Date.now() + Math.random(),
                 ticker: t.ticker,
@@ -2884,7 +3148,7 @@
             div.innerHTML = `
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-[9px] font-bold text-gray-400 uppercase">Trade #${id}</span>
-                    <button onclick="this.closest('.builder-row').remove()" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
+                    <button onclick="removeBuilderRow(this)" class="text-[10px] text-red-400 font-bold hover:text-red-300">✕ Remove</button>
                 </div>
                 <div class="grid grid-cols-3 sm:grid-cols-6 gap-1">
                     <label class="text-[8px] text-gray-500 uppercase font-bold">Ticker<input class="b-ticker w-full super-input" style="font-size:0.8rem;padding:0.25rem 0.35rem;" value="${p.ticker||''}" placeholder="TICK"></label>
@@ -2897,26 +3161,46 @@
                 <div class="b-preview mt-1 text-[9px] font-mono-num text-gray-400"></div>
             `;
             wrap.appendChild(div);
-            fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+
+            if (p.explicitLegs && p.explicitLegs.length) {
+                builderExplicitLegs[id] = p.explicitLegs;
+                const opt = div.querySelector('.b-opt');
+                opt.innerHTML = '<option value="pasted" selected>Pasted</option>';
+                opt.disabled = true;
+            } else {
+                fillStrategySelect(div.querySelector('.b-opt'), p.strategyId || defaultStrategyId(isLong), isLong);
+            }
+
             const refresh = () => refreshBuilderPreview(div);
             div.querySelectorAll('input,select').forEach(el => el.addEventListener('input', refresh));
             div.querySelector('.b-side').addEventListener('change', () => {
-                fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                if (!builderExplicitLegs[id]) {
+                    fillStrategySelect(div.querySelector('.b-opt'), defaultStrategyId(div.querySelector('.b-side').value === 'long'), div.querySelector('.b-side').value === 'long');
+                }
                 refresh();
             });
             refresh();
         }
 
+        function removeBuilderRow(btn) {
+            const row = btn.closest('.builder-row');
+            const id = row.dataset.id;
+            delete builderExplicitLegs[id];
+            row.remove();
+        }
+
         function refreshBuilderPreview(el) {
+            const id = el.dataset.id;
             const isLong = el.querySelector('.b-side').value === 'long';
             const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
             const shares = parseInt(el.querySelector('.b-shares').value) || 0;
             const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
-            const strategyId = el.querySelector('.b-opt').value;
+            const explicit = builderExplicitLegs[id] || null;
+            const strategyId = explicit ? 'pasted' : el.querySelector('.b-opt').value;
             const box = el.querySelector('.b-preview');
-            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId);
+            const built = buildExitLegs((el.querySelector('.b-ticker').value || 'TICK').toUpperCase(), isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}`).join(' <span class="text-gray-600">|</span> ')
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + p.label : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
@@ -2924,13 +3208,15 @@
         function collectBuilderTrades() {
             const out = [];
             document.querySelectorAll('#builderRows .builder-row').forEach(el => {
+                const id = el.dataset.id;
                 const ticker = (el.querySelector('.b-ticker').value || '').trim().toUpperCase();
                 const isLong = el.querySelector('.b-side').value === 'long';
                 const entry = parseFloat(el.querySelector('.b-entry').value) || 0;
                 const shares = parseInt(el.querySelector('.b-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.b-stop').value) || 0;
-                const strategyId = el.querySelector('.b-opt').value;
-                if (ticker && shares > 0 && entry > 0 && stop > 0) out.push({ ticker, isLong, entry, shares, stop, strategyId });
+                const explicitLegs = builderExplicitLegs[id] || null;
+                const strategyId = explicitLegs ? 'pasted' : el.querySelector('.b-opt').value;
+                if (ticker && shares > 0 && stop > 0 && (entry > 0 || explicitLegs)) out.push({ ticker, isLong, entry, shares, stop, strategyId, explicitLegs });
             });
             return out;
         }
@@ -2940,13 +3226,100 @@
             const rows = [];
             const errors = [];
             trades.forEach(t => {
-                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId);
+                const built = buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, null, { explicitLegs: t.explicitLegs });
                 if (!built.ok) errors.push(`${t.ticker}: ${built.error}`);
                 else built.rows.forEach(r => rows.push(r));
             });
             if (errors.length) { alert(errors.join('\n')); return; }
             if (!rows.length) { alert('Add at least one complete trade.'); return; }
             triggerCsvDownload(`Manual_TWS_Exit_${nyDateStr()}.csv`, rows);
+        }
+
+        function toggleBuilderExitPaste(open) {
+            const panel = document.getElementById('builderExitPastePanel');
+            const show = typeof open === 'boolean' ? open : panel.classList.contains('hidden');
+            setHidden(panel, !show);
+            if (show) {
+                document.getElementById('builderExitPasteText').value = '';
+                document.getElementById('builderExitPastePreview').innerHTML = '';
+                lastBuilderExitPasteResult = null;
+                document.getElementById('builderExitPasteText').focus();
+            }
+        }
+
+        function previewBuilderExitPaste() {
+            const text = document.getElementById('builderExitPasteText').value;
+            const parsed = parseExitOrderText(text);
+
+            if (lastBuilderExitPasteResult) {
+                const oldSides = new Map(lastBuilderExitPasteResult.trades.map((t, i) => [t.ticker, { isLong: t.isLong, side: t.side, idx: i }]));
+                parsed.trades.forEach((t, i) => {
+                    const old = oldSides.get(t.ticker);
+                    if (old && old.idx === i) {
+                        t.isLong = old.isLong;
+                        t.side = old.side;
+                    }
+                });
+            }
+            lastBuilderExitPasteResult = parsed;
+
+            const tradeHtml = parsed.trades.map((t, i) => `
+                <div class="builder-exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold">${t.ticker}</span>
+                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        </select>
+                    </div>
+                    <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + l.label + ')' : ''}`).join(' | ')}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('builderExitPastePreview').innerHTML = tradeHtml + (parsed.warnings.length ? `<div class="text-amber-300 mt-1">${parsed.warnings.join(' | ')}</div>` : '') + (!parsed.trades.length ? '<div class="text-gray-500">No exit orders recognized.</div>' : '');
+            return parsed;
+        }
+
+        function updateBuilderExitPasteSide(select) {
+            const idx = parseInt(select.closest('.builder-exit-paste-trade').dataset.idx);
+            if (lastBuilderExitPasteResult && lastBuilderExitPasteResult.trades[idx]) {
+                const isLong = select.value === 'long';
+                lastBuilderExitPasteResult.trades[idx].isLong = isLong;
+                lastBuilderExitPasteResult.trades[idx].side = isLong ? 'LONG' : 'SHORT';
+            }
+        }
+
+        function mergePastedTradesIntoBuilder(parsedTrades) {
+            const existingRows = Array.from(document.querySelectorAll('#builderRows .builder-row'));
+            const existingByTicker = new Map();
+            existingRows.forEach(row => {
+                const ticker = (row.querySelector('.b-ticker').value || '').trim().toUpperCase();
+                if (ticker) existingByTicker.set(ticker.toUpperCase(), row);
+            });
+
+            parsedTrades.forEach(t => {
+                const row = existingByTicker.get(t.ticker.toUpperCase());
+                if (row) {
+                    const id = row.dataset.id;
+                    row.querySelector('.b-side').value = t.isLong ? 'long' : 'short';
+                    row.querySelector('.b-stop').value = t.stop.toFixed(2);
+                    builderExplicitLegs[id] = t.legs;
+                    const opt = row.querySelector('.b-opt');
+                    opt.innerHTML = '<option value="pasted" selected>Pasted</option>';
+                    opt.disabled = true;
+                    refreshBuilderPreview(row);
+                } else {
+                    addBuilderRow({ ticker: t.ticker, isLong: t.isLong, stop: t.stop, explicitLegs: t.legs });
+                }
+            });
+        }
+
+        function applyExitPasteToBuilder() {
+            if (!lastBuilderExitPasteResult) previewBuilderExitPaste();
+            const parsed = lastBuilderExitPasteResult;
+            if (!parsed || !parsed.trades.length) { alert('No valid exit orders to apply.'); return; }
+            toggleBuilderExitPaste(false);
+            mergePastedTradesIntoBuilder(parsed.trades);
         }
 
         function logAllBuilderTrades() {
@@ -3502,7 +3875,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.0.1",
+                version: "2.1.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -3530,7 +3903,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
