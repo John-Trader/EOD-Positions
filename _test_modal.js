@@ -24,7 +24,9 @@ function mockElement(id) {
       querySelectorAll: () => [],
       querySelector: () => null,
       appendChild: (ch) => elements[id].children.push(ch),
-      addEventListener: () => {}
+      addEventListener: () => {},
+      setAttribute: (k, v) => { elements[id][k] = v; },
+      getAttribute: (k) => elements[id][k]
     };
   }
   return elements[id];
