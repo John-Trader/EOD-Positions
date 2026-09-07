@@ -237,7 +237,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.7</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.8</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -282,7 +282,7 @@
                     <textarea id="signalPasteText" rows="5" maxlength="30000" oninput="previewSignalPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="$AMPL (Amplitude Inc) - If closing above $13.96 LONG"></textarea>
                     <pre id="signalPastePreview" class="whitespace-pre-wrap text-[11px] text-cyan-300 font-mono-num" aria-live="polite"></pre>
                     <div class="flex gap-3 text-[11px] font-bold">
-                        <button onclick="applySignalPaste()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
+                        <button onclick="autoPasteSignalAndCalculate()" class="bg-blue-600 rounded px-3 py-1">REPLACE INPUTS</button>
                         <button onclick="toggleSignalPaste(false)" class="text-gray-400">CANCEL</button>
                     </div>
                 </div>
@@ -292,7 +292,7 @@
                     <textarea id="exitPasteText" rows="6" maxlength="30000" oninput="previewExitPaste()" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-xs" placeholder="1) $AMPL - Stop (GTC): $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82"></textarea>
                     <div id="exitPastePreview" class="text-[11px] text-cyan-300 font-mono-num space-y-1" aria-live="polite"></div>
                     <div class="flex gap-3 text-[11px] font-bold">
-                        <button onclick="applyExitPasteToBatch()" class="bg-blue-600 rounded px-3 py-1">OPEN BATCH REVIEW</button>
+                        <button onclick="autoPasteExitAndOpenBatch()" class="bg-blue-600 rounded px-3 py-1">OPEN BATCH REVIEW</button>
                         <button onclick="toggleExitPaste(false)" class="text-gray-400">CANCEL</button>
                     </div>
                 </div>
@@ -434,6 +434,10 @@
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="collapseAfterCalcSetting" class="custom-checkbox" onchange="saveCollapseAfterCalc()">
                             <span class="text-xs text-gray-300">Collapse inputs after Calculate</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="showAlertSetting" class="custom-checkbox" onchange="saveAlertSetting()">
+                            <span class="text-xs text-gray-300">Trigger alerts (browser/system notifications)</span>
                         </label>
                     </div>
                 </div>
@@ -709,6 +713,7 @@
         // Optional card fields / warnings (opt-in, default OFF)
         let showRangePct = safeStorageGet('showRangePct') === 'true';
         let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+        let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
         function earningsBadgeFor(ticker) {
@@ -864,12 +869,15 @@
 
             const showFocus = safeStorageGet('setting_showFocus') !== 'false';
             const showVoice = safeStorageGet('setting_showVoice') === 'true';
+            alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
 
             document.getElementById('showFocusSetting').checked = showFocus;
             document.getElementById('showVoiceSetting').checked = showVoice;
             document.getElementById('liveUpdateSetting').checked = liveUpdateEnabled;
             const collapseEl = document.getElementById('collapseAfterCalcSetting');
             if (collapseEl) collapseEl.checked = collapseAfterCalc;
+            const alertEl = document.getElementById('showAlertSetting');
+            if (alertEl) alertEl.checked = alertEnabled;
             
             updateUIControls();
             refreshStrategySelects();
@@ -955,6 +963,15 @@
             safeStorageSet('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
             if (!liveUpdateEnabled) disconnectWebSocket();
             updateTopStatus();
+        }
+
+        async function saveAlertSetting() {
+            const on = document.getElementById('showAlertSetting').checked;
+            alertEnabled = on;
+            safeStorageSet('setting_showAlerts', on ? 'true' : 'false');
+            if (on && 'Notification' in window && Notification.permission === 'default') {
+                try { await Notification.requestPermission(); } catch (e) {}
+            }
         }
 
         function styleRegimePair(expBtn, decBtn, regime) {
@@ -1545,6 +1562,37 @@
             openBatchReviewDrawer('paste', parsed.trades);
         }
 
+        function autoPasteExitAndOpenBatch() {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                showErrorToast('Clipboard API not available. Paste manually.');
+                return;
+            }
+            navigator.clipboard.readText().then(text => {
+                document.getElementById('exitPasteText').value = text;
+                previewExitPaste();
+                applyExitPasteToBatch();
+            }).catch(e => {
+                console.warn('Clipboard read failed:', e);
+                showErrorToast('Clipboard access denied. Paste manually and click Open Batch Review.');
+            });
+        }
+
+        function autoPasteSignalAndCalculate() {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                showErrorToast('Clipboard API not available. Paste manually.');
+                return;
+            }
+            navigator.clipboard.readText().then(text => {
+                document.getElementById('signalPasteText').value = text;
+                previewSignalPaste();
+                applySignalPaste();
+                calculateAll();
+            }).catch(e => {
+                console.warn('Clipboard read failed:', e);
+                showErrorToast('Clipboard access denied. Paste manually and click Replace Inputs.');
+            });
+        }
+
         function applySignalPaste() {
             const { signals } = previewSignalPaste();
             if (!signals.length) return;
@@ -1662,8 +1710,23 @@
                 const f = getRealtimeFields(r, risk, slippage);
                 const was = !!triggerActiveState[ticker];
                 triggerActiveState[ticker] = f.isActive;
-                if (f.isActive && !was) speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+                if (f.isActive && !was) {
+                    speakText(`${f.ticker}. ${f.isGreenDay ? 'Long' : 'Short'} Trigger Active. ${f.shares} Shares.`);
+                    if (alertEnabled) showTriggerNotification(f.ticker, f.isGreenDay ? 'LONG' : 'SHORT', f.trigger, f.shares, f.c);
+                }
             });
+        }
+
+        function showTriggerNotification(ticker, side, trigger, shares, price) {
+            const title = `${ticker} ${side} trigger active`;
+            const body = `Price $${price.toFixed(2)} crossed $${trigger ? trigger.toFixed(2) : '--'} · ${shares.toLocaleString()} shares`;
+            try {
+                if (swRegistration && swRegistration.showNotification) {
+                    swRegistration.showNotification(title, { body, icon: './icon.svg', badge: './icon.svg' });
+                } else if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(title, { body, icon: './icon.svg' });
+                }
+            } catch (e) { console.warn('Notification failed:', e); }
         }
 
         // ========================================================
@@ -1738,17 +1801,45 @@
             try { _storage.removeItem(key); } catch (e) {}
         }
 
+        function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(new DOMException('Request timeout', 'TimeoutError')), timeoutMs);
+            if (parentSignal) {
+                parentSignal.addEventListener('abort', () => { try { controller.abort(); } catch (e) {} }, { once: true });
+            }
+            try {
+                const p = fetch(url, { ...init, signal: controller.signal });
+                p.catch(() => {}).finally(() => clearTimeout(id));
+                return p;
+            } finally {
+            }
+        }
+
         async function fetchTickerData(ticker, provider, apiKey, signal) {
-            const data = await fetchProviderQuote(ticker, provider, apiKey, signal);
-            if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
-            return data;
+            const providers = [provider, ...Object.keys(API_CONFIGS).filter(p => p !== provider)];
+            let firstError = null;
+            for (const p of providers) {
+                const cfg = API_CONFIGS[p];
+                const key = p === provider ? apiKey : (cfg.storageKey ? safeStorageGet(cfg.storageKey) : null);
+                if (!key) continue;
+                try {
+                    const data = await fetchProviderQuote(ticker, p, key, signal);
+                    if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
+                    return data;
+                } catch (e) {
+                    if (e && e.name === 'AbortError') throw e;
+                    if (!firstError) firstError = e;
+                    console.warn(`Provider ${p} failed for ${ticker}:`, e.message);
+                }
+            }
+            throw firstError || new Error(`All available providers failed for ${ticker}`);
         }
 
         async function fetchProviderQuote(ticker, provider, apiKey, signal) {
             ticker = sanitizeTicker(ticker);
             if (!ticker) throw new Error('Empty ticker');
             if (provider === 'twelvedata') {
-                const quote = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`, { signal });
+                const quote = await fetchWithTimeout(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d = await quote.json();
                 if (d.code) throw new Error(d.message || `Invalid Ticker: ${ticker}`);
@@ -1763,7 +1854,7 @@
                     ask: (ask && ask > 0) ? ask : null
                 };
             } else if (provider === 'finnhub') {
-                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`, { signal });
+                const quote = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`Quote API error (${quote.status})`);
                 const d = await quote.json();
@@ -1779,7 +1870,7 @@
                     ask: ask
                 };
             } else if (provider === 'stockdata') {
-                const quote = await fetch(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`, { signal });
+                const quote = await fetchWithTimeout(`https://api.stockdata.org/v1/data/quote?symbols=${encodeURIComponent(ticker)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (quote.status === 429) throw new Error("Rate Limit");
                 if (!quote.ok) throw new Error(`API Error: ${ticker}`);
                 const d_res = await quote.json();
@@ -4102,7 +4193,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.1.7",
+                version: "2.1.8",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4127,10 +4218,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4277,6 +4368,7 @@
         });
 
         let installPrompt = null;
+        let swRegistration = null;
         async function installApp() {
             if (!installPrompt) return;
             const prompt = installPrompt;
@@ -4308,6 +4400,7 @@
             const register = async () => {
                 try {
                     const registration = await navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' });
+                    swRegistration = registration;
                     await navigator.serviceWorker.ready;
                     status.textContent = 'Offline shell ready. Use the browser install option if available. Quotes need internet; offline data is not live.';
                     registration.addEventListener('updatefound', () => {
