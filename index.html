@@ -233,7 +233,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.1.2</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -675,12 +675,12 @@
         const RESYNC_INTERVAL_MS = 5 * 60 * 1000;
         const MAX_RECONNECT_ATTEMPTS = 8;
 
-        let liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled');
+        let liveUpdateEnabled = safeStorageGet('liveUpdateEnabled');
         if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
         liveUpdateEnabled = liveUpdateEnabled === 'true';
 
-        let globalMarketRegime = localStorage.getItem('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
-        let currentViewMode = localStorage.getItem('preferredViewMode') || 'cards'; // 'cards' | 'table'
+        let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
+        let currentViewMode = safeStorageGet('preferredViewMode') || 'cards'; // 'cards' | 'table'
         let currentPage = 'scanner';
         let selectedTickers = new Set();
         let lastRenderedSnapshot = [];
@@ -688,19 +688,21 @@
         let builderExplicitLegs = {}; // rowId -> [{pct, tp, label}, ...]
         let lastExitPasteResult = null;
         let lastBuilderExitPasteResult = null;
-        let collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
+        let collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
         let isStreamingLive = false;
-        let maxHoldDays = parseInt(localStorage.getItem('maxHoldDays'), 10) || 5;
+        let calculating = false;
+        let lastCalculateAt = 0;
+        let maxHoldDays = parseInt(safeStorageGet('maxHoldDays'), 10) || 5;
 
         // Day-N timed exit (opt-in): adds a GoodAfterTime MKT/MOC order to every OCA leg.
-        let timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-        let timedExitTime = localStorage.getItem('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
+        let timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
+        let timedExitTime = safeStorageGet('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
         let timedExitDate = null;                                              // 'YYYY-MM-DD', set when an export UI opens
         const TIMED_EXIT_TIMES = ['15:30', '15:40', '15:45', '15:50', '15:55'];
 
         // Optional card fields / warnings (opt-in, default OFF)
-        let showRangePct = localStorage.getItem('showRangePct') === 'true';
-        let earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
+        let showRangePct = safeStorageGet('showRangePct') === 'true';
+        let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
         function earningsBadgeFor(ticker) {
@@ -727,7 +729,7 @@
             try {
                 const saved = JSON.parse(safeStorageGet('earningsCalendarCache') || '{}');
                 if (saved && typeof saved === 'object' && !Array.isArray(saved)) earningsCache = { ...saved, ...earningsCache };
-            } catch (e) {}
+            } catch (e) { console.warn('Could not load earnings cache:', e); }
             const tickers = [...new Set(realtimeTasks.map(t => t.ticker))];
             if (status) status.textContent = tickers.length ? 'Checking earnings calendar...' : 'Calculate your tickers to check earnings.';
             for (const ticker of tickers) {
@@ -741,7 +743,7 @@
                     if (!response.ok) throw new Error('Calendar unavailable');
                     const data = await response.json();
                     if (!Array.isArray(data.earningsCalendar)) throw new Error('Calendar unavailable');
-                    const dates = data.earningsCalendar.filter(e => e.symbol === ticker && !isNaN(ymdToUtc(e.date)) && e.date >= from && e.date <= to).map(e => e.date).sort();
+                    const dates = data.earningsCalendar.filter(e => e.symbol === ticker && Number.isFinite(ymdToUtc(e.date).getTime()) && e.date >= from && e.date <= to).map(e => e.date).sort();
                     if (requestId !== earningsRequestId) return;
                     earningsCache[ticker] = { from, to, date: dates[0] || null, status: 'ok', checkedAt: Date.now() };
                 } catch (e) {
@@ -774,11 +776,11 @@
         let customStrategies = [];
         let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
         try {
-            const savedS = localStorage.getItem('customStrategies');
+            const savedS = safeStorageGet('customStrategies');
             if (savedS) customStrategies = JSON.parse(savedS);
-            const savedMap = localStorage.getItem('regimeStrategyMap');
+            const savedMap = safeStorageGet('regimeStrategyMap');
             if (savedMap) regimeStrategyMap = { ...regimeStrategyMap, ...JSON.parse(savedMap) };
-        } catch (e) {}
+        } catch (e) { console.warn('Could not load strategies:', e); }
 
         function allStrategies() {
             const safeCustom = Array.isArray(customStrategies) ? customStrategies : [];
@@ -816,7 +818,7 @@
         // Active Trades Log
         let activeTradesLog = [];
         try {
-            const savedLog = localStorage.getItem('activeTradesLog');
+            const savedLog = safeStorageGet('activeTradesLog');
             if (savedLog) activeTradesLog = JSON.parse(savedLog);
         } catch (e) { activeTradesLog = []; }
 
@@ -824,14 +826,14 @@
         // INITIALIZATION & SETTINGS
         // ========================================================
         function loadSettings() {
-            globalMarketRegime = localStorage.getItem('globalMarketRegime') === 'declining' ? 'declining' : 'expanding';
-            currentViewMode = localStorage.getItem('preferredViewMode') === 'table' ? 'table' : 'cards';
-            collapseAfterCalc = localStorage.getItem('collapseAfterCalc') === 'true';
-            liveUpdateEnabled = localStorage.getItem('liveUpdateEnabled') !== 'false';
-            const savedRisk = localStorage.getItem('riskValue');
-            const savedProvider = localStorage.getItem('selectedProvider');
-            const savedSlippage = localStorage.getItem('slippageValue');
-            const savedCount = localStorage.getItem('visibleCount');
+            globalMarketRegime = safeStorageGet('globalMarketRegime') === 'declining' ? 'declining' : 'expanding';
+            currentViewMode = safeStorageGet('preferredViewMode') === 'table' ? 'table' : 'cards';
+            collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
+            liveUpdateEnabled = safeStorageGet('liveUpdateEnabled') !== 'false';
+            const savedRisk = safeStorageGet('riskValue');
+            const savedProvider = safeStorageGet('selectedProvider');
+            const savedSlippage = safeStorageGet('slippageValue');
+            const savedCount = safeStorageGet('visibleCount');
             
             if (savedRisk) document.getElementById('riskValue').value = savedRisk;
             if (Object.hasOwn(API_CONFIGS, savedProvider)) document.getElementById('apiProvider').value = savedProvider;
@@ -839,7 +841,7 @@
             if (savedCount) visibleCount = parseInt(savedCount);
             // Rows come in threes; normalise counts saved by the old 2-column layout.
             visibleCount = Math.min(9, Math.max(3, Math.ceil((visibleCount || 3) / 3) * 3));
-            try { signalSides = JSON.parse(localStorage.getItem('signalSides') || '{}') || {}; } catch (e) { signalSides = {}; }
+            try { signalSides = JSON.parse(safeStorageGet('signalSides') || '{}') || {}; } catch (e) { signalSides = {}; }
             
             updateVisibleRows();
             updateApiKeyInput();
@@ -848,14 +850,14 @@
             updateActiveTradesCountBadge();
 
             document.querySelectorAll('.ticker-input').forEach(input => {
-                input.value = localStorage.getItem(`ticker_${input.dataset.idx}`) || '';
+                input.value = safeStorageGet(`ticker_${input.dataset.idx}`) || '';
             });
             document.querySelectorAll('.trigger-input').forEach(input => {
-                input.value = localStorage.getItem(`trigger_${input.dataset.idx}`) || '';
+                input.value = safeStorageGet(`trigger_${input.dataset.idx}`) || '';
             });
 
-            const showFocus = localStorage.getItem('setting_showFocus') !== 'false';
-            const showVoice = localStorage.getItem('setting_showVoice') === 'true';
+            const showFocus = safeStorageGet('setting_showFocus') !== 'false';
+            const showVoice = safeStorageGet('setting_showVoice') === 'true';
 
             document.getElementById('showFocusSetting').checked = showFocus;
             document.getElementById('showVoiceSetting').checked = showVoice;
@@ -876,12 +878,12 @@
         }
 
         function loadFeatureSettings() {
-            maxHoldDays = boundedHoldDays(localStorage.getItem('maxHoldDays'));
-            timedExitEnabled = localStorage.getItem('timedExitEnabled') === 'true';
-            timedExitTime = localStorage.getItem('timedExitTime') || '15:45';
+            maxHoldDays = boundedHoldDays(safeStorageGet('maxHoldDays'));
+            timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
+            timedExitTime = safeStorageGet('timedExitTime') || '15:45';
             if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
-            showRangePct = localStorage.getItem('showRangePct') === 'true';
-            earningsWarnEnabled = localStorage.getItem('earningsWarnEnabled') === 'true';
+            showRangePct = safeStorageGet('showRangePct') === 'true';
+            earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
             document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
             document.getElementById('timedExitTimeSetting').value = timedExitTime;
             document.getElementById('timedExitSetting').checked = timedExitEnabled;
@@ -901,7 +903,7 @@
             time.disabled = !timedExitEnabled;
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => localStorage.setItem(key, String(value)));
+            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
@@ -919,7 +921,7 @@
 
         function saveCollapseAfterCalc() {
             collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
-            localStorage.setItem('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
+            safeStorageSet('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
         }
 
         function setScannerCollapsed(on) {
@@ -944,7 +946,7 @@
 
         function saveLiveUpdateSetting() {
             liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
-            localStorage.setItem('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
+            safeStorageSet('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
             if (!liveUpdateEnabled) disconnectWebSocket();
             updateTopStatus();
         }
@@ -965,7 +967,7 @@
 
         function setGlobalRegime(regime, save = true) {
             globalMarketRegime = regime;
-            if (save) localStorage.setItem('globalMarketRegime', regime);
+            if (save) safeStorageSet('globalMarketRegime', regime);
             styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
             styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
         }
@@ -1009,7 +1011,7 @@
 
         function toggleViewMode() {
             currentViewMode = (currentViewMode === 'cards') ? 'table' : 'cards';
-            localStorage.setItem('preferredViewMode', currentViewMode);
+            safeStorageSet('preferredViewMode', currentViewMode);
             updateViewToggleUI();
             const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
             const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
@@ -1090,7 +1092,7 @@
         function addMoreRows() {
             if (visibleCount < 9) {
                 visibleCount = Math.min(9, visibleCount + 3);
-                localStorage.setItem('visibleCount', visibleCount);
+                safeStorageSet('visibleCount', visibleCount);
                 updateVisibleRows();
             }
         }
@@ -1107,15 +1109,15 @@
         }
 
         function saveInputs() {
-            localStorage.setItem('riskValue', document.getElementById('riskValue').value);
-            localStorage.setItem('slippageValue', document.getElementById('slippageValue').value);
+            safeStorageSet('riskValue', document.getElementById('riskValue').value);
+            safeStorageSet('slippageValue', document.getElementById('slippageValue').value);
             document.querySelectorAll('.ticker-input').forEach(input => {
-                localStorage.setItem(`ticker_${input.dataset.idx}`, input.value.toUpperCase());
+                safeStorageSet(`ticker_${input.dataset.idx}`, input.value.toUpperCase());
             });
             document.querySelectorAll('.trigger-input').forEach(input => {
-                localStorage.setItem(`trigger_${input.dataset.idx}`, input.value);
+                safeStorageSet(`trigger_${input.dataset.idx}`, input.value);
             });
-            localStorage.setItem('signalSides', JSON.stringify(signalSides));
+            safeStorageSet('signalSides', JSON.stringify(signalSides));
         }
 
         function updateUIControls() {
@@ -1130,8 +1132,8 @@
             if (showVoice) voiceBtn.classList.remove('hidden');
             else voiceBtn.classList.add('hidden');
 
-            localStorage.setItem('setting_showFocus', showFocus);
-            localStorage.setItem('setting_showVoice', showVoice);
+            safeStorageSet('setting_showFocus', showFocus);
+            safeStorageSet('setting_showVoice', showVoice);
         }
 
         // Scanner inputs only: Enter = CALCULATE. (Settings / modal inputs must not restart the scan.)
@@ -1151,7 +1153,7 @@
         if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
-            localStorage.setItem('selectedProvider', e.target.value);
+            safeStorageSet('selectedProvider', e.target.value);
             updateApiKeyInput();
             disconnectWebSocket();
         });
@@ -1163,7 +1165,7 @@
             if (config.needsKey) {
                 apiInput.disabled = false;
                 apiInput.placeholder = 'Enter API Key';
-                const key = localStorage.getItem(config.storageKey);
+                const key = safeStorageGet(config.storageKey);
                 apiInput.value = key || '';
             } else {
                 apiInput.disabled = true;
@@ -1186,7 +1188,7 @@
             const config = API_CONFIGS[provider];
             const key = document.getElementById('apiKeyInput').value.trim();
             if (config.needsKey && key) {
-                localStorage.setItem(config.storageKey, key);
+                safeStorageSet(config.storageKey, key);
                 alert('API Key Saved'); 
             }
         }
@@ -1271,10 +1273,10 @@
             const signals = [];
             const warnings = [];
             const seen = new Set();
-            const add = (ticker, price, side) => {
-                ticker = ticker.toUpperCase();
+            const add = (rawTicker, price, side) => {
+                const ticker = sanitizeTicker(rawTicker);
                 const trigger = Number(price.replace(/,/g, ''));
-                if (ticker.length > 10 || !Number.isFinite(trigger) || trigger <= 0) {
+                if (!ticker || !Number.isFinite(trigger) || trigger <= 0) {
                     warnings.push(`Invalid ticker or trigger: ${ticker}`);
                 } else if (seen.has(ticker)) {
                     warnings.push(`Duplicate ${ticker} ignored (first signal kept).`);
@@ -1332,11 +1334,11 @@
                 let ticker = null;
                 let m = /\$([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\b/i.exec(block);
                 if (m) {
-                    ticker = m[1].toUpperCase();
+                    ticker = sanitizeTicker(m[1]);
                 } else {
                     const words = [...block.matchAll(/\b([A-Z][A-Z0-9.-]{1,10})\b/g)];
                     const cand = words.find(w => !STOP_WORDS.has(w[1]));
-                    if (cand) ticker = cand[1].toUpperCase();
+                    if (cand) ticker = sanitizeTicker(cand[1]);
                 }
                 if (!ticker) {
                     warnings.push('Skipped a line without a ticker.');
@@ -1507,7 +1509,7 @@
             document.querySelectorAll('.trigger-input').forEach((el, i) => { el.value = signals[i] ? signals[i].trigger : ''; });
             signalSides = Object.fromEntries(signals.map((s, i) => [i, s.signalSide]).filter(([, side]) => side));
             visibleCount = Math.ceil(signals.length / 3) * 3;
-            localStorage.setItem('visibleCount', visibleCount);
+            safeStorageSet('visibleCount', visibleCount);
             updateVisibleRows();
             saveInputs();
             toggleSignalPaste(false);
@@ -1528,7 +1530,7 @@
             document.querySelectorAll('.trigger-input').forEach((i, k) => { i.value = snap.triggers[k] || ''; });
             signalSides = { ...(snap.sides || {}) };
             visibleCount = snap.visibleCount || 3;
-            localStorage.setItem('visibleCount', visibleCount);
+            safeStorageSet('visibleCount', visibleCount);
             updateVisibleRows();
             saveInputs();
         }
@@ -1550,14 +1552,14 @@
             if (!filled && !realtimeTasks.length && visibleCount === 3 && !selectedTickers.size) return;
             const snap = snapshotScannerInputs();
             visibleCount = 3;
-            localStorage.removeItem('visibleCount');
+            safeStorageRemove('visibleCount');
             document.querySelectorAll('.ticker-input').forEach(i => {
                 i.value = '';
-                localStorage.removeItem(`ticker_${i.dataset.idx}`);
+                safeStorageRemove(`ticker_${i.dataset.idx}`);
             });
             document.querySelectorAll('.trigger-input').forEach(i => {
                 i.value = '';
-                localStorage.removeItem(`trigger_${i.dataset.idx}`);
+                safeStorageRemove(`trigger_${i.dataset.idx}`);
             });
             signalSides = {};
             updateVisibleRows();
@@ -1570,7 +1572,7 @@
         // SMART TRIGGER HELPER (DUAL BID & ASK)
         // ========================================================
         function isTriggerActive(data, trigger, isGreenDay) {
-            if (trigger === null || trigger === undefined || isNaN(trigger)) return false;
+            if (trigger === null || trigger === undefined || !Number.isFinite(trigger)) return false;
             const { c, bid, ask } = data;
             const hasBidAsk = (typeof bid === 'number' && bid > 0) && (typeof ask === 'number' && ask > 0);
             if (isGreenDay) {
@@ -1991,7 +1993,7 @@
                         changedTickers.clear();
                     }
 
-                } catch (err) {}
+                } catch (err) { console.warn('WebSocket message error:', err); }
             };
 
             socket.onerror = () => {
@@ -2018,113 +2020,125 @@
         }
 
         async function calculateAll() {
+            if (calculating) return;
+            if (Date.now() - lastCalculateAt < 500) return;
             const riskVal = parseFloat(document.getElementById('riskValue').value) || 500;
             const slippageVal = parseFloat(document.getElementById('slippageValue').value) || 0;
             const provider = document.getElementById('apiProvider').value;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? localStorage.getItem(config.storageKey) : null;
+            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
 
-            if (config.needsKey && !apiKey) {
-                errorMsg.innerText = "Please set API Key in Settings.";
-                errorMsg.classList.remove('hidden');
-                navigateTo('settings');
-                return;
-            }
-
-            const inputs = Array.from(document.querySelectorAll('.ticker-input'));
-            const triggers = Array.from(document.querySelectorAll('.trigger-input'));
-
-            const tasks = [];
-            const seen = new Set();
-            for (let i = 0; i < visibleCount; i++) {
-                 const ticker = sanitizeTicker(inputs[i].value);
-                 if (inputs[i].value !== ticker) inputs[i].value = ticker;
-                 const trigger = parseFloat(triggers[i].value);
-                 if (ticker && !seen.has(ticker)) {
-                     seen.add(ticker);
-                     tasks.push({ ticker, trigger: isNaN(trigger) ? null : trigger, signalSide: signalSides[i] || null });
-                 }
-            }
-
-            if (tasks.length === 0) return;
-
-            // Selections only make sense for tickers that are still on the board.
-            Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
-            updateBatchBar();
-
-            errorMsg.classList.add('hidden');
-            container.innerHTML = `<div class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
-
-            // Handle WebSocket stream for supported providers when live update is active
-            if (config.supportsWs && liveUpdateEnabled) {
-                setCalcBtnStreaming(true);
-                startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
-                if (collapseAfterCalc) setScannerCollapsed(true);
-                return;
-            }
-
-            disconnectWebSocket();
-            const gen = streamGeneration;
-            setCalcBtnStreaming(false);
-            btn.innerText = 'FETCHING...';
-            const startTime = performance.now();
-
             try {
-                const promises = tasks.map(async (task) => {
-                    try {
-                        const data = await fetchTickerData(task.ticker, provider, apiKey);
-                        return { ...task, data, success: true };
-                    } catch (e) {
-                        return { ...task, error: e.message, success: false };
-                    }
-                });
+                calculating = true;
+                lastCalculateAt = Date.now();
+                if (btn) btn.disabled = true;
 
-                const results = await Promise.all(promises);
-                if (gen !== streamGeneration) return;
-                const endTime = performance.now();
-                const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
-
-                realtimeTasks = tasks;
-                lastRenderedSnapshot = results;
-                Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
-                triggerActiveState = {};
-                results.forEach(r => {
-                    if (r.success) realtimeQuotes[r.ticker] = r.data;
-                    else realtimeQuoteErrors[r.ticker] = r.error;
-                });
-                container.innerHTML = '';
-                markFreshRender(container);
-
-                if (currentViewMode === 'table') {
-                    renderTableContainer(results, riskVal, slippageVal, container);
-                } else {
-                    results.forEach(res => {
-                        if (res.success) renderCard(res, riskVal, slippageVal, container);
-                        else renderError(res, container);
-                    });
+                if (config.needsKey && !apiKey) {
+                    errorMsg.innerText = "Please set API Key in Settings.";
+                    errorMsg.classList.remove('hidden');
+                    navigateTo('settings');
+                    return;
                 }
 
-                speakResults(results);
-                applyFocusMode();
-                refreshEarningsForScan();
+                const inputs = Array.from(document.querySelectorAll('.ticker-input'));
+                const triggers = Array.from(document.querySelectorAll('.trigger-input'));
 
-                const successCount = results.filter(r => r.success).length;
-                const metricDiv = document.createElement('div');
-                metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
-                metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
-                container.appendChild(metricDiv);
+                const tasks = [];
+                const seen = new Set();
+                for (let i = 0; i < visibleCount; i++) {
+                     const ticker = sanitizeTicker(inputs[i].value);
+                     if (inputs[i].value !== ticker) inputs[i].value = ticker;
+                     const trigger = parseFloat(triggers[i].value);
+                     if (ticker && !seen.has(ticker)) {
+                         seen.add(ticker);
+                         tasks.push({ ticker, trigger: Number.isNaN(trigger) ? null : trigger, signalSide: signalSides[i] || null });
+                     }
+                }
 
-            } catch (e) {
-                errorMsg.innerText = "Critical Error: " + e.message;
-                errorMsg.classList.remove('hidden');
-            } finally {
-                if (gen === streamGeneration) {
-                    setCalcBtnStreaming(false);
+                if (tasks.length === 0) return;
+
+                // Selections only make sense for tickers that are still on the board.
+                Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
+                updateBatchBar();
+
+                errorMsg.classList.add('hidden');
+                container.innerHTML = `<div class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
+
+                // Handle WebSocket stream for supported providers when live update is active
+                if (config.supportsWs && liveUpdateEnabled) {
+                    setCalcBtnStreaming(true);
+                    await startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
+                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
                     if (collapseAfterCalc) setScannerCollapsed(true);
+                    return;
                 }
+
+                disconnectWebSocket();
+                const gen = streamGeneration;
+                setCalcBtnStreaming(false);
+                if (btn) btn.innerText = 'FETCHING...';
+                const startTime = performance.now();
+
+                try {
+                    const promises = tasks.map(async (task) => {
+                        try {
+                            const data = await fetchTickerData(task.ticker, provider, apiKey);
+                            return { ...task, data, success: true };
+                        } catch (e) {
+                            return { ...task, error: e.message, success: false };
+                        }
+                    });
+
+                    const results = await Promise.all(promises);
+                    if (gen !== streamGeneration) return;
+                    const endTime = performance.now();
+                    const fetchTime = ((endTime - startTime) / 1000).toFixed(2);
+
+                    realtimeTasks = tasks;
+                    lastRenderedSnapshot = results;
+                    Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+                    triggerActiveState = {};
+                    results.forEach(r => {
+                        if (r.success) realtimeQuotes[r.ticker] = r.data;
+                        else realtimeQuoteErrors[r.ticker] = r.error;
+                    });
+                    container.innerHTML = '';
+                    markFreshRender(container);
+
+                    if (currentViewMode === 'table') {
+                        renderTableContainer(results, riskVal, slippageVal, container);
+                    } else {
+                        results.forEach(res => {
+                            if (res.success) renderCard(res, riskVal, slippageVal, container);
+                            else renderError(res, container);
+                        });
+                    }
+
+                    speakResults(results);
+                    applyFocusMode();
+                    refreshEarningsForScan();
+
+                    const successCount = results.filter(r => r.success).length;
+                    const metricDiv = document.createElement('div');
+                    metricDiv.className = 'text-center text-[10px] text-gray-500 font-mono-num mt-4';
+                    metricDiv.innerText = `Fetched ${successCount} of ${results.length} tickers in ${fetchTime}s`;
+                    container.appendChild(metricDiv);
+
+                } catch (e) {
+                    errorMsg.innerText = "Critical Error: " + e.message;
+                    errorMsg.classList.remove('hidden');
+                } finally {
+                    if (gen === streamGeneration) {
+                        setCalcBtnStreaming(false);
+                        if (collapseAfterCalc) setScannerCollapsed(true);
+                    }
+                }
+            } finally {
+                calculating = false;
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -2148,7 +2162,7 @@
             let statusClass = "status-wait";
             let rowClass = "table-row-wait";
             let isActive = false;
-            if (trigger !== null && trigger !== undefined && !isNaN(trigger)) {
+            if (Number.isFinite(trigger)) {
                 if (isTriggerActive(item.data, trigger, isGreenDay)) {
                     isActive = true;
                     statusClass = isGreenDay ? "status-active-long" : "status-active-short";
@@ -2227,7 +2241,7 @@
         function renderCard(item, risk, slippage, container) {
             const f = getRealtimeFields(item, risk, slippage);
             const checked = selectedTickers.has(f.ticker) ? 'checked' : '';
-            const triggerBadge = (f.trigger !== null && f.trigger !== undefined && !isNaN(f.trigger))
+            const triggerBadge = Number.isFinite(f.trigger)
                 ? `<div class="text-center self-center">
                     <div class="text-[8px] font-bold text-gray-500 uppercase leading-none">Trigger</div>
                     <div class="text-[10px] font-mono-num font-bold text-gray-200 bg-slate-900/60 px-1.5 py-0.5 rounded-full border border-white/10 mt-0.5">$${f.trigger.toFixed(2)}</div>
@@ -2466,7 +2480,7 @@
                             <div class="text-[10px] font-black text-rose-400/80 mt-1 leading-none uppercase">ERROR</div>
                         </div>
                     </div>
-                    ${trigger !== null && trigger !== undefined && !isNaN(trigger)
+                    ${Number.isFinite(trigger)
                         ? `<div class="text-center self-center">
                             <div class="text-[8px] font-bold text-rose-300/70 uppercase leading-none">Trigger</div>
                             <div class="text-[10px] font-mono-num font-bold text-rose-200 bg-rose-950/50 px-1.5 py-0.5 rounded-full border border-rose-500/20 mt-0.5">$${trigger.toFixed(2)}</div>
@@ -2490,7 +2504,7 @@
             overlay.style.display = 'flex';
 
             currentModalState = {
-                ticker: String(ticker).toUpperCase(),
+                ticker: sanitizeTicker(ticker),
                 isLong: !!isLong,
                 entryPrice: parseFloat(entryPrice) || 0,
                 shares: parseInt(shares) || 0,
@@ -2624,12 +2638,12 @@
             cardsContainer.innerHTML = built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
-                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${p.oca}</div>
+                        <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${escapeHtml(p.oca)}</div>
                         <div class="text-xs font-black text-white">
                             ${stopLabelHtml(p)}
                             <span class="text-gray-500">+</span>
                             LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
-                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop '+p.stopMode:'') + ')' : (p.stopMode!=='fixed'?'(stop '+p.stopMode+')':'')}</span>
+                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>
                         </div>
                     </div>
                     <div class="flex gap-1">
@@ -2650,7 +2664,7 @@
 
         function onModalTpInput(el, i) {
             const v = parseFloat(el.value);
-            if (!isNaN(v) && v > 0) {
+            if (Number.isFinite(v) && v > 0) {
                 currentModalState.customTps[i] = v;
             } else {
                 currentModalState.customTps[i] = null;
@@ -2668,7 +2682,7 @@
             document.querySelectorAll('#modalOrdersCardsContainer input[data-leg-idx]').forEach(el => {
                 const i = parseInt(el.dataset.legIdx);
                 const v = parseFloat(el.value);
-                tps[i] = (!isNaN(v) && v > 0) ? v : null;
+                tps[i] = (Number.isFinite(v) && v > 0) ? v : null;
             });
             return tps;
         }
@@ -2941,7 +2955,7 @@
             const i = parseInt(el.dataset.legIdx);
             const v = parseFloat(el.value);
             if (!batchCustomTps[ticker]) batchCustomTps[ticker] = [];
-            batchCustomTps[ticker][i] = (!isNaN(v) && v > 0) ? v : null;
+            batchCustomTps[ticker][i] = (Number.isFinite(v) && v > 0) ? v : null;
         }
 
         function onBatchGlobalStrategyChange(el) {
@@ -2965,7 +2979,7 @@
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
                     <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>
-                    <span class="text-gray-500 w-20 text-right truncate">${p.oca}</span>
+                    <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
                 </div>
             `).join('');
                 return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${rows}</div>`;
@@ -3414,11 +3428,11 @@
             const b = document.getElementById('regimeDecliningStrategy');
             if (a) regimeStrategyMap.expanding = a.value;
             if (b) regimeStrategyMap.declining = b.value;
-            localStorage.setItem('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+            safeStorageSet('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
         }
 
         function persistCustomStrategies() {
-            localStorage.setItem('customStrategies', JSON.stringify(customStrategies));
+            safeStorageSet('customStrategies', JSON.stringify(customStrategies));
             refreshStrategySelects();
         }
 
@@ -3456,7 +3470,7 @@
                     </div>
                     <div class="grid grid-cols-3 gap-1 text-[8px] text-gray-500 uppercase font-bold"><span>% of pos</span><span>TP (R)</span><span>Stop after</span></div>
                     ${legs}
-                    <div class="strat-warn text-[10px] text-red-300 font-bold ${strategyLegsError(s) ? '' : 'hidden'}">⚠ ${strategyLegsError(s) || ''}</div>
+                    <div class="strat-warn text-[10px] text-red-300 font-bold ${strategyLegsError(s) ? '' : 'hidden'}">⚠ ${escapeHtml(strategyLegsError(s) || '')}</div>
                     ${!locked && (s.legs || []).some((l, i) => l.stopMode && l.stopMode !== 'fixed') ? '<div class="text-[9px] text-amber-300/80">Non-fixed stops export as TWS adjustable stops (trigger = previous leg\'s TP). Verify once in a paper account.</div>' : ''}
                 </div>`;
             };
@@ -3579,7 +3593,7 @@
         function isNYSEMarketOpenDay(dateStr) {
             const dt = ymdToUtc(dateStr);
             const day = dt.getUTCDay();
-            if (isNaN(dt) || day === 0 || day === 6) return false;
+            if (!Number.isFinite(dt.getTime()) || day === 0 || day === 6) return false;
             return !NYSE_HOLIDAYS.has(utcToYmd(dt));
         }
 
@@ -3588,7 +3602,7 @@
         function tradingDaysBetween(startDateStr, endDateStr) {
             const end = ymdToUtc(endDateStr);
             const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || isNaN(end) || cur >= end) return 0;
+            if (!Number.isFinite(cur.getTime()) || !Number.isFinite(end.getTime()) || cur >= end) return 0;
             let count = 0;
             while (cur < end) {
                 cur.setUTCDate(cur.getUTCDate() + 1);
@@ -3600,7 +3614,7 @@
         // Date string that is n trading days after startDateStr.
         function addTradingDays(startDateStr, n) {
             const cur = ymdToUtc(startDateStr);
-            if (isNaN(cur) || !Number.isInteger(n) || n < 0 || n > 260) return '';
+            if (!Number.isFinite(cur.getTime()) || !Number.isInteger(n) || n < 0 || n > 260) return '';
             let added = 0;
             while (added < n) {
                 cur.setUTCDate(cur.getUTCDate() + 1);
@@ -3677,6 +3691,7 @@
                 renderActiveTradesPage();
                 if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
+                console.warn('Active trade price refresh failed:', e);
             } finally {
                 if (btn) btn.innerText = '🔄 Refresh Prices';
             }
@@ -3928,18 +3943,18 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.1.1",
+                version: "2.1.2",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
                 globalMarketRegime,
-                riskValue: localStorage.getItem('riskValue'),
-                slippageValue: localStorage.getItem('slippageValue'),
-                selectedProvider: localStorage.getItem('selectedProvider'),
-                collapseAfterCalc: localStorage.getItem('collapseAfterCalc'),
-                preferredViewMode: localStorage.getItem('preferredViewMode'),
-                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, localStorage.getItem(k)])),
+                riskValue: safeStorageGet('riskValue'),
+                slippageValue: safeStorageGet('slippageValue'),
+                selectedProvider: safeStorageGet('selectedProvider'),
+                collapseAfterCalc: safeStorageGet('collapseAfterCalc'),
+                preferredViewMode: safeStorageGet('preferredViewMode'),
+                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
                 scanner: snapshotScannerInputs()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -3956,7 +3971,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -3991,8 +4006,8 @@
             if (data.activeTradesLog !== undefined) {
                 if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
                 data.activeTradesLog.forEach(t => {
-                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || isNaN(ymdToUtc(t.entryDate)) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
-                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || isNaN(ymdToUtc(t.exitDate)) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
+                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
+                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
                 });
                 if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
                 values.activeTradesLog = JSON.stringify(data.activeTradesLog);
@@ -4026,17 +4041,17 @@
                 try {
                     const values = prepareBackup(JSON.parse(event.target.result));
                     if (!confirm('Replace the settings and trade records included in this backup? Export your current backup first if needed.')) return;
-                    const before = Object.fromEntries(Object.keys(values).map(k => [k, localStorage.getItem(k)]));
-                    try {
-                        Object.entries(values).forEach(([k, v]) => localStorage.setItem(k, v));
-                    } catch (error) {
-                        Object.entries(before).forEach(([k, v]) => v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v));
-                        throw error;
+                    const before = Object.fromEntries(Object.keys(values).map(k => [k, safeStorageGet(k)]));
+                    const failed = [];
+                    Object.entries(values).forEach(([k, v]) => { if (!safeStorageSet(k, v)) failed.push(k); });
+                    if (failed.length) {
+                        Object.entries(before).forEach(([k, v]) => { if (v === null) safeStorageRemove(k); else safeStorageSet(k, v); });
+                        throw new Error('Could not save all restored values. Backup rolled back.');
                     }
                     resetScanState();
-                    customStrategies = JSON.parse(localStorage.getItem('customStrategies') || '[]');
-                    regimeStrategyMap = JSON.parse(localStorage.getItem('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
-                    activeTradesLog = JSON.parse(localStorage.getItem('activeTradesLog') || '[]');
+                    customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
+                    regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
+                    activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
                     timedExitDate = null;
                     earningsCache = {};
                     document.getElementById('advancedCsvAck').checked = false;
