@@ -233,7 +233,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v1.1.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.0.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -264,9 +264,8 @@
             </div>
 
             <div class="space-y-1.5">
-                <div class="flex flex-wrap justify-between items-center gap-1 mb-0.5">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tickers &amp; Smart Triggers</span>
-                    <div class="flex items-center gap-1.5">
+                <div class="flex flex-wrap items-center gap-1 mb-0.5">
+                    <div class="flex items-center justify-between w-full">
                         <button onclick="toggleSignalPaste()" class="text-[10px] text-blue-300 font-bold px-1 py-0.5">PASTE SIGNALS</button>
                         <button id="addRowBtn" onclick="addMoreRows()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-900/50 px-2 py-0.5 rounded-full font-bold transition-all">+ ADD ROW</button>
                         <button onclick="clearInputs()" class="text-[10px] text-red-400 font-bold hover:text-red-300 transition-colors">CLEAR ALL</button>
@@ -3496,7 +3495,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "1.1.0",
+                version: "2.0.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -3524,7 +3523,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
