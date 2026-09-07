@@ -13,6 +13,7 @@
 
 - `node _serve.js` serves the release assets at `http://localhost:8080` on loopback only.
 - Release assets: `index.html`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `_serve.js`.
+- Do NOT copy release files to Downloads or anywhere else — the user deploys via git push to GitHub Pages (`levifasten/End-of-day`, `main` branch auto-deploys).
 - PWA needs HTTPS or localhost; opening HTML directly works without service-worker support. Storage is origin-specific.
 - No backend, broker connection, or automatic order submission exists. CSVs must be reviewed/imported in TWS.
 - Timed/adjustable CSV orders are experimental and require paper validation; standard Option 1/2/Short fixed-stop exports must remain compatible.
