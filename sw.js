@@ -1,6 +1,6 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v2.1.8`;
+const CACHE_NAME = `${CACHE_PREFIX}v2.2.1`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
@@ -116,4 +116,6 @@ self.addEventListener('fetch', event => {
   if (url.origin !== SCOPE_URL.origin) return;
   const asset = SHELL_ASSETS.get(url.href);
   if (!asset || (asset.html && request.mode !== 'navigate')) return;
-  event.respondWith(networkFirstShell(request, asset)P_WAITI
+  event.respondWith(networkFirstShell(request, asset));
+});
+v
