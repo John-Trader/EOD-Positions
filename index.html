@@ -239,7 +239,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.2.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.3.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -462,6 +462,21 @@
                     <p class="text-[10px] text-gray-400">In percent mode, the risk input on the scanner is treated as a percentage of account value.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase">TWS Bridge</div>
+                    <label class="flex items-center gap-2 text-xs"><input id="twsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()">Enable TWS order sending</label>
+                    <label class="text-[9px] text-gray-500 uppercase block">Bridge URL
+                        <input id="twsBridgeUrlSetting" type="text" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="http://127.0.0.1:8787" onchange="saveTwsSettings()">
+                    </label>
+                    <label class="text-[9px] text-gray-500 uppercase block">Bridge token
+                        <input id="twsBridgeTokenSetting" type="password" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="from tws-bridge first run" onchange="saveTwsSettings()">
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <button onclick="testTwsConnection()" class="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded text-xs font-bold">TEST CONNECTION</button>
+                        <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
+                </div>
+                <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
                     <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
                     <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
@@ -643,7 +658,17 @@
                 <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
                     <span>📥</span> Download TWS Basket (.csv)
                 </button>
-
+                <div class="flex gap-2 items-center">
+                    <label class="text-[10px] text-gray-400 flex items-center gap-1" title="Attach exits to the entry order (bracket) or send as standalone OCA pairs">
+                        <input type="checkbox" id="twsAttachEntry" class="custom-checkbox"> Attach
+                    </label>
+                    <button data-tws-key="" onclick="sendTwsModalEntry()" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">SEND ENTRY</span>
+                    </button>
+                    <button data-tws-key="" onclick="sendTwsModalExits()" class="bg-purple-600/80 hover:bg-purple-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">SEND EXITS</span>
+                    </button>
+                </div>
                 <div class="flex gap-2">
                     <button onclick="logCurrentTradeFromModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
                         <span>💾</span> Log Trade
@@ -676,6 +701,7 @@
             <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
             <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-2">
                 <button onclick="downloadBatchCombinedCSV()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
+                <button onclick="sendTwsBatchAll()" class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap tws-send-btn">SEND ALL</button>
             </div>
         </div>
     </div>
@@ -719,6 +745,13 @@
         let lastExitPasteResult = null;
         let lastBuilderExitPasteResult = null;
         let collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
+        // TWS Bridge state (feature-gated; everything below is inert when off)
+        let twsEnabled = safeStorageGet('twsEnabled') === 'true';
+        let twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
+        let twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
+        let twsConnected = false;
+        let twsAccount = '';
+        let twsHealthTimer = null;
         let isStreamingLive = false;
         let calculating = false;
         let lastCalculateAt = 0;
@@ -917,6 +950,7 @@
             renderStrategyEditor();
             applyScannerCollapsed();
             loadFeatureSettings();
+            loadTwsSettings();
         }
 
         function boundedHoldDays(value) {
@@ -2144,6 +2178,7 @@
 
             if (announce) announceTriggerTransitions(results, changedTickers, risk, slippage);
             applyFocusMode();
+            syncTwsSendButtons();
         }
 
         // Re-render every visible card/row from the current quotes (e.g. after Risk $ changes).
@@ -2561,6 +2596,7 @@
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
                         Exit<br>Orders
                     </button>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-black uppercase rounded-md px-1.5 py-1 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">SEND</span></button>` : ''}
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
                         <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
                         <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
@@ -2704,6 +2740,7 @@
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -2816,6 +2853,15 @@
             };
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
+
+            // Update TWS send keys on modal buttons so send-state feedback targets the right ticker.
+            const modalSendBtns = overlay.querySelectorAll('[data-tws-key]');
+            if (modalSendBtns) {
+                modalSendBtns.forEach(btn => {
+                    if (btn.textContent.includes('ENTRY')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'entry');
+                    else if (btn.textContent.includes('EXITS')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'exits');
+                });
+            }
 
             try {
                 document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
@@ -4281,7 +4327,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.2.1",
+                version: "2.3.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4306,10 +4352,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4428,6 +4474,238 @@
             });
         }
 
+        // ========================================================
+        // TWS BRIDGE CLIENT (feature-gated; inert when twsEnabled=false)
+        // ========================================================
+        function twsReady() {
+            return twsEnabled && twsBridgeToken && twsBridgeUrl;
+        }
+        async function bridgeRequest(path, body) {
+            if (!twsReady()) return { ok: false, error: 'TWS bridge not configured' };
+            const url = twsBridgeUrl.replace(/\/$/, '') + path;
+            const headers = { 'Content-Type': 'application/json' };
+            if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+            try {
+                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 8000);
+                return await res.json();
+            } catch (e) {
+                return { ok: false, error: e.message || 'Network error' };
+            }
+        }
+        async function bridgeHealth() {
+            if (!twsReady()) { twsConnected = false; return { ok: false, connected: false }; }
+            try {
+                const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET' }, 4000);
+                const data = await res.json();
+                twsConnected = !!(data && data.connected);
+                if (data && data.account) twsAccount = data.account;
+                return data;
+            } catch (e) {
+                twsConnected = false;
+                return { ok: false, connected: false, error: e.message };
+            }
+        }
+        function startTwsHealthPolling() {
+            if (twsHealthTimer) return;
+            twsHealthTimer = setInterval(() => {
+                if (!document.hidden) bridgeHealth().then(updateTwsStatusUI);
+            }, 15000);
+            bridgeHealth().then(updateTwsStatusUI);
+        }
+        function stopTwsHealthPolling() {
+            if (twsHealthTimer) { clearInterval(twsHealthTimer); twsHealthTimer = null; }
+        }
+        function updateTwsStatusUI() {
+            const el = document.getElementById('twsStatus');
+            if (!el) return;
+            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; return; }
+            if (twsConnected) {
+                el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
+                el.className = 'text-[10px] font-mono-num text-emerald-400';
+            } else {
+                el.textContent = 'Not connected';
+                el.className = 'text-[10px] font-mono-num text-red-400';
+            }
+        }
+        function saveTwsSettings() {
+            const en = document.getElementById('twsEnabledSetting');
+            const urlEl = document.getElementById('twsBridgeUrlSetting');
+            const tokEl = document.getElementById('twsBridgeTokenSetting');
+            twsEnabled = en ? en.checked : false;
+            twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
+            twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
+            safeStorageSet('twsEnabled', String(twsEnabled));
+            safeStorageSet('twsBridgeUrl', twsBridgeUrl);
+            safeStorageSet('twsBridgeToken', twsBridgeToken);
+            if (twsEnabled && twsBridgeToken) { startTwsHealthPolling(); } else { stopTwsHealthPolling(); twsConnected = false; }
+            updateTwsStatusUI();
+            syncTwsSendButtons();
+        }
+        function loadTwsSettings() {
+            const en = document.getElementById('twsEnabledSetting');
+            const urlEl = document.getElementById('twsBridgeUrlSetting');
+            const tokEl = document.getElementById('twsBridgeTokenSetting');
+            if (en) en.checked = twsEnabled;
+            if (urlEl) urlEl.value = twsBridgeUrl;
+            if (tokEl) tokEl.value = twsBridgeToken;
+            if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
+            updateTwsStatusUI();
+        }
+        async function testTwsConnection() {
+            const el = document.getElementById('twsStatus');
+            if (el) { el.textContent = 'Testing…'; el.className = 'text-[10px] font-mono-num text-amber-400'; }
+            const data = await bridgeHealth();
+            updateTwsStatusUI();
+            if (data && data.connected) {
+                showErrorToast('TWS connected' + (data.account ? ' · ' + data.account : ''), 4000);
+            } else {
+                showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+            }
+        }
+        // ---------- Payload builders ----------
+        function buildEntryOrderPayload(item) {
+            const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            if (!f.shares || f.shares <= 0) return { ok: false, error: 'No shares calculated' };
+            return {
+                ok: true,
+                symbol: f.ticker,
+                action: f.isGreenDay ? 'BUY' : 'SELL',
+                quantity: f.shares,
+                orderType: 'MKT',
+                adaptive: true,
+                adaptivePriority: 'Normal',
+                tif: 'DAY',
+                outsideRth: false,
+                orderRef: 'PSC-' + f.ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)),
+            };
+        }
+        function buildExitOrdersPayload(built) {
+            if (!built || !built.ok || !built.rows || !built.rows.length) return { ok: false, error: 'No exit legs' };
+            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
+            const orders = [];
+            const suffix = (globalThis.crypto?.randomUUID?.() || Date.now().toString(36));
+            let n = 0;
+            for (const row of built.rows) {
+                const orderType = row[7];
+                if (!orderType) continue;
+                n++;
+                const order = {
+                    action: row[0],
+                    quantity: parseInt(row[1], 10) || 0,
+                    orderType,
+                    tif: row[6] || 'GTC',
+                    outsideRth: orderType === 'LMT',
+                    transmit: true,
+                    ocaGroup: row[11] || undefined,
+                    ocaType: row[16] ? parseInt(row[16], 10) : 1,
+                    orderRef: 'PSC-' + row[2] + '-' + suffix + '-' + n,
+                };
+                if (orderType === 'STP' && row[9]) order.auxPrice = parseFloat(row[9]);
+                if (orderType === 'LMT' && row[8]) order.lmtPrice = parseFloat(row[8]);
+                if (orderType === 'MOC' || orderType === 'MKT') { if (row[12]) order.goodAfterTime = row[12]; }
+                if (row[13]) { // adjustable stop
+                    order.adjustedOrderType = row[13];
+                    if (row[14]) order.triggerPrice = parseFloat(row[14]);
+                    if (row[15]) order.adjustedStopPrice = parseFloat(row[15]);
+                }
+                orders.push(order);
+            }
+            if (!orders.length) return { ok: false, error: 'No orders produced' };
+            return { ok: true, symbol: orders[0] && built.preview[0] ? built.preview[0].ticker : '', orders };
+        }
+        // ---------- Send-state machine ----------
+        const twsSendState = {}; // key -> 'idle'|'sending'|'sent'|'unknown'|'error'
+        function twsSendKey(ticker, kind) { return ticker + ':' + (kind || 'entry'); }
+        function setTwsSendState(key, state, msg) {
+            twsSendState[key] = state;
+            const el = document.querySelector('[data-tws-key="' + key + '"]');
+            if (!el) return;
+            el.dataset.twsState = state;
+            const label = el.querySelector('.tws-send-label') || el;
+            if (state === 'sending') { label.textContent = '…'; el.classList.add('opacity-60'); el.disabled = true; }
+            else if (state === 'sent') { label.textContent = 'SENT'; el.classList.remove('opacity-60'); el.classList.add('text-emerald-400'); el.disabled = false; }
+            else if (state === 'unknown') { label.textContent = 'UNKNOWN'; el.classList.remove('opacity-60'); el.classList.add('text-amber-400'); el.disabled = false; }
+            else if (state === 'error') { label.textContent = 'ERR'; el.classList.remove('opacity-60'); el.classList.add('text-red-400'); el.disabled = false; }
+            else { label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            if (msg) el.title = msg;
+        }
+        function resetTwsSendState(key) {
+            twsSendState[key] = 'idle';
+            const el = document.querySelector('[data-tws-key="' + key + '"]');
+            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+        }
+        // ---------- Send handlers ----------
+        async function sendTwsEntry(ticker) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'entry');
+            if (twsSendState[key] === 'sending') return;
+            const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
+            const payload = buildEntryOrderPayload(item);
+            if (!payload.ok) { showErrorToast(payload.error); return; }
+            setTwsSendState(key, 'sending');
+            const result = await bridgeRequest('/order', payload);
+            if (result.ok) {
+                setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            }
+        }
+        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'exits');
+            if (twsSendState[key] === 'sending') return;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            if (!built.ok) { showErrorToast(built.error); return; }
+            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
+            if (isAdvanced && !document.getElementById('advancedCsvAck')?.checked) {
+                showErrorToast('Before sending advanced orders, acknowledge the TWS paper-validation requirement in Settings.', 8000);
+                return;
+            }
+            const payload = buildExitOrdersPayload(built);
+            if (!payload.ok) { showErrorToast(payload.error); return; }
+            if (attachEntry) {
+                const entryPayload = buildEntryOrderPayload({ ticker, data: { c: entry, pc: 0, h: 0, l: 0 } });
+                if (entryPayload.ok) payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
+                payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
+            }
+            setTwsSendState(key, 'sending');
+            const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
+            if (result.ok) {
+                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Sent');
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            }
+        }
+        async function sendTwsBatchAll() {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const trades = selectedSnapshotTrades();
+            if (!trades.length) { showErrorToast('No trades selected'); return; }
+            for (const t of trades) {
+                await sendTwsEntry(t.ticker);
+                await new Promise(r => setTimeout(r, 250));
+            }
+        }
+        function syncTwsSendButtons() {
+            // Show/hide send buttons based on twsEnabled + readiness.
+            const show = twsEnabled && twsBridgeToken && twsConnected;
+            document.querySelectorAll('[data-tws-key]').forEach(el => { el.style.display = show ? '' : 'none'; });
+            document.querySelectorAll('.tws-send-btn').forEach(el => { el.style.display = show ? '' : 'none'; });
+            document.querySelectorAll('#twsAttachEntry').forEach(el => { el.parentElement.style.display = show ? '' : 'none'; });
+        }
+
+        // ========================================================
+        // TWS BRIDGE — END
+        // ========================================================
+
         // Keyboard Shortcut Handler (ESC to close modals)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -4454,6 +4732,36 @@
                 openStrategyModal(ticker, isLong, parseFloat(btn.dataset.price), parseInt(btn.dataset.shares), parseFloat(btn.dataset.stop), parseFloat(btn.dataset.ref));
             }
         });
+
+        // TWS Send button (card/row entry)
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action="send-tws-entry"]');
+            if (!btn) return;
+            e.stopPropagation();
+            sendTwsEntry(btn.dataset.ticker);
+        });
+
+        // TWS Send modal functions
+        function sendTwsModalEntry() {
+            if (!currentModalState) return;
+            sendTwsEntry(currentModalState.ticker);
+        }
+        function sendTwsModalExits() {
+            if (!currentModalState) return;
+            const attach = document.getElementById('twsAttachEntry')?.checked || false;
+            const strategyId = document.getElementById('modalStrategySelect')?.value || currentModalState.strategyId;
+            const customTps = readCustomTpsFromDom();
+            sendTwsExits(
+                currentModalState.ticker,
+                currentModalState.isLong,
+                parseFloat(document.getElementById('modalEntryPrice')?.value) || currentModalState.entryPrice,
+                parseInt(document.getElementById('modalShares')?.value) || currentModalState.shares,
+                parseFloat(document.getElementById('modalStopPrice')?.value) || currentModalState.stopPrice,
+                strategyId,
+                customTps,
+                attach
+            );
+        }
 
         let installPrompt = null;
         let swRegistration = null;

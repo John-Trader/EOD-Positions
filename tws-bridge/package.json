@@ -1,0 +1,15 @@
+{
+  "name": "tws-bridge",
+  "version": "1.0.0",
+  "description": "Local bridge between the End-of-Day PWA and Interactive Brokers TWS API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@stoqey/ib": "^1.6.9"
+  }
+}

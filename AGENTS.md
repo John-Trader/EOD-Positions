@@ -15,6 +15,7 @@
 - Release assets: `index.html`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `_serve.js`.
 - Do NOT copy release files to Downloads or anywhere else — the user deploys via git push to GitHub Pages (`levifasten/End-of-day`, `main` branch auto-deploys).
 - PWA needs HTTPS or localhost; opening HTML directly works without service-worker support. Storage is origin-specific.
-- No backend, broker connection, or automatic order submission exists. CSVs must be reviewed/imported in TWS.
+- TWS order sending is opt-in via `tws-bridge/` (local Node.js bridge) + Settings → TWS Bridge. When disabled the app is identical to the CSV-only version. CSVs remain the primary export path.
+- **TWS API checklist (required):** enable "ActiveX and Socket Clients", set socket port (7497 paper / 7496 live), allow localhost-only, uncheck "Read-Only API", and enable **"Bypass Order Precautions for API Orders"** in API → Precautions.
 - Timed/adjustable CSV orders are experimental and require paper validation; standard Option 1/2/Short fixed-stop exports must remain compatible.
 - Increment the worker cache version when changing offline assets. Never cache quotes, credentials, backups or API traffic.
