@@ -1084,7 +1084,7 @@
             updateTopStatus();
         }
 
-        function updateEnhancedUI() {
+        function updateEnhancedUI(clearError = true) {
             const chk = document.getElementById('enhancedLiveModeSetting');
             const providerSel = document.getElementById('apiProvider');
             const err = document.getElementById('enhancedLiveModeError');
@@ -1101,7 +1101,7 @@
                     }
                 }
             }
-            if (err) {
+            if (err && clearError) {
                 err.classList.add('hidden');
                 err.innerText = '';
             }
@@ -1123,6 +1123,11 @@
                         err.classList.remove('hidden');
                     }
                     chk.checked = false;
+                    if (enhancedLiveMode) {
+                        enhancedLiveMode = false;
+                        safeStorageSet('enhancedLiveMode', 'false');
+                    }
+                    updateEnhancedUI(false);
                     return;
                 }
             }
