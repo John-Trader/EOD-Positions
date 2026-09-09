@@ -393,11 +393,20 @@
                         <option value="finnhub">Finnhub</option>
                         <option value="twelvedata">Twelve Data</option>
                         <option value="stockdata">StockData.org</option>
+                        <option value="tiingo">Tiingo</option>
                     </select>
                     <div class="flex gap-2">
                         <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                    </div>
+                    <div class="space-y-1 pt-1">
+                        <label for="tiingoApiKeyInput" class="text-[10px] font-bold text-gray-400 uppercase">Tiingo API Key</label>
+                        <div class="flex gap-2">
+                            <input type="password" id="tiingoApiKeyInput" aria-label="Tiingo API Key" autocomplete="off" placeholder="Enter Tiingo API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                            <button id="showTiingoKeyBtn" onclick="toggleTiingoKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
+                            <button onclick="saveTiingoKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                        </div>
                     </div>
                 </div>
                 <div class="space-y-1">
@@ -426,6 +435,14 @@
                             <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
                             <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
                         </label>
+                        <div class="space-y-1">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="enhancedLiveModeSetting" class="custom-checkbox" onchange="saveEnhancedLiveSetting()">
+                                <span class="text-xs text-gray-300">Enhanced Live Mode</span>
+                            </label>
+                            <p class="text-[10px] text-gray-400 pl-5">Streams Finnhub + Tiingo (IEX) concurrently and shows whichever ticks first. Requires both API keys saved.</p>
+                            <p id="enhancedLiveModeError" class="text-[10px] text-red-400 pl-5 hidden"></p>
+                        </div>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
                             <span class="text-xs text-gray-300">Show Focus Button</span>
@@ -713,7 +730,8 @@
         const API_CONFIGS = {
             finnhub: { name: 'Finnhub', storageKey: 'finnhub_key', needsKey: true, supportsWs: true },
             twelvedata: { name: 'Twelve Data', storageKey: 'twelvedata_key', needsKey: true, supportsWs: true },
-            stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false }
+            stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false },
+            tiingo: { name: 'Tiingo', storageKey: 'tiingo_key', needsKey: true, supportsWs: true }
         };
 
         let realtimeSocket = null;
@@ -734,6 +752,12 @@
         let liveUpdateEnabled = safeStorageGet('liveUpdateEnabled');
         if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
         liveUpdateEnabled = liveUpdateEnabled === 'true';
+
+        let enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
+        let activeSockets = { finnhub: null, tiingo: null };
+        let reconnectAttemptsByProvider = { finnhub: 0, tiingo: 0 };
+        let reconnectTimeoutByProvider = { finnhub: null, tiingo: null };
+        let tradeTimestamps = {};          // ticker -> exchange timestamp ms for cross-feed ordering
 
         let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
         let currentViewMode = safeStorageGet('preferredViewMode') || 'cards'; // 'cards' | 'table'
@@ -896,6 +920,7 @@
             currentViewMode = safeStorageGet('preferredViewMode') === 'table' ? 'table' : 'cards';
             collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
             liveUpdateEnabled = safeStorageGet('liveUpdateEnabled') !== 'false';
+            enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
             const savedRisk = safeStorageGet('riskValue');
             const savedProvider = safeStorageGet('selectedProvider');
             const savedSlippage = safeStorageGet('slippageValue');
@@ -951,6 +976,7 @@
             applyScannerCollapsed();
             loadFeatureSettings();
             loadTwsSettings();
+            updateEnhancedUI();
         }
 
         function boundedHoldDays(value) {
@@ -1000,6 +1026,32 @@
             btn.setAttribute('aria-pressed', String(show));
         }
 
+        function updateTiingoKeyInput() {
+            const input = document.getElementById('tiingoApiKeyInput');
+            if (input) input.value = safeStorageGet('tiingo_key') || '';
+        }
+
+        function saveTiingoKey() {
+            const key = document.getElementById('tiingoApiKeyInput').value.trim();
+            if (key) {
+                safeStorageSet('tiingo_key', key);
+                alert('API Key Saved');
+                if (document.getElementById('apiProvider').value === 'tiingo') updateApiKeyInput();
+            }
+        }
+
+        function toggleTiingoKeyVisibility() {
+            const input = document.getElementById('tiingoApiKeyInput');
+            if (!input) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            const btn = document.getElementById('showTiingoKeyBtn');
+            if (btn) {
+                btn.textContent = show ? 'HIDE' : 'SHOW';
+                btn.setAttribute('aria-pressed', String(show));
+            }
+        }
+
         function saveCollapseAfterCalc() {
             collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
             safeStorageSet('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
@@ -1029,6 +1081,60 @@
             liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
             safeStorageSet('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
             if (!liveUpdateEnabled) disconnectWebSocket();
+            updateTopStatus();
+        }
+
+        function updateEnhancedUI() {
+            const chk = document.getElementById('enhancedLiveModeSetting');
+            const providerSel = document.getElementById('apiProvider');
+            const err = document.getElementById('enhancedLiveModeError');
+            if (chk) chk.checked = enhancedLiveMode;
+            if (providerSel) {
+                if (enhancedLiveMode) {
+                    providerSel.value = 'finnhub';
+                    providerSel.disabled = true;
+                } else {
+                    providerSel.disabled = false;
+                    const savedProvider = safeStorageGet('selectedProvider');
+                    if (savedProvider && Object.hasOwn(API_CONFIGS, savedProvider)) {
+                        providerSel.value = savedProvider;
+                    }
+                }
+            }
+            if (err) {
+                err.classList.add('hidden');
+                err.innerText = '';
+            }
+            updateApiKeyInput();
+        }
+
+        function saveEnhancedLiveSetting() {
+            const chk = document.getElementById('enhancedLiveModeSetting');
+            const err = document.getElementById('enhancedLiveModeError');
+            if (!chk) return;
+            const on = chk.checked;
+
+            if (on) {
+                const finnKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+                const tiingoKey = safeStorageGet('tiingo_key');
+                if (!finnKey || !tiingoKey) {
+                    if (err) {
+                        err.innerText = 'Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.';
+                        err.classList.remove('hidden');
+                    }
+                    chk.checked = false;
+                    return;
+                }
+            }
+
+            enhancedLiveMode = on;
+            safeStorageSet('enhancedLiveMode', on ? 'true' : 'false');
+            if (err) {
+                err.classList.add('hidden');
+                err.innerText = '';
+            }
+            updateEnhancedUI();
+            if (realtimeTasks.length) disconnectWebSocket();
             updateTopStatus();
         }
 
@@ -1168,28 +1274,49 @@
             const txt = document.getElementById('liveStatusText');
             const ping = document.getElementById('liveStatusPing');
             const dot = document.getElementById('liveStatusDot');
+            const showIndicator = enhancedLiveMode || (config && config.supportsWs);
 
-            if (config && config.supportsWs) {
-                ind.classList.remove('hidden');
-                ind.classList.add('flex');
-                
-                if (statusOverride === 'reconnecting') {
+            if (!showIndicator) {
+                ind.classList.add('hidden');
+                ind.classList.remove('flex');
+                return;
+            }
+
+            ind.classList.remove('hidden');
+            ind.classList.add('flex');
+
+            if (enhancedLiveMode) {
+                if (!liveUpdateEnabled) {
+                    txt.innerText = 'MANUAL';
+                    txt.className = 'text-gray-400 uppercase font-bold';
+                    ping.className = 'hidden';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+                    return;
+                }
+                const fOpen = activeSockets.finnhub && activeSockets.finnhub.readyState === WebSocket.OPEN;
+                const tOpen = activeSockets.tiingo && activeSockets.tiingo.readyState === WebSocket.OPEN;
+                if (fOpen && tOpen) {
+                    txt.innerText = 'LIVE (DUAL)';
+                    txt.className = 'text-cyan-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-cyan-500';
+                } else if (fOpen) {
+                    txt.innerText = 'LIVE (FINNHUB ONLY)';
+                    txt.className = 'text-emerald-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+                } else if (tOpen) {
+                    txt.innerText = 'LIVE (TIINGO ONLY)';
+                    txt.className = 'text-blue-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+                } else if (statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting()) {
                     txt.innerText = 'RECONNECTING';
                     txt.className = 'text-amber-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
-                } else if (statusOverride === 'offline') {
+                } else if (statusOverride === 'offline' || !nyNow().isRTH) {
                     txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
-                    txt.className = 'text-gray-400 uppercase font-bold';
-                    ping.className = 'hidden';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
-                } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
-                    txt.innerText = 'LIVE';
-                    txt.className = 'text-emerald-400 uppercase font-bold';
-                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-                } else if (!liveUpdateEnabled) {
-                    txt.innerText = 'MANUAL';
                     txt.className = 'text-gray-400 uppercase font-bold';
                     ping.className = 'hidden';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
@@ -1199,9 +1326,34 @@
                     ping.className = 'hidden';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
                 }
+                return;
+            }
+
+            if (statusOverride === 'reconnecting') {
+                txt.innerText = 'RECONNECTING';
+                txt.className = 'text-amber-400 uppercase font-bold';
+                ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+            } else if (statusOverride === 'offline') {
+                txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+            } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
+                txt.innerText = 'LIVE';
+                txt.className = 'text-emerald-400 uppercase font-bold';
+                ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+            } else if (!liveUpdateEnabled) {
+                txt.innerText = 'MANUAL';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
             } else {
-                ind.classList.add('hidden');
-                ind.classList.remove('flex');
+                txt.innerText = 'STANDBY';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
             }
         }
 
@@ -1287,6 +1439,8 @@
         });
         const apiKeyEl = document.getElementById('apiKeyInput');
         if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
+        const tiingoKeyEl = document.getElementById('tiingoApiKeyInput');
+        if (tiingoKeyEl) tiingoKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveTiingoKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
             safeStorageSet('selectedProvider', e.target.value);
@@ -1316,6 +1470,7 @@
                 liveContainer.style.display = 'none';
                 disconnectWebSocket();
             }
+            updateTiingoKeyInput();
             updateTopStatus();
         }
 
@@ -1325,7 +1480,8 @@
             const key = document.getElementById('apiKeyInput').value.trim();
             if (config.needsKey && key) {
                 safeStorageSet(config.storageKey, key);
-                alert('API Key Saved'); 
+                alert('API Key Saved');
+                if (provider === 'tiingo') updateTiingoKeyInput();
             }
         }
 
@@ -2000,6 +2156,26 @@
                     bid: bid,
                     ask: ask
                 };
+            } else if (provider === 'tiingo') {
+                const quote = await fetchWithTimeout(`https://api.tiingo.com/iex?tickers=${encodeURIComponent(ticker)}`, { headers: { 'Authorization': 'Token ' + apiKey, 'Accept': 'application/json' } }, 10000, signal);
+                if (quote.status === 429) throw new Error("Rate Limit");
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
+                const d_res = await quote.json();
+                const d = Array.isArray(d_res) ? d_res[0] : d_res;
+                if (!d) throw new Error(`Invalid Ticker: ${ticker}`);
+                const c = (Number.isFinite(d.tngoLast) && d.tngoLast > 0) ? Number(d.tngoLast)
+                        : (Number.isFinite(d.last) && d.last > 0) ? Number(d.last)
+                        : null;
+                if (c === null) throw new Error(`Invalid Ticker: ${ticker}`);
+                const h = Number(d.high);
+                const l = Number(d.low);
+                const pc = Number(d.prevClose);
+                const bid = (Number.isFinite(d.bidPrice) && d.bidPrice > 0) ? Number(d.bidPrice) : null;
+                const ask = (Number.isFinite(d.askPrice) && d.askPrice > 0) ? Number(d.askPrice) : null;
+                if (!Number.isFinite(c) || c <= 0 || !Number.isFinite(h) || h <= 0 || !Number.isFinite(l) || l <= 0 || !Number.isFinite(pc) || pc <= 0 || h < l) {
+                    throw new Error(`Invalid Ticker: ${ticker}`);
+                }
+                return { c, h, l, pc, bid, ask };
             }
             throw new Error("Unknown provider");
         }
@@ -2011,20 +2187,41 @@
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
+            Object.keys(reconnectTimeoutByProvider).forEach(k => {
+                if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; }
+            });
             if (resyncTimer) {
                 clearInterval(resyncTimer);
                 resyncTimer = null;
             }
             if (realtimeSocket) {
-                try { 
+                try {
+                    realtimeSocket.onopen = null;
                     realtimeSocket.onclose = null;
                     realtimeSocket.onerror = null;
                     realtimeSocket.onmessage = null;
-                    realtimeSocket.close(); 
+                    realtimeSocket.close();
                 } catch (e) {}
             }
             realtimeSocket = null;
+            Object.keys(activeSockets).forEach(k => {
+                const s = activeSockets[k];
+                if (s) {
+                    try {
+                        s.onopen = null;
+                        s.onclose = null;
+                        s.onerror = null;
+                        s.onmessage = null;
+                        s.close();
+                    } catch (e) {}
+                }
+                activeSockets[k] = null;
+            });
             reconnectAttempts = 0;
+            Object.keys(reconnectAttemptsByProvider).forEach(k => { reconnectAttemptsByProvider[k] = 0; });
+            Object.keys(reconnectTimeoutByProvider).forEach(k => { if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; } });
+            lastTradeAt = {};
+            tradeTimestamps = {};
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
@@ -2071,6 +2268,49 @@
             return true;
         }
 
+        function parseTiingoWsTimestamp(ts) {
+            if (typeof ts === 'number' && Number.isFinite(ts) && ts > 0) {
+                return ts < 1e12 ? ts * 1000 : ts;
+            }
+            if (typeof ts === 'string') {
+                const normalized = ts.replace(/(\.\d{3})\d+(Z|[+-]\d{2}:\d{2})$/, '$1$2');
+                const ms = Date.parse(normalized);
+                if (Number.isFinite(ms)) return ms;
+            }
+            return Date.now();
+        }
+
+        function resolveRealtimeTicker(tkr) {
+            if (realtimeQuotes[tkr]) return tkr;
+            const alt = tkr.replace(/-/g, '.');
+            if (alt !== tkr && realtimeQuotes[alt]) return alt;
+            return null;
+        }
+
+        function applyLivePriceIfNewer(ticker, price, tradeTimeMs, extra = {}) {
+            const prev = realtimeQuotes[ticker];
+            if (!prev || !Number.isFinite(price) || price <= 0) return false;
+
+            const now = Date.now();
+            if (!Number.isFinite(tradeTimeMs) || tradeTimeMs <= 0) tradeTimeMs = now;
+            if (tradeTimeMs > now + 60000) tradeTimeMs = now;
+
+            const lastApplied = tradeTimestamps[ticker] || 0;
+            if (tradeTimeMs < lastApplied) return false;
+
+            if (tradeTimeMs === lastApplied) {
+                const bid = (extra.bid && extra.bid > 0) ? extra.bid : prev.bid;
+                const ask = (extra.ask && extra.ask > 0) ? extra.ask : prev.ask;
+                if (prev.c === price && prev.bid === bid && prev.ask === ask) {
+                    return applyLivePrice(ticker, price, extra);
+                }
+                return false;
+            }
+
+            tradeTimestamps[ticker] = tradeTimeMs;
+            return applyLivePrice(ticker, price, extra);
+        }
+
         // Merge a fresh REST quote into the stored one (periodic resync). Live last price wins
         // unless the socket has been silent since the previous resync.
         function mergeRestQuote(ticker, data) {
@@ -2090,7 +2330,7 @@
             return changed;
         }
 
-        async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal) {
+        async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal, allowFallback = true) {
             if (gen !== streamGeneration || !nyNow().isRTH) return;
             const controller = new AbortController();
             activeFetchSession = controller;
@@ -2100,7 +2340,9 @@
                     if (gen !== streamGeneration || controller.signal.aborted) break;
                     if (!realtimeQuotes[t.ticker]) continue;
                     try {
-                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        const data = allowFallback
+                            ? await fetchTickerData(t.ticker, provider, apiKey, controller.signal)
+                            : await fetchProviderQuote(t.ticker, provider, apiKey, controller.signal);
                         if (gen !== streamGeneration || controller.signal.aborted || !nyNow().isRTH) break;
                         if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
                     } catch (e) {
@@ -2196,6 +2438,7 @@
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
             lastTradeAt = {};
+            tradeTimestamps = {};
             triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
@@ -2229,31 +2472,112 @@
             if (anySuccess) {
                 connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
                 if (resyncTimer) clearInterval(resyncTimer);
-                resyncTimer = setInterval(() => resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal), RESYNC_INTERVAL_MS);
+                resyncTimer = setInterval(() => resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal, true), RESYNC_INTERVAL_MS);
             }
         }
 
-        function connectSocket(provider, apiKey, riskVal, slippageVal, container, gen) {
+        async function startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container) {
+            disconnectWebSocket();
+            requestWakeLock();
+            const gen = streamGeneration;
+            realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+            Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+            lastTradeAt = {};
+            tradeTimestamps = {};
+            triggerActiveState = {};
+
+            const controller = new AbortController();
+            activeFetchSession = controller;
+            let anySuccess = false;
+            try {
+                const fetchPromises = realtimeTasks.map(async (t) => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, 'finnhub', finnhubKey, controller.signal);
+                        if (gen !== streamGeneration) return;
+                        realtimeQuotes[t.ticker] = data;
+                        anySuccess = true;
+                    } catch (e) {
+                        if (gen !== streamGeneration || (e && e.name === 'AbortError') || controller.signal.aborted) return;
+                        console.warn(`Enhanced baseline fetch failed for ${t.ticker}:`, e);
+                        realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                    }
+                });
+                await Promise.all(fetchPromises);
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
+            }
             if (gen !== streamGeneration) return;
+            container.querySelector('#scanFetchingMsg')?.remove();
+            renderRealtimeSnapshot(container, riskVal, slippageVal);
+            speakResults(lastRenderedSnapshot);
+            refreshEarningsForScan();
+
+            if (anySuccess) {
+                connectSocket('finnhub', finnhubKey, riskVal, slippageVal, container, gen, true);
+                connectSocket('tiingo', tiingoKey, riskVal, slippageVal, container, gen, true);
+                if (resyncTimer) clearInterval(resyncTimer);
+                resyncTimer = setInterval(() => resyncBaselines('finnhub', finnhubKey, gen, container, riskVal, slippageVal, false), RESYNC_INTERVAL_MS);
+            }
+        }
+
+        function isAnySocketOpen() {
+            if (realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) return true;
+            return Object.values(activeSockets).some(s => s && s.readyState === WebSocket.OPEN);
+        }
+
+        function isAnySocketConnecting() {
+            if (realtimeSocket && realtimeSocket.readyState === WebSocket.CONNECTING) return true;
+            return Object.values(activeSockets).some(s => s && s.readyState === WebSocket.CONNECTING);
+        }
+
+        function isAnyReconnectPending() {
+            if (reconnectTimeout) return true;
+            return Object.values(reconnectTimeoutByProvider).some(t => t !== null && t !== undefined);
+        }
+
+        function connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced = false) {
+            if (gen !== streamGeneration) return;
+
+            const WebSocketCtor = typeof WebSocket !== 'undefined' ? WebSocket : null;
+            if (!WebSocketCtor) return;
+
+            const wsUrl = provider === 'finnhub' ? `wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`
+                          : provider === 'twelvedata' ? `wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`
+                          : provider === 'tiingo' ? 'wss://api.tiingo.com/iex'
+                          : null;
+            if (!wsUrl) return;
+
             let socket;
             try {
-                if (provider === 'finnhub') {
-                    socket = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`);
-                } else if (provider === 'twelvedata') {
-                    socket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`);
-                } else {
-                    return;
-                }
+                socket = new WebSocketCtor(wsUrl);
             } catch (e) {
                 renderError({ ticker: "WebSocket", error: "Connection Failed" }, container);
                 return;
             }
-            realtimeSocket = socket;
-            const isCurrent = () => gen === streamGeneration && realtimeSocket === socket;
+
+            if (isEnhanced) {
+                activeSockets[provider] = socket;
+            } else {
+                realtimeSocket = socket;
+            }
+
+            const isCurrent = () => gen === streamGeneration &&
+                (isEnhanced ? activeSockets[provider] === socket : realtimeSocket === socket);
+
+            const reconnectState = isEnhanced
+                ? { get attempts() { return reconnectAttemptsByProvider[provider] ?? 0; },
+                    set attempts(v) { reconnectAttemptsByProvider[provider] = v; },
+                    get timer() { return reconnectTimeoutByProvider[provider] ?? null; },
+                    set timer(v) { reconnectTimeoutByProvider[provider] = v; } }
+                : { get attempts() { return reconnectAttempts; },
+                    set attempts(v) { reconnectAttempts = v; },
+                    get timer() { return reconnectTimeout; },
+                    set timer(v) { reconnectTimeout = v; } };
 
             socket.onopen = () => {
                 if (!isCurrent()) { try { socket.close(); } catch (e) {} return; }
-                reconnectAttempts = 0;
+                reconnectState.attempts = 0;
                 setCalcBtnStreaming(true);
                 updateTopStatus();
                 const validTasks = realtimeTasks.filter(t => realtimeQuotes[t.ticker]);
@@ -2269,6 +2593,15 @@
                             "params": { "symbols": symbols }
                         }));
                     }
+                } else if (provider === 'tiingo') {
+                    const tickers = validTasks.map(t => t.ticker.toUpperCase());
+                    if (tickers.length) {
+                        socket.send(JSON.stringify({
+                            eventName: 'subscribe',
+                            authorization: apiKey,
+                            eventData: { thresholdLevel: 6, tickers }
+                        }));
+                    }
                 }
             };
 
@@ -2281,16 +2614,39 @@
 
                     if (provider === 'finnhub') {
                         if (response.type !== 'trade' || !response.data) return;
-                        response.data.forEach(trade => {
-                            const ticker = String(trade.s).toUpperCase();
-                            if (applyLivePrice(ticker, Number(trade.p))) changedTickers.add(ticker);
-                        });
-                    } 
-                    else if (provider === 'twelvedata') {
+                        if (isEnhanced) {
+                            response.data.forEach(trade => {
+                                const tkr = String(trade.s).toUpperCase();
+                                const ts = Number.isFinite(trade.t) ? Number(trade.t) : Date.now();
+                                if (applyLivePriceIfNewer(tkr, Number(trade.p), ts)) changedTickers.add(tkr);
+                            });
+                        } else {
+                            response.data.forEach(trade => {
+                                const tkr = String(trade.s).toUpperCase();
+                                if (applyLivePrice(tkr, Number(trade.p))) changedTickers.add(tkr);
+                            });
+                        }
+                    } else if (provider === 'twelvedata') {
                         if (response.event !== 'price') return;
-                        const ticker = String(response.symbol).toUpperCase();
+                        const tkr = String(response.symbol).toUpperCase();
                         const extra = { bid: Number(response.bid), ask: Number(response.ask) };
-                        if (applyLivePrice(ticker, Number(response.price), extra)) changedTickers.add(ticker);
+                        if (applyLivePrice(tkr, Number(response.price), extra)) changedTickers.add(tkr);
+                    } else if (provider === 'tiingo') {
+                        if (response.messageType === 'E') {
+                            console.warn('Tiingo WS error:', response.data);
+                            return;
+                        }
+                        if (response.messageType !== 'A' || !Array.isArray(response.data) || response.data.length < 3) return;
+                        const tkr = String(response.data[1]).toUpperCase();
+                        const key = resolveRealtimeTicker(tkr);
+                        if (!key) return;
+                        const price = Number(response.data[2]);
+                        const ts = parseTiingoWsTimestamp(response.data[0]);
+                        if (isEnhanced) {
+                            if (applyLivePriceIfNewer(key, price, ts)) changedTickers.add(key);
+                        } else {
+                            if (applyLivePrice(key, price)) changedTickers.add(key);
+                        }
                     }
 
                     if (changedTickers.size > 0) {
@@ -2307,20 +2663,20 @@
 
             socket.onclose = () => {
                 if (!isCurrent()) return;
-                setCalcBtnStreaming(false);
                 const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
                 const marketOpen = nyNow().isRTH;
-                if (canRetry && (marketOpen || reconnectAttempts < MAX_RECONNECT_ATTEMPTS)) {
+                if (canRetry && (marketOpen || reconnectState.attempts < MAX_RECONNECT_ATTEMPTS)) {
                     updateTopStatus('reconnecting');
-                    const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
-                    reconnectAttempts++;
-                    reconnectTimeout = setTimeout(() => {
-                        reconnectTimeout = null;
-                        connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
+                    const backoff = Math.min(1000 * Math.pow(2, reconnectState.attempts), 15000);
+                    reconnectState.attempts++;
+                    reconnectState.timer = setTimeout(() => {
+                        reconnectState.timer = null;
+                        connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced);
                     }, backoff);
                 } else {
                     updateTopStatus('offline');
                 }
+                setCalcBtnStreaming(isAnySocketOpen());
             };
         }
 
@@ -2328,9 +2684,13 @@
             if (calculating) return;
             if (Date.now() - lastCalculateAt < 500) return;
             const { risk: riskVal, slippage: slippageVal } = currentRiskAndSlippage();
-            const provider = document.getElementById('apiProvider').value;
+            const selectedProvider = document.getElementById('apiProvider').value;
+            const isEnhanced = enhancedLiveMode;
+            const finnhubKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+            const tiingoKey = safeStorageGet('tiingo_key');
+            const provider = isEnhanced ? 'finnhub' : selectedProvider;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
+            const apiKey = isEnhanced ? finnhubKey : (config.storageKey ? safeStorageGet(config.storageKey) : null);
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
@@ -2340,6 +2700,12 @@
                 lastCalculateAt = Date.now();
                 if (btn) btn.disabled = true;
 
+                if (isEnhanced && (!finnhubKey || !tiingoKey)) {
+                    errorMsg.innerText = "Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.";
+                    errorMsg.classList.remove('hidden');
+                    navigateTo('settings');
+                    return;
+                }
                 if (config.needsKey && !apiKey) {
                     errorMsg.innerText = "Please set API Key in Settings.";
                     errorMsg.classList.remove('hidden');
@@ -2383,6 +2749,13 @@
                 container.innerHTML = `<div id="scanFetchingMsg" class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
 
                 // Handle WebSocket stream for supported providers when live update is active
+                if (isEnhanced && liveUpdateEnabled) {
+                    setCalcBtnStreaming(true);
+                    await startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container);
+                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
+                    if (collapseAfterCalc) setScannerCollapsed(true);
+                    return;
+                }
                 if (config.supportsWs && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
                     await startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
@@ -4327,7 +4700,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.3.0",
+                version: "2.4.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4352,10 +4725,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.4.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;

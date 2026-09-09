@@ -29,7 +29,7 @@ class SpeechSynthesisUtterance { constructor(t) { this.text = t; } }
 const navigator = { clipboard: { writeText: () => Promise.resolve() } };
 const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval, alert: () => {}, confirm: () => true, prompt: () => null, Date: FakeDate, SpeechSynthesisUtterance };
 const fn = new Function(...Object.keys(sandbox), code + `
-  return { realtimeQuotes, applyLivePrice, mergeRestQuote, nyNow, speakResults, announceTriggerTransitions, toggleVoice, setTriggerState: (s) => { triggerActiveState = s; }, getTriggerState: () => triggerActiveState };`);
+  return { realtimeQuotes, applyLivePrice, applyLivePriceIfNewer, mergeRestQuote, tradeTimestamps, nyNow, speakResults, announceTriggerTransitions, toggleVoice, setTriggerState: (s) => { triggerActiveState = s; }, getTriggerState: () => triggerActiveState };`);
 const api = fn(...Object.values(sandbox));
 const assert = (c, m) => { if (!c) throw new Error('ASSERT FAIL: ' + m); };
 
@@ -83,6 +83,17 @@ try {
   api.announceTriggerTransitions([mk(104.9)], new Set(['AAA']), 500, 0);
   api.announceTriggerTransitions([mk(105.1)], new Set(['AAA']), 500, 0);
   assert(spoken.length === 2, 're-crossing speaks again');
+
+  // Timestamp-aware live merge for dual-stream mode
+  api.realtimeQuotes['DDD'] = { c: 100, h: 101, l: 99, pc: 98, bid: 100, ask: 100.5 };
+  assert(api.applyLivePriceIfNewer('DDD', 101, 1000), 'newer timestamp accepted');
+  assert(api.realtimeQuotes['DDD'].c === 101 && api.tradeTimestamps['DDD'] === 1000, 'newer timestamp updates quote and tradeTimestamps');
+  assert(!api.applyLivePriceIfNewer('DDD', 100, 900), 'older timestamp rejected');
+  assert(api.realtimeQuotes['DDD'].c === 101, 'older stale print cannot overwrite');
+  assert(api.applyLivePriceIfNewer('DDD', 101, 1000), 'equal timestamp same quote accepted as no-op refresh');
+  assert(!api.applyLivePriceIfNewer('DDD', 100, 1000), 'equal timestamp different price rejected');
+  assert(api.applyLivePriceIfNewer('DDD', 102, 1001), 'newer timestamp after equal rejected accepted');
+  assert(api.realtimeQuotes['DDD'].c === 102, 'latest price kept');
 
   console.log('Live-data tests passed!');
   process.exit(0);
