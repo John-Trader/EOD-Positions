@@ -5218,7 +5218,7 @@
             });
             window.addEventListener('visibilitychange', () => {
                 if (document.hidden) return;
-                if (realtimeSocket) requestWakeLock();
+                if (isAnySocketOpen()) requestWakeLock();
                 const container = document.getElementById('resultsContainer');
                 if (container && realtimeTasks.length) refreshAllVisible(container);
                 if (activeTradesLog.some(t => t.status === 'ACTIVE')) refreshActiveTradesPrices();
