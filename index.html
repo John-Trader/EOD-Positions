@@ -239,7 +239,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.3.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.4.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -733,6 +733,24 @@
             stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false },
             tiingo: { name: 'Tiingo', storageKey: 'tiingo_key', needsKey: true, supportsWs: true }
         };
+
+        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
+        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
+        const _storage = (typeof localStorage !== 'undefined' && localStorage) ? localStorage : { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+        function safeStorageSet(key, value) {
+            try { _storage.setItem(key, value); return true; } catch (e) {
+                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+                console.warn('Storage save failed:', key, e);
+                if (quota) showErrorToast('Storage full: export a backup and free up space.');
+                return false;
+            }
+        }
+        function safeStorageGet(key) {
+            try { return _storage.getItem(key); } catch (e) { return null; }
+        }
+        function safeStorageRemove(key) {
+            try { _storage.removeItem(key); } catch (e) {}
+        }
 
         let realtimeSocket = null;
         let realtimeTasks = [];
@@ -2056,24 +2074,6 @@
 
         function sanitizeTicker(raw) {
             return String(raw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10);
-        }
-
-        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
-        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
-        const _storage = localStorage;
-        function safeStorageSet(key, value) {
-            try { _storage.setItem(key, value); return true; } catch (e) {
-                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-                console.warn('Storage save failed:', key, e);
-                if (quota) showErrorToast('Storage full: export a backup and free up space.');
-                return false;
-            }
-        }
-        function safeStorageGet(key) {
-            try { return _storage.getItem(key); } catch (e) { return null; }
-        }
-        function safeStorageRemove(key) {
-            try { _storage.removeItem(key); } catch (e) {}
         }
 
         function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
