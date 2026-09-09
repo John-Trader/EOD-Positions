@@ -239,7 +239,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.2.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.5.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -393,11 +393,20 @@
                         <option value="finnhub">Finnhub</option>
                         <option value="twelvedata">Twelve Data</option>
                         <option value="stockdata">StockData.org</option>
+                        <option value="tiingo">Tiingo</option>
                     </select>
                     <div class="flex gap-2">
                         <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                    </div>
+                    <div class="space-y-1 pt-1">
+                        <label for="tiingoApiKeyInput" class="text-[10px] font-bold text-gray-400 uppercase">Tiingo API Key</label>
+                        <div class="flex gap-2">
+                            <input type="password" id="tiingoApiKeyInput" aria-label="Tiingo API Key" autocomplete="off" placeholder="Enter Tiingo API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                            <button id="showTiingoKeyBtn" onclick="toggleTiingoKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
+                            <button onclick="saveTiingoKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                        </div>
                     </div>
                 </div>
                 <div class="space-y-1">
@@ -426,6 +435,14 @@
                             <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
                             <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
                         </label>
+                        <div class="space-y-1">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="enhancedLiveModeSetting" class="custom-checkbox" onchange="saveEnhancedLiveSetting()">
+                                <span class="text-xs text-gray-300">Enhanced Live Mode</span>
+                            </label>
+                            <p class="text-[10px] text-gray-400 pl-5">Streams Finnhub + Tiingo (IEX) concurrently and shows whichever ticks first. Requires both API keys saved.</p>
+                            <p id="enhancedLiveModeError" class="text-[10px] text-red-400 pl-5 hidden"></p>
+                        </div>
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
                             <span class="text-xs text-gray-300">Show Focus Button</span>
@@ -460,6 +477,21 @@
                         <input type="text" inputmode="numeric" pattern="[0-9,]*" id="accountValueSetting" autocomplete="off" class="w-full max-w-[200px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-bold font-mono-num" placeholder="0.00" oninput="saveRiskSettings()" onblur="formatAccountValueSetting()">
                     </label>
                     <p class="text-[10px] text-gray-400">In percent mode, the risk input on the scanner is treated as a percentage of account value.</p>
+                </div>
+                <div class="border-t border-white/10 pt-3 space-y-2">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase">TWS Bridge</div>
+                    <label class="flex items-center gap-2 text-xs"><input id="twsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()">Enable TWS order sending</label>
+                    <label class="text-[9px] text-gray-500 uppercase block">Bridge URL
+                        <input id="twsBridgeUrlSetting" type="text" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="http://127.0.0.1:8787" onchange="saveTwsSettings()">
+                    </label>
+                    <label class="text-[9px] text-gray-500 uppercase block">Bridge token
+                        <input id="twsBridgeTokenSetting" type="password" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="from tws-bridge first run" onchange="saveTwsSettings()">
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <button onclick="testTwsConnection()" class="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded text-xs font-bold">TEST CONNECTION</button>
+                        <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
@@ -643,7 +675,17 @@
                 <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
                     <span>📥</span> Download TWS Basket (.csv)
                 </button>
-
+                <div class="flex gap-2 items-center">
+                    <label class="text-[10px] text-gray-400 flex items-center gap-1" title="Attach exits to the entry order (bracket) or send as standalone OCA pairs">
+                        <input type="checkbox" id="twsAttachEntry" class="custom-checkbox"> Attach
+                    </label>
+                    <button data-tws-key="" onclick="sendTwsModalEntry()" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">SEND ENTRY</span>
+                    </button>
+                    <button data-tws-key="" onclick="sendTwsModalExits()" class="bg-purple-600/80 hover:bg-purple-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">SEND EXITS</span>
+                    </button>
+                </div>
                 <div class="flex gap-2">
                     <button onclick="logCurrentTradeFromModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
                         <span>💾</span> Log Trade
@@ -676,6 +718,7 @@
             <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
             <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-2">
                 <button onclick="downloadBatchCombinedCSV()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
+                <button onclick="sendTwsBatchAll()" class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap tws-send-btn">SEND ALL</button>
             </div>
         </div>
     </div>
@@ -687,8 +730,27 @@
         const API_CONFIGS = {
             finnhub: { name: 'Finnhub', storageKey: 'finnhub_key', needsKey: true, supportsWs: true },
             twelvedata: { name: 'Twelve Data', storageKey: 'twelvedata_key', needsKey: true, supportsWs: true },
-            stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false }
+            stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false },
+            tiingo: { name: 'Tiingo', storageKey: 'tiingo_key', needsKey: true, supportsWs: true }
         };
+
+        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
+        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
+        const _storage = (typeof localStorage !== 'undefined' && localStorage) ? localStorage : { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+        function safeStorageSet(key, value) {
+            try { _storage.setItem(key, value); return true; } catch (e) {
+                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+                console.warn('Storage save failed:', key, e);
+                if (quota) showErrorToast('Storage full: export a backup and free up space.');
+                return false;
+            }
+        }
+        function safeStorageGet(key) {
+            try { return _storage.getItem(key); } catch (e) { return null; }
+        }
+        function safeStorageRemove(key) {
+            try { _storage.removeItem(key); } catch (e) {}
+        }
 
         let realtimeSocket = null;
         let realtimeTasks = [];
@@ -709,6 +771,12 @@
         if (liveUpdateEnabled === null) liveUpdateEnabled = 'true';
         liveUpdateEnabled = liveUpdateEnabled === 'true';
 
+        let enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
+        let activeSockets = { finnhub: null, tiingo: null };
+        let reconnectAttemptsByProvider = { finnhub: 0, tiingo: 0 };
+        let reconnectTimeoutByProvider = { finnhub: null, tiingo: null };
+        let tradeTimestamps = {};          // ticker -> exchange timestamp ms for cross-feed ordering
+
         let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
         let currentViewMode = safeStorageGet('preferredViewMode') || 'cards'; // 'cards' | 'table'
         let currentPage = 'scanner';
@@ -719,6 +787,13 @@
         let lastExitPasteResult = null;
         let lastBuilderExitPasteResult = null;
         let collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
+        // TWS Bridge state (feature-gated; everything below is inert when off)
+        let twsEnabled = safeStorageGet('twsEnabled') === 'true';
+        let twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
+        let twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
+        let twsConnected = false;
+        let twsAccount = '';
+        let twsHealthTimer = null;
         let isStreamingLive = false;
         let calculating = false;
         let lastCalculateAt = 0;
@@ -863,6 +938,7 @@
             currentViewMode = safeStorageGet('preferredViewMode') === 'table' ? 'table' : 'cards';
             collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
             liveUpdateEnabled = safeStorageGet('liveUpdateEnabled') !== 'false';
+            enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
             const savedRisk = safeStorageGet('riskValue');
             const savedProvider = safeStorageGet('selectedProvider');
             const savedSlippage = safeStorageGet('slippageValue');
@@ -917,6 +993,8 @@
             renderStrategyEditor();
             applyScannerCollapsed();
             loadFeatureSettings();
+            loadTwsSettings();
+            updateEnhancedUI();
         }
 
         function boundedHoldDays(value) {
@@ -966,6 +1044,32 @@
             btn.setAttribute('aria-pressed', String(show));
         }
 
+        function updateTiingoKeyInput() {
+            const input = document.getElementById('tiingoApiKeyInput');
+            if (input) input.value = safeStorageGet('tiingo_key') || '';
+        }
+
+        function saveTiingoKey() {
+            const key = document.getElementById('tiingoApiKeyInput').value.trim();
+            if (key) {
+                safeStorageSet('tiingo_key', key);
+                alert('API Key Saved');
+                if (document.getElementById('apiProvider').value === 'tiingo') updateApiKeyInput();
+            }
+        }
+
+        function toggleTiingoKeyVisibility() {
+            const input = document.getElementById('tiingoApiKeyInput');
+            if (!input) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            const btn = document.getElementById('showTiingoKeyBtn');
+            if (btn) {
+                btn.textContent = show ? 'HIDE' : 'SHOW';
+                btn.setAttribute('aria-pressed', String(show));
+            }
+        }
+
         function saveCollapseAfterCalc() {
             collapseAfterCalc = document.getElementById('collapseAfterCalcSetting').checked;
             safeStorageSet('collapseAfterCalc', collapseAfterCalc ? 'true' : 'false');
@@ -995,6 +1099,65 @@
             liveUpdateEnabled = document.getElementById('liveUpdateSetting').checked;
             safeStorageSet('liveUpdateEnabled', liveUpdateEnabled ? 'true' : 'false');
             if (!liveUpdateEnabled) disconnectWebSocket();
+            updateTopStatus();
+        }
+
+        function updateEnhancedUI(clearError = true) {
+            const chk = document.getElementById('enhancedLiveModeSetting');
+            const providerSel = document.getElementById('apiProvider');
+            const err = document.getElementById('enhancedLiveModeError');
+            if (chk) chk.checked = enhancedLiveMode;
+            if (providerSel) {
+                if (enhancedLiveMode) {
+                    providerSel.value = 'finnhub';
+                    providerSel.disabled = true;
+                } else {
+                    providerSel.disabled = false;
+                    const savedProvider = safeStorageGet('selectedProvider');
+                    if (savedProvider && Object.hasOwn(API_CONFIGS, savedProvider)) {
+                        providerSel.value = savedProvider;
+                    }
+                }
+            }
+            if (err && clearError) {
+                err.classList.add('hidden');
+                err.innerText = '';
+            }
+            updateApiKeyInput();
+        }
+
+        function saveEnhancedLiveSetting() {
+            const chk = document.getElementById('enhancedLiveModeSetting');
+            const err = document.getElementById('enhancedLiveModeError');
+            if (!chk) return;
+            const on = chk.checked;
+
+            if (on) {
+                const finnKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+                const tiingoKey = safeStorageGet('tiingo_key');
+                if (!finnKey || !tiingoKey) {
+                    if (err) {
+                        err.innerText = 'Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.';
+                        err.classList.remove('hidden');
+                    }
+                    chk.checked = false;
+                    if (enhancedLiveMode) {
+                        enhancedLiveMode = false;
+                        safeStorageSet('enhancedLiveMode', 'false');
+                    }
+                    updateEnhancedUI(false);
+                    return;
+                }
+            }
+
+            enhancedLiveMode = on;
+            safeStorageSet('enhancedLiveMode', on ? 'true' : 'false');
+            if (err) {
+                err.classList.add('hidden');
+                err.innerText = '';
+            }
+            updateEnhancedUI();
+            if (realtimeTasks.length) disconnectWebSocket();
             updateTopStatus();
         }
 
@@ -1134,28 +1297,49 @@
             const txt = document.getElementById('liveStatusText');
             const ping = document.getElementById('liveStatusPing');
             const dot = document.getElementById('liveStatusDot');
+            const showIndicator = enhancedLiveMode || (config && config.supportsWs);
 
-            if (config && config.supportsWs) {
-                ind.classList.remove('hidden');
-                ind.classList.add('flex');
-                
-                if (statusOverride === 'reconnecting') {
+            if (!showIndicator) {
+                ind.classList.add('hidden');
+                ind.classList.remove('flex');
+                return;
+            }
+
+            ind.classList.remove('hidden');
+            ind.classList.add('flex');
+
+            if (enhancedLiveMode) {
+                if (!liveUpdateEnabled) {
+                    txt.innerText = 'MANUAL';
+                    txt.className = 'text-gray-400 uppercase font-bold';
+                    ping.className = 'hidden';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+                    return;
+                }
+                const fOpen = activeSockets.finnhub && activeSockets.finnhub.readyState === WebSocket.OPEN;
+                const tOpen = activeSockets.tiingo && activeSockets.tiingo.readyState === WebSocket.OPEN;
+                if (fOpen && tOpen) {
+                    txt.innerText = 'LIVE (DUAL)';
+                    txt.className = 'text-cyan-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-cyan-500';
+                } else if (fOpen) {
+                    txt.innerText = 'LIVE (FINNHUB ONLY)';
+                    txt.className = 'text-emerald-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+                } else if (tOpen) {
+                    txt.innerText = 'LIVE (TIINGO ONLY)';
+                    txt.className = 'text-blue-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
+                } else if (statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting()) {
                     txt.innerText = 'RECONNECTING';
                     txt.className = 'text-amber-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
-                } else if (statusOverride === 'offline') {
+                } else if (statusOverride === 'offline' || !nyNow().isRTH) {
                     txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
-                    txt.className = 'text-gray-400 uppercase font-bold';
-                    ping.className = 'hidden';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
-                } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
-                    txt.innerText = 'LIVE';
-                    txt.className = 'text-emerald-400 uppercase font-bold';
-                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-                } else if (!liveUpdateEnabled) {
-                    txt.innerText = 'MANUAL';
                     txt.className = 'text-gray-400 uppercase font-bold';
                     ping.className = 'hidden';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
@@ -1165,9 +1349,34 @@
                     ping.className = 'hidden';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
                 }
+                return;
+            }
+
+            if (statusOverride === 'reconnecting') {
+                txt.innerText = 'RECONNECTING';
+                txt.className = 'text-amber-400 uppercase font-bold';
+                ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+            } else if (statusOverride === 'offline') {
+                txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
+            } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
+                txt.innerText = 'LIVE';
+                txt.className = 'text-emerald-400 uppercase font-bold';
+                ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+            } else if (!liveUpdateEnabled) {
+                txt.innerText = 'MANUAL';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
             } else {
-                ind.classList.add('hidden');
-                ind.classList.remove('flex');
+                txt.innerText = 'STANDBY';
+                txt.className = 'text-gray-400 uppercase font-bold';
+                ping.className = 'hidden';
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
             }
         }
 
@@ -1253,6 +1462,8 @@
         });
         const apiKeyEl = document.getElementById('apiKeyInput');
         if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
+        const tiingoKeyEl = document.getElementById('tiingoApiKeyInput');
+        if (tiingoKeyEl) tiingoKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveTiingoKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
             safeStorageSet('selectedProvider', e.target.value);
@@ -1282,6 +1493,7 @@
                 liveContainer.style.display = 'none';
                 disconnectWebSocket();
             }
+            updateTiingoKeyInput();
             updateTopStatus();
         }
 
@@ -1291,7 +1503,8 @@
             const key = document.getElementById('apiKeyInput').value.trim();
             if (config.needsKey && key) {
                 safeStorageSet(config.storageKey, key);
-                alert('API Key Saved'); 
+                alert('API Key Saved');
+                if (provider === 'tiingo') updateTiingoKeyInput();
             }
         }
 
@@ -1863,24 +2076,6 @@
             return String(raw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10);
         }
 
-        // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
-        // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
-        const _storage = localStorage;
-        function safeStorageSet(key, value) {
-            try { _storage.setItem(key, value); return true; } catch (e) {
-                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-                console.warn('Storage save failed:', key, e);
-                if (quota) showErrorToast('Storage full: export a backup and free up space.');
-                return false;
-            }
-        }
-        function safeStorageGet(key) {
-            try { return _storage.getItem(key); } catch (e) { return null; }
-        }
-        function safeStorageRemove(key) {
-            try { _storage.removeItem(key); } catch (e) {}
-        }
-
         function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(new DOMException('Request timeout', 'TimeoutError')), timeoutMs);
@@ -1966,6 +2161,26 @@
                     bid: bid,
                     ask: ask
                 };
+            } else if (provider === 'tiingo') {
+                const quote = await fetchWithTimeout(`https://api.tiingo.com/iex?tickers=${encodeURIComponent(ticker)}`, { headers: { 'Authorization': 'Token ' + apiKey, 'Accept': 'application/json' } }, 10000, signal);
+                if (quote.status === 429) throw new Error("Rate Limit");
+                if (!quote.ok) throw new Error(`API Error: ${ticker}`);
+                const d_res = await quote.json();
+                const d = Array.isArray(d_res) ? d_res[0] : d_res;
+                if (!d) throw new Error(`Invalid Ticker: ${ticker}`);
+                const c = (Number.isFinite(d.tngoLast) && d.tngoLast > 0) ? Number(d.tngoLast)
+                        : (Number.isFinite(d.last) && d.last > 0) ? Number(d.last)
+                        : null;
+                if (c === null) throw new Error(`Invalid Ticker: ${ticker}`);
+                const h = Number(d.high);
+                const l = Number(d.low);
+                const pc = Number(d.prevClose);
+                const bid = (Number.isFinite(d.bidPrice) && d.bidPrice > 0) ? Number(d.bidPrice) : null;
+                const ask = (Number.isFinite(d.askPrice) && d.askPrice > 0) ? Number(d.askPrice) : null;
+                if (!Number.isFinite(c) || c <= 0 || !Number.isFinite(h) || h <= 0 || !Number.isFinite(l) || l <= 0 || !Number.isFinite(pc) || pc <= 0 || h < l) {
+                    throw new Error(`Invalid Ticker: ${ticker}`);
+                }
+                return { c, h, l, pc, bid, ask };
             }
             throw new Error("Unknown provider");
         }
@@ -1977,20 +2192,41 @@
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
+            Object.keys(reconnectTimeoutByProvider).forEach(k => {
+                if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; }
+            });
             if (resyncTimer) {
                 clearInterval(resyncTimer);
                 resyncTimer = null;
             }
             if (realtimeSocket) {
-                try { 
+                try {
+                    realtimeSocket.onopen = null;
                     realtimeSocket.onclose = null;
                     realtimeSocket.onerror = null;
                     realtimeSocket.onmessage = null;
-                    realtimeSocket.close(); 
+                    realtimeSocket.close();
                 } catch (e) {}
             }
             realtimeSocket = null;
+            Object.keys(activeSockets).forEach(k => {
+                const s = activeSockets[k];
+                if (s) {
+                    try {
+                        s.onopen = null;
+                        s.onclose = null;
+                        s.onerror = null;
+                        s.onmessage = null;
+                        s.close();
+                    } catch (e) {}
+                }
+                activeSockets[k] = null;
+            });
             reconnectAttempts = 0;
+            Object.keys(reconnectAttemptsByProvider).forEach(k => { reconnectAttemptsByProvider[k] = 0; });
+            Object.keys(reconnectTimeoutByProvider).forEach(k => { if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; } });
+            lastTradeAt = {};
+            tradeTimestamps = {};
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
@@ -2037,6 +2273,49 @@
             return true;
         }
 
+        function parseTiingoWsTimestamp(ts) {
+            if (typeof ts === 'number' && Number.isFinite(ts) && ts > 0) {
+                return ts < 1e12 ? ts * 1000 : ts;
+            }
+            if (typeof ts === 'string') {
+                const normalized = ts.replace(/(\.\d{3})\d+(Z|[+-]\d{2}:\d{2})$/, '$1$2');
+                const ms = Date.parse(normalized);
+                if (Number.isFinite(ms)) return ms;
+            }
+            return Date.now();
+        }
+
+        function resolveRealtimeTicker(tkr) {
+            if (realtimeQuotes[tkr]) return tkr;
+            const alt = tkr.replace(/-/g, '.');
+            if (alt !== tkr && realtimeQuotes[alt]) return alt;
+            return null;
+        }
+
+        function applyLivePriceIfNewer(ticker, price, tradeTimeMs, extra = {}) {
+            const prev = realtimeQuotes[ticker];
+            if (!prev || !Number.isFinite(price) || price <= 0) return false;
+
+            const now = Date.now();
+            if (!Number.isFinite(tradeTimeMs) || tradeTimeMs <= 0) tradeTimeMs = now;
+            if (tradeTimeMs > now + 60000) tradeTimeMs = now;
+
+            const lastApplied = tradeTimestamps[ticker] || 0;
+            if (tradeTimeMs < lastApplied) return false;
+
+            if (tradeTimeMs === lastApplied) {
+                const bid = (extra.bid && extra.bid > 0) ? extra.bid : prev.bid;
+                const ask = (extra.ask && extra.ask > 0) ? extra.ask : prev.ask;
+                if (prev.c === price && prev.bid === bid && prev.ask === ask) {
+                    return applyLivePrice(ticker, price, extra);
+                }
+                return false;
+            }
+
+            tradeTimestamps[ticker] = tradeTimeMs;
+            return applyLivePrice(ticker, price, extra);
+        }
+
         // Merge a fresh REST quote into the stored one (periodic resync). Live last price wins
         // unless the socket has been silent since the previous resync.
         function mergeRestQuote(ticker, data) {
@@ -2056,7 +2335,7 @@
             return changed;
         }
 
-        async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal) {
+        async function resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal, allowFallback = true) {
             if (gen !== streamGeneration || !nyNow().isRTH) return;
             const controller = new AbortController();
             activeFetchSession = controller;
@@ -2066,7 +2345,9 @@
                     if (gen !== streamGeneration || controller.signal.aborted) break;
                     if (!realtimeQuotes[t.ticker]) continue;
                     try {
-                        const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
+                        const data = allowFallback
+                            ? await fetchTickerData(t.ticker, provider, apiKey, controller.signal)
+                            : await fetchProviderQuote(t.ticker, provider, apiKey, controller.signal);
                         if (gen !== streamGeneration || controller.signal.aborted || !nyNow().isRTH) break;
                         if (mergeRestQuote(t.ticker, data)) changed.add(t.ticker);
                     } catch (e) {
@@ -2144,6 +2425,7 @@
 
             if (announce) announceTriggerTransitions(results, changedTickers, risk, slippage);
             applyFocusMode();
+            syncTwsSendButtons();
         }
 
         // Re-render every visible card/row from the current quotes (e.g. after Risk $ changes).
@@ -2161,6 +2443,7 @@
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
             lastTradeAt = {};
+            tradeTimestamps = {};
             triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
@@ -2194,31 +2477,112 @@
             if (anySuccess) {
                 connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
                 if (resyncTimer) clearInterval(resyncTimer);
-                resyncTimer = setInterval(() => resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal), RESYNC_INTERVAL_MS);
+                resyncTimer = setInterval(() => resyncBaselines(provider, apiKey, gen, container, riskVal, slippageVal, true), RESYNC_INTERVAL_MS);
             }
         }
 
-        function connectSocket(provider, apiKey, riskVal, slippageVal, container, gen) {
+        async function startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container) {
+            disconnectWebSocket();
+            requestWakeLock();
+            const gen = streamGeneration;
+            realtimeTasks = tasks.map(t => ({ ...t, ticker: t.ticker.toUpperCase() }));
+            Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+            Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+            lastTradeAt = {};
+            tradeTimestamps = {};
+            triggerActiveState = {};
+
+            const controller = new AbortController();
+            activeFetchSession = controller;
+            let anySuccess = false;
+            try {
+                const fetchPromises = realtimeTasks.map(async (t) => {
+                    try {
+                        const data = await fetchTickerData(t.ticker, 'finnhub', finnhubKey, controller.signal);
+                        if (gen !== streamGeneration) return;
+                        realtimeQuotes[t.ticker] = data;
+                        anySuccess = true;
+                    } catch (e) {
+                        if (gen !== streamGeneration || (e && e.name === 'AbortError') || controller.signal.aborted) return;
+                        console.warn(`Enhanced baseline fetch failed for ${t.ticker}:`, e);
+                        realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
+                    }
+                });
+                await Promise.all(fetchPromises);
+            } finally {
+                if (activeFetchSession === controller) activeFetchSession = null;
+            }
             if (gen !== streamGeneration) return;
+            container.querySelector('#scanFetchingMsg')?.remove();
+            renderRealtimeSnapshot(container, riskVal, slippageVal);
+            speakResults(lastRenderedSnapshot);
+            refreshEarningsForScan();
+
+            if (anySuccess) {
+                connectSocket('finnhub', finnhubKey, riskVal, slippageVal, container, gen, true);
+                connectSocket('tiingo', tiingoKey, riskVal, slippageVal, container, gen, true);
+                if (resyncTimer) clearInterval(resyncTimer);
+                resyncTimer = setInterval(() => resyncBaselines('finnhub', finnhubKey, gen, container, riskVal, slippageVal, false), RESYNC_INTERVAL_MS);
+            }
+        }
+
+        function isAnySocketOpen() {
+            if (realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) return true;
+            return Object.values(activeSockets).some(s => s && s.readyState === WebSocket.OPEN);
+        }
+
+        function isAnySocketConnecting() {
+            if (realtimeSocket && realtimeSocket.readyState === WebSocket.CONNECTING) return true;
+            return Object.values(activeSockets).some(s => s && s.readyState === WebSocket.CONNECTING);
+        }
+
+        function isAnyReconnectPending() {
+            if (reconnectTimeout) return true;
+            return Object.values(reconnectTimeoutByProvider).some(t => t !== null && t !== undefined);
+        }
+
+        function connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced = false) {
+            if (gen !== streamGeneration) return;
+
+            const WebSocketCtor = typeof WebSocket !== 'undefined' ? WebSocket : null;
+            if (!WebSocketCtor) return;
+
+            const wsUrl = provider === 'finnhub' ? `wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`
+                          : provider === 'twelvedata' ? `wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`
+                          : provider === 'tiingo' ? 'wss://api.tiingo.com/iex'
+                          : null;
+            if (!wsUrl) return;
+
             let socket;
             try {
-                if (provider === 'finnhub') {
-                    socket = new WebSocket(`wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`);
-                } else if (provider === 'twelvedata') {
-                    socket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`);
-                } else {
-                    return;
-                }
+                socket = new WebSocketCtor(wsUrl);
             } catch (e) {
                 renderError({ ticker: "WebSocket", error: "Connection Failed" }, container);
                 return;
             }
-            realtimeSocket = socket;
-            const isCurrent = () => gen === streamGeneration && realtimeSocket === socket;
+
+            if (isEnhanced) {
+                activeSockets[provider] = socket;
+            } else {
+                realtimeSocket = socket;
+            }
+
+            const isCurrent = () => gen === streamGeneration &&
+                (isEnhanced ? activeSockets[provider] === socket : realtimeSocket === socket);
+
+            const reconnectState = isEnhanced
+                ? { get attempts() { return reconnectAttemptsByProvider[provider] ?? 0; },
+                    set attempts(v) { reconnectAttemptsByProvider[provider] = v; },
+                    get timer() { return reconnectTimeoutByProvider[provider] ?? null; },
+                    set timer(v) { reconnectTimeoutByProvider[provider] = v; } }
+                : { get attempts() { return reconnectAttempts; },
+                    set attempts(v) { reconnectAttempts = v; },
+                    get timer() { return reconnectTimeout; },
+                    set timer(v) { reconnectTimeout = v; } };
 
             socket.onopen = () => {
                 if (!isCurrent()) { try { socket.close(); } catch (e) {} return; }
-                reconnectAttempts = 0;
+                reconnectState.attempts = 0;
                 setCalcBtnStreaming(true);
                 updateTopStatus();
                 const validTasks = realtimeTasks.filter(t => realtimeQuotes[t.ticker]);
@@ -2234,6 +2598,15 @@
                             "params": { "symbols": symbols }
                         }));
                     }
+                } else if (provider === 'tiingo') {
+                    const tickers = validTasks.map(t => t.ticker.toUpperCase());
+                    if (tickers.length) {
+                        socket.send(JSON.stringify({
+                            eventName: 'subscribe',
+                            authorization: apiKey,
+                            eventData: { thresholdLevel: 6, tickers }
+                        }));
+                    }
                 }
             };
 
@@ -2246,16 +2619,39 @@
 
                     if (provider === 'finnhub') {
                         if (response.type !== 'trade' || !response.data) return;
-                        response.data.forEach(trade => {
-                            const ticker = String(trade.s).toUpperCase();
-                            if (applyLivePrice(ticker, Number(trade.p))) changedTickers.add(ticker);
-                        });
-                    } 
-                    else if (provider === 'twelvedata') {
+                        if (isEnhanced) {
+                            response.data.forEach(trade => {
+                                const tkr = String(trade.s).toUpperCase();
+                                const ts = Number.isFinite(trade.t) ? Number(trade.t) : Date.now();
+                                if (applyLivePriceIfNewer(tkr, Number(trade.p), ts)) changedTickers.add(tkr);
+                            });
+                        } else {
+                            response.data.forEach(trade => {
+                                const tkr = String(trade.s).toUpperCase();
+                                if (applyLivePrice(tkr, Number(trade.p))) changedTickers.add(tkr);
+                            });
+                        }
+                    } else if (provider === 'twelvedata') {
                         if (response.event !== 'price') return;
-                        const ticker = String(response.symbol).toUpperCase();
+                        const tkr = String(response.symbol).toUpperCase();
                         const extra = { bid: Number(response.bid), ask: Number(response.ask) };
-                        if (applyLivePrice(ticker, Number(response.price), extra)) changedTickers.add(ticker);
+                        if (applyLivePrice(tkr, Number(response.price), extra)) changedTickers.add(tkr);
+                    } else if (provider === 'tiingo') {
+                        if (response.messageType === 'E') {
+                            console.warn('Tiingo WS error:', response.data);
+                            return;
+                        }
+                        if (response.messageType !== 'A' || !Array.isArray(response.data) || response.data.length < 3) return;
+                        const tkr = String(response.data[1]).toUpperCase();
+                        const key = resolveRealtimeTicker(tkr);
+                        if (!key) return;
+                        const price = Number(response.data[2]);
+                        const ts = parseTiingoWsTimestamp(response.data[0]);
+                        if (isEnhanced) {
+                            if (applyLivePriceIfNewer(key, price, ts)) changedTickers.add(key);
+                        } else {
+                            if (applyLivePrice(key, price)) changedTickers.add(key);
+                        }
                     }
 
                     if (changedTickers.size > 0) {
@@ -2272,20 +2668,20 @@
 
             socket.onclose = () => {
                 if (!isCurrent()) return;
-                setCalcBtnStreaming(false);
                 const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
                 const marketOpen = nyNow().isRTH;
-                if (canRetry && (marketOpen || reconnectAttempts < MAX_RECONNECT_ATTEMPTS)) {
+                if (canRetry && (marketOpen || reconnectState.attempts < MAX_RECONNECT_ATTEMPTS)) {
                     updateTopStatus('reconnecting');
-                    const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
-                    reconnectAttempts++;
-                    reconnectTimeout = setTimeout(() => {
-                        reconnectTimeout = null;
-                        connectSocket(provider, apiKey, riskVal, slippageVal, container, gen);
+                    const backoff = Math.min(1000 * Math.pow(2, reconnectState.attempts), 15000);
+                    reconnectState.attempts++;
+                    reconnectState.timer = setTimeout(() => {
+                        reconnectState.timer = null;
+                        connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced);
                     }, backoff);
                 } else {
                     updateTopStatus('offline');
                 }
+                setCalcBtnStreaming(isAnySocketOpen());
             };
         }
 
@@ -2293,9 +2689,13 @@
             if (calculating) return;
             if (Date.now() - lastCalculateAt < 500) return;
             const { risk: riskVal, slippage: slippageVal } = currentRiskAndSlippage();
-            const provider = document.getElementById('apiProvider').value;
+            const selectedProvider = document.getElementById('apiProvider').value;
+            const isEnhanced = enhancedLiveMode;
+            const finnhubKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+            const tiingoKey = safeStorageGet('tiingo_key');
+            const provider = isEnhanced ? 'finnhub' : selectedProvider;
             const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
+            const apiKey = isEnhanced ? finnhubKey : (config.storageKey ? safeStorageGet(config.storageKey) : null);
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
@@ -2305,6 +2705,12 @@
                 lastCalculateAt = Date.now();
                 if (btn) btn.disabled = true;
 
+                if (isEnhanced && (!finnhubKey || !tiingoKey)) {
+                    errorMsg.innerText = "Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.";
+                    errorMsg.classList.remove('hidden');
+                    navigateTo('settings');
+                    return;
+                }
                 if (config.needsKey && !apiKey) {
                     errorMsg.innerText = "Please set API Key in Settings.";
                     errorMsg.classList.remove('hidden');
@@ -2348,6 +2754,13 @@
                 container.innerHTML = `<div id="scanFetchingMsg" class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
 
                 // Handle WebSocket stream for supported providers when live update is active
+                if (isEnhanced && liveUpdateEnabled) {
+                    setCalcBtnStreaming(true);
+                    await startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container);
+                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
+                    if (collapseAfterCalc) setScannerCollapsed(true);
+                    return;
+                }
                 if (config.supportsWs && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
                     await startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
@@ -2561,6 +2974,7 @@
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
                         Exit<br>Orders
                     </button>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-black uppercase rounded-md px-1.5 py-1 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">SEND</span></button>` : ''}
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
                         <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
                         <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
@@ -2704,6 +3118,7 @@
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -2816,6 +3231,15 @@
             };
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
+
+            // Update TWS send keys on modal buttons so send-state feedback targets the right ticker.
+            const modalSendBtns = overlay.querySelectorAll('[data-tws-key]');
+            if (modalSendBtns) {
+                modalSendBtns.forEach(btn => {
+                    if (btn.textContent.includes('ENTRY')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'entry');
+                    else if (btn.textContent.includes('EXITS')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'exits');
+                });
+            }
 
             try {
                 document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
@@ -4281,7 +4705,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.2.1",
+                version: "2.5.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4306,10 +4730,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4428,6 +4852,238 @@
             });
         }
 
+        // ========================================================
+        // TWS BRIDGE CLIENT (feature-gated; inert when twsEnabled=false)
+        // ========================================================
+        function twsReady() {
+            return twsEnabled && twsBridgeToken && twsBridgeUrl;
+        }
+        async function bridgeRequest(path, body) {
+            if (!twsReady()) return { ok: false, error: 'TWS bridge not configured' };
+            const url = twsBridgeUrl.replace(/\/$/, '') + path;
+            const headers = { 'Content-Type': 'application/json' };
+            if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+            try {
+                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 8000);
+                return await res.json();
+            } catch (e) {
+                return { ok: false, error: e.message || 'Network error' };
+            }
+        }
+        async function bridgeHealth() {
+            if (!twsReady()) { twsConnected = false; return { ok: false, connected: false }; }
+            try {
+                const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET' }, 4000);
+                const data = await res.json();
+                twsConnected = !!(data && data.connected);
+                if (data && data.account) twsAccount = data.account;
+                return data;
+            } catch (e) {
+                twsConnected = false;
+                return { ok: false, connected: false, error: e.message };
+            }
+        }
+        function startTwsHealthPolling() {
+            if (twsHealthTimer) return;
+            twsHealthTimer = setInterval(() => {
+                if (!document.hidden) bridgeHealth().then(updateTwsStatusUI);
+            }, 15000);
+            bridgeHealth().then(updateTwsStatusUI);
+        }
+        function stopTwsHealthPolling() {
+            if (twsHealthTimer) { clearInterval(twsHealthTimer); twsHealthTimer = null; }
+        }
+        function updateTwsStatusUI() {
+            const el = document.getElementById('twsStatus');
+            if (!el) return;
+            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; return; }
+            if (twsConnected) {
+                el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
+                el.className = 'text-[10px] font-mono-num text-emerald-400';
+            } else {
+                el.textContent = 'Not connected';
+                el.className = 'text-[10px] font-mono-num text-red-400';
+            }
+        }
+        function saveTwsSettings() {
+            const en = document.getElementById('twsEnabledSetting');
+            const urlEl = document.getElementById('twsBridgeUrlSetting');
+            const tokEl = document.getElementById('twsBridgeTokenSetting');
+            twsEnabled = en ? en.checked : false;
+            twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
+            twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
+            safeStorageSet('twsEnabled', String(twsEnabled));
+            safeStorageSet('twsBridgeUrl', twsBridgeUrl);
+            safeStorageSet('twsBridgeToken', twsBridgeToken);
+            if (twsEnabled && twsBridgeToken) { startTwsHealthPolling(); } else { stopTwsHealthPolling(); twsConnected = false; }
+            updateTwsStatusUI();
+            syncTwsSendButtons();
+        }
+        function loadTwsSettings() {
+            const en = document.getElementById('twsEnabledSetting');
+            const urlEl = document.getElementById('twsBridgeUrlSetting');
+            const tokEl = document.getElementById('twsBridgeTokenSetting');
+            if (en) en.checked = twsEnabled;
+            if (urlEl) urlEl.value = twsBridgeUrl;
+            if (tokEl) tokEl.value = twsBridgeToken;
+            if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
+            updateTwsStatusUI();
+        }
+        async function testTwsConnection() {
+            const el = document.getElementById('twsStatus');
+            if (el) { el.textContent = 'Testing…'; el.className = 'text-[10px] font-mono-num text-amber-400'; }
+            const data = await bridgeHealth();
+            updateTwsStatusUI();
+            if (data && data.connected) {
+                showErrorToast('TWS connected' + (data.account ? ' · ' + data.account : ''), 4000);
+            } else {
+                showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+            }
+        }
+        // ---------- Payload builders ----------
+        function buildEntryOrderPayload(item) {
+            const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            if (!f.shares || f.shares <= 0) return { ok: false, error: 'No shares calculated' };
+            return {
+                ok: true,
+                symbol: f.ticker,
+                action: f.isGreenDay ? 'BUY' : 'SELL',
+                quantity: f.shares,
+                orderType: 'MKT',
+                adaptive: true,
+                adaptivePriority: 'Normal',
+                tif: 'DAY',
+                outsideRth: false,
+                orderRef: 'PSC-' + f.ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)),
+            };
+        }
+        function buildExitOrdersPayload(built) {
+            if (!built || !built.ok || !built.rows || !built.rows.length) return { ok: false, error: 'No exit legs' };
+            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
+            const orders = [];
+            const suffix = (globalThis.crypto?.randomUUID?.() || Date.now().toString(36));
+            let n = 0;
+            for (const row of built.rows) {
+                const orderType = row[7];
+                if (!orderType) continue;
+                n++;
+                const order = {
+                    action: row[0],
+                    quantity: parseInt(row[1], 10) || 0,
+                    orderType,
+                    tif: row[6] || 'GTC',
+                    outsideRth: orderType === 'LMT',
+                    transmit: true,
+                    ocaGroup: row[11] || undefined,
+                    ocaType: row[16] ? parseInt(row[16], 10) : 1,
+                    orderRef: 'PSC-' + row[2] + '-' + suffix + '-' + n,
+                };
+                if (orderType === 'STP' && row[9]) order.auxPrice = parseFloat(row[9]);
+                if (orderType === 'LMT' && row[8]) order.lmtPrice = parseFloat(row[8]);
+                if (orderType === 'MOC' || orderType === 'MKT') { if (row[12]) order.goodAfterTime = row[12]; }
+                if (row[13]) { // adjustable stop
+                    order.adjustedOrderType = row[13];
+                    if (row[14]) order.triggerPrice = parseFloat(row[14]);
+                    if (row[15]) order.adjustedStopPrice = parseFloat(row[15]);
+                }
+                orders.push(order);
+            }
+            if (!orders.length) return { ok: false, error: 'No orders produced' };
+            return { ok: true, symbol: orders[0] && built.preview[0] ? built.preview[0].ticker : '', orders };
+        }
+        // ---------- Send-state machine ----------
+        const twsSendState = {}; // key -> 'idle'|'sending'|'sent'|'unknown'|'error'
+        function twsSendKey(ticker, kind) { return ticker + ':' + (kind || 'entry'); }
+        function setTwsSendState(key, state, msg) {
+            twsSendState[key] = state;
+            const el = document.querySelector('[data-tws-key="' + key + '"]');
+            if (!el) return;
+            el.dataset.twsState = state;
+            const label = el.querySelector('.tws-send-label') || el;
+            if (state === 'sending') { label.textContent = '…'; el.classList.add('opacity-60'); el.disabled = true; }
+            else if (state === 'sent') { label.textContent = 'SENT'; el.classList.remove('opacity-60'); el.classList.add('text-emerald-400'); el.disabled = false; }
+            else if (state === 'unknown') { label.textContent = 'UNKNOWN'; el.classList.remove('opacity-60'); el.classList.add('text-amber-400'); el.disabled = false; }
+            else if (state === 'error') { label.textContent = 'ERR'; el.classList.remove('opacity-60'); el.classList.add('text-red-400'); el.disabled = false; }
+            else { label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            if (msg) el.title = msg;
+        }
+        function resetTwsSendState(key) {
+            twsSendState[key] = 'idle';
+            const el = document.querySelector('[data-tws-key="' + key + '"]');
+            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+        }
+        // ---------- Send handlers ----------
+        async function sendTwsEntry(ticker) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'entry');
+            if (twsSendState[key] === 'sending') return;
+            const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
+            const payload = buildEntryOrderPayload(item);
+            if (!payload.ok) { showErrorToast(payload.error); return; }
+            setTwsSendState(key, 'sending');
+            const result = await bridgeRequest('/order', payload);
+            if (result.ok) {
+                setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            }
+        }
+        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'exits');
+            if (twsSendState[key] === 'sending') return;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            if (!built.ok) { showErrorToast(built.error); return; }
+            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
+            if (isAdvanced && !document.getElementById('advancedCsvAck')?.checked) {
+                showErrorToast('Before sending advanced orders, acknowledge the TWS paper-validation requirement in Settings.', 8000);
+                return;
+            }
+            const payload = buildExitOrdersPayload(built);
+            if (!payload.ok) { showErrorToast(payload.error); return; }
+            if (attachEntry) {
+                const entryPayload = buildEntryOrderPayload({ ticker, data: { c: entry, pc: 0, h: 0, l: 0 } });
+                if (entryPayload.ok) payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
+                payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
+            }
+            setTwsSendState(key, 'sending');
+            const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
+            if (result.ok) {
+                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Sent');
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            }
+        }
+        async function sendTwsBatchAll() {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const trades = selectedSnapshotTrades();
+            if (!trades.length) { showErrorToast('No trades selected'); return; }
+            for (const t of trades) {
+                await sendTwsEntry(t.ticker);
+                await new Promise(r => setTimeout(r, 250));
+            }
+        }
+        function syncTwsSendButtons() {
+            // Show/hide send buttons based on twsEnabled + readiness.
+            const show = twsEnabled && twsBridgeToken && twsConnected;
+            document.querySelectorAll('[data-tws-key]').forEach(el => { el.style.display = show ? '' : 'none'; });
+            document.querySelectorAll('.tws-send-btn').forEach(el => { el.style.display = show ? '' : 'none'; });
+            document.querySelectorAll('#twsAttachEntry').forEach(el => { el.parentElement.style.display = show ? '' : 'none'; });
+        }
+
+        // ========================================================
+        // TWS BRIDGE — END
+        // ========================================================
+
         // Keyboard Shortcut Handler (ESC to close modals)
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -4454,6 +5110,36 @@
                 openStrategyModal(ticker, isLong, parseFloat(btn.dataset.price), parseInt(btn.dataset.shares), parseFloat(btn.dataset.stop), parseFloat(btn.dataset.ref));
             }
         });
+
+        // TWS Send button (card/row entry)
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action="send-tws-entry"]');
+            if (!btn) return;
+            e.stopPropagation();
+            sendTwsEntry(btn.dataset.ticker);
+        });
+
+        // TWS Send modal functions
+        function sendTwsModalEntry() {
+            if (!currentModalState) return;
+            sendTwsEntry(currentModalState.ticker);
+        }
+        function sendTwsModalExits() {
+            if (!currentModalState) return;
+            const attach = document.getElementById('twsAttachEntry')?.checked || false;
+            const strategyId = document.getElementById('modalStrategySelect')?.value || currentModalState.strategyId;
+            const customTps = readCustomTpsFromDom();
+            sendTwsExits(
+                currentModalState.ticker,
+                currentModalState.isLong,
+                parseFloat(document.getElementById('modalEntryPrice')?.value) || currentModalState.entryPrice,
+                parseInt(document.getElementById('modalShares')?.value) || currentModalState.shares,
+                parseFloat(document.getElementById('modalStopPrice')?.value) || currentModalState.stopPrice,
+                strategyId,
+                customTps,
+                attach
+            );
+        }
 
         let installPrompt = null;
         let swRegistration = null;
@@ -4532,7 +5218,7 @@
             });
             window.addEventListener('visibilitychange', () => {
                 if (document.hidden) return;
-                if (realtimeSocket) requestWakeLock();
+                if (isAnySocketOpen()) requestWakeLock();
                 const container = document.getElementById('resultsContainer');
                 if (container && realtimeTasks.length) refreshAllVisible(container);
                 if (activeTradesLog.some(t => t.status === 'ACTIVE')) refreshActiveTradesPrices();
