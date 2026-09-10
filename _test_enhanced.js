@@ -110,7 +110,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 (async () => {
   try {
     const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval, clearInterval, parseFloat, parseInt, Number, Array, Math, Date: FakeDate, String, Blob: class { constructor(p, o) { this.parts = p; this.opts = o || {}; } }, URL: { createObjectURL: () => 'blob:mock', revokeObjectURL: () => {} } };
-    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, activeSockets, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow };');
+    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, updateTopStatus, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, get liveUpdateEnabled() { return liveUpdateEnabled; }, set liveUpdateEnabled(v) { liveUpdateEnabled = v; }, activeSockets, connectionTimeoutByProvider, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow };');
     const api = fn(...Object.values(sandbox));
     const container = document.getElementById('resultsContainer');
 
@@ -147,6 +147,8 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.activeSockets.tiingo.readyState = WebSocket.OPEN;
     api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
     api.reconnectTimeoutByProvider.tiingo = setTimeout(() => {}, 999999);
+    api.connectionTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
+    api.connectionTimeoutByProvider.tiingo = setTimeout(() => {}, 999999);
     api.reconnectAttemptsByProvider.finnhub = 3;
     api.reconnectAttemptsByProvider.tiingo = 2;
 
@@ -154,6 +156,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 
     assert(api.activeSockets.finnhub === null && api.activeSockets.tiingo === null, 'activeSockets cleared');
     assert(api.reconnectTimeoutByProvider.finnhub === null && api.reconnectTimeoutByProvider.tiingo === null, 'per-provider timers cleared');
+    assert(api.connectionTimeoutByProvider.finnhub === null && api.connectionTimeoutByProvider.tiingo === null, 'per-provider connection timeouts cleared');
     assert(api.reconnectAttemptsByProvider.finnhub === 0 && api.reconnectAttemptsByProvider.tiingo === 0, 'per-provider attempts reset');
 
     // 3. Resync provider policy (Enhanced mode uses Finnhub only, no Tiingo REST)
@@ -175,6 +178,27 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     assert(api.resolveRealtimeTicker('BRK-B') === 'BRK.B', 'IEX hyphen share class maps to dot watchlist key');
     assert(api.resolveRealtimeTicker('BRK.B') === 'BRK.B', 'exact match works');
     assert(api.resolveRealtimeTicker('UNKNOWN') === null, 'unknown ticker returns null');
+
+    // 5. Status branch ordering
+    api.liveUpdateEnabled = true;
+    api.enhancedLiveMode = true;
+    document.getElementById('apiProvider').value = 'finnhub';
+    const statusEl = document.getElementById('liveStatusText');
+
+    api.activeSockets.finnhub = new MockWebSocket('wss://ws.finnhub.io');
+    api.activeSockets.finnhub.readyState = WebSocket.OPEN;
+    api.activeSockets.tiingo = new MockWebSocket('wss://api.tiingo.com/iex');
+    api.activeSockets.tiingo.readyState = WebSocket.OPEN;
+    api.updateTopStatus();
+    assert(statusEl.innerText === 'LIVE (FINNHUB + TIINGO)', 'both open shows combined live status');
+
+    api.activeSockets.tiingo.readyState = WebSocket.CONNECTING;
+    api.updateTopStatus();
+    assert(statusEl.innerText === 'RECONNECTING', 'open + connecting shows reconnecting, not "only"');
+
+    api.activeSockets.tiingo = null;
+    api.updateTopStatus();
+    assert(statusEl.innerText === 'LIVE (FINNHUB ONLY)', 'single open with no activity shows only');
 
     console.log('Enhanced Live Mode tests passed!');
     process.exit(0);
