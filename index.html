@@ -886,11 +886,6 @@
             refreshAllVisible(document.getElementById('resultsContainer'));
         }
 
-        async function refreshVolatilityForScan() {
-            // Placeholder: ATR/ADR stop-volatility check is a future feature.
-            if (!stopVolWarnEnabled) return;
-            volatilityRequestId++;
-        }
 
         const DEFAULT_STRATEGIES = [
             { id: 'opt1', name: 'Option 1 · 100% @ 1:6', builtIn: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] },
@@ -2506,13 +2501,22 @@
         function stopVolatilityWarning(ticker, riskPerShare, c, isLong) {
             if (!stopVolWarnEnabled) return null;
             const v = volatilityCache[ticker];
-            if (!v || v.status !== 'ok' || v.refPct === null || !Number.isFinite(c) || c <= 0 || !Number.isFinite(riskPerShare) || riskPerShare <= 0) return null;
+            if (!v || v.status !== 'ok' || !Number.isFinite(c) || c <= 0 || !Number.isFinite(riskPerShare) || riskPerShare <= 0) return null;
+            let liveAtrPct = v.atrPct;
+            let liveAdrPct = v.adrPct;
+            if (v.latestClose > 0 && c !== v.latestClose) {
+                if (liveAtrPct !== null) liveAtrPct = Number(((liveAtrPct / 100 * v.latestClose / c) * 100).toFixed(4));
+                if (liveAdrPct !== null) liveAdrPct = Number(((liveAdrPct / 100 * v.latestClose / c) * 100).toFixed(4));
+            }
+            const refPct = Math.max(liveAtrPct || 0, liveAdrPct || 0);
+            if (refPct <= 0) return null;
             const stopSizePct = (riskPerShare / c) * 100;
             const limitMultiple = isLong ? 2.5 : 1.5;
-            const limitPct = limitMultiple * v.refPct;
+            const limitPct = limitMultiple * refPct;
             if (stopSizePct > limitPct) {
-                const ratio = stopSizePct / v.refPct;
-                return { text: `STOP ${ratio.toFixed(1)}×`, ratio };
+                const ratio = stopSizePct / refPct;
+                const rounded = Math.round(ratio * 10) / 10;
+                return { text: `STOP ${rounded.toFixed(1)}×`, ratio };
             }
             return null;
         }
@@ -2812,6 +2816,7 @@
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
+            refreshVolatilityForScan();
 
             // 2. Open WebSocket with Auto-Reconnect only if at least one baseline succeeded
             if (anySuccess) {
@@ -2857,6 +2862,7 @@
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
+            refreshVolatilityForScan();
 
             if (anySuccess) {
                 connectSocket(mainProvider, mainKey, riskVal, slippageVal, container, gen, true);
@@ -3178,6 +3184,7 @@
                     speakResults(results);
                     applyFocusMode();
                     refreshEarningsForScan();
+                    refreshVolatilityForScan();
 
                     const successCount = results.filter(r => r.success).length;
                     const metricDiv = document.createElement('div');
@@ -3239,8 +3246,9 @@
             const signalSide = item.signalSide || null;
             const sideMismatch = !!(signalSide && signalSide !== setupType);
             const earn = earningsBadgeFor(ticker);
+            const stopWarn = stopVolatilityWarning(ticker, riskPerShare, c, isGreenDay);
             return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive,
-                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn };
+                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn, stopWarn };
         }
 
         function fmtMoneyShort(v) {
@@ -3289,6 +3297,7 @@
         const exitBtnCardClass = (f) => `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
         const exitBtnRowClass = (f) => `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
         const earnBadgeClass = 'text-[8px] font-bold text-amber-300 leading-none whitespace-nowrap';
+        const stopWarnBadgeClass = 'text-[8px] font-bold text-rose-300 leading-none whitespace-nowrap';
 
         function syncExitButton(exitBtn, f) {
             if (!exitBtn) return;
@@ -3320,6 +3329,7 @@
                             <div class="flex items-center gap-1 mt-1 leading-none">
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
                                 <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
+                                <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}${stopWarnBadgeClass}" title="Stop is wider than ${f.isGreenDay ? '2.5' : '1.5'}× the 20-day ATR/ADR">⚠ ${f.stopWarn ? escapeHtml(f.stopWarn.text) : ''}</span>
                             </div>
                             <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                         </div>
@@ -3378,6 +3388,8 @@
             }
             const sideWarn = q('sideWarn');
             if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
+            const stopWarn = q('stopWarn');
+            if (stopWarn) { setTextIfChanged(stopWarn, f.stopWarn ? '⚠ ' + f.stopWarn.text : ''); setHidden(stopWarn, !f.stopWarn); }
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
@@ -3470,6 +3482,7 @@
                         <div class="flex items-center gap-1 mt-0.5 leading-none">
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
                             <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
+                            <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}text-[9px] text-rose-300 leading-none" title="Stop wider than ${f.isGreenDay ? '2.5' : '1.5'}× 20-day ATR/ADR">⚠</span>
                         </div>
                         <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                     </div>
@@ -3516,6 +3529,7 @@
                 if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
             }
             setHidden(q('sideWarn'), !f.sideMismatch);
+            setHidden(q('stopWarn'), !f.stopWarn);
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
@@ -3743,7 +3757,10 @@
                 return;
             }
             ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + `Exit by day ${maxHoldDays}. TIF GTC.`;
-            cardsContainer.innerHTML = built.preview.map((p, i) => `
+            const modalRiskPerShare = Math.abs(entry - stop);
+            const modalStopWarn = stopVolatilityWarning(currentModalState.ticker, modalRiskPerShare, entry, currentModalState.isLong);
+            const modalWarnHtml = modalStopWarn ? `<div class="text-[10px] text-rose-300 font-bold mb-2">⚠ ${escapeHtml(modalStopWarn.text)} — stop is wider than ${currentModalState.isLong ? '2.5' : '1.5'}× 20-day ATR/ADR</div>` : '';
+            cardsContainer.innerHTML = modalWarnHtml + built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
                         <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${escapeHtml(p.oca)}</div>
@@ -4090,6 +4107,8 @@
                 return;
             }
             body.innerHTML = trades.map(t => {
+                const riskPerShare = Math.abs(t.entry - t.stop);
+                const warn = stopVolatilityWarning(t.ticker, riskPerShare, t.entry, t.isLong);
                 const rows = t.built.preview.map((p, i) => `
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
                     <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
@@ -4099,7 +4118,8 @@
                     <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
                 </div>
             `).join('');
-                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${rows}</div>`;
+                const warnHtml = warn ? `<div class="text-[10px] text-rose-300 font-bold mb-1">⚠ ${escapeHtml(warn.text)} — stop is wider than ${t.isLong ? '2.5' : '1.5'}× 20-day ATR/ADR</div>` : '';
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${warnHtml}${rows}</div>`;
             }).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
         }
 
@@ -5117,7 +5137,7 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen'];
 
         function prepareBackup(data) {
             if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2'].includes(data.version)) throw new Error('Unsupported backup version');
