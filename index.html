@@ -4110,7 +4110,7 @@
             const box = el.querySelector('.b-preview');
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)}${p.stopOnly ? '' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
