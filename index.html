@@ -2760,15 +2760,19 @@
                 } catch (err) { console.warn('WebSocket message error:', err); }
             };
 
-            socket.onerror = () => {
-                if (isCurrent()) updateTopStatus('reconnecting');
+            socket.onerror = (event) => {
+                if (isCurrent()) {
+                    console.warn(`${provider} WebSocket error:`, event);
+                    updateTopStatus('reconnecting');
+                }
             };
 
-            socket.onclose = () => {
+            socket.onclose = (event) => {
                 if (reconnectState.connectionTimeout) {
                     clearTimeout(reconnectState.connectionTimeout);
                     reconnectState.connectionTimeout = null;
                 }
+                if (isCurrent()) console.warn(`${provider} WebSocket closed`, { code: event?.code, reason: event?.reason, wasClean: event?.wasClean });
                 if (!isCurrent()) return;
                 const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
                 const marketOpen = nyNow().isRTH;
@@ -3083,7 +3087,6 @@
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
                         Exit<br>Orders
                     </button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-black uppercase rounded-md px-1.5 py-1 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">SEND</span></button>` : ''}
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
                         <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
                         <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
@@ -3097,6 +3100,7 @@
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
                         <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="Send ${f.isGreenDay ? 'Buy' : 'Sell'} Order" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black rounded-md px-1.5 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95 whitespace-nowrap"><span class="tws-send-label">Send ${f.isGreenDay ? 'Buy' : 'Sell'} Order</span></button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -3227,7 +3231,7 @@
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -3658,7 +3662,7 @@
                 let adjStop = null, adjTrigger = null;
                 if (stopMode !== 'fixed' && !stopOnly) {
                     const prevLeg = preview[preview.length - 1];
-                    if (prevLeg) {
+                    if (prevLeg && !prevLeg.stopOnly) {
                         // Adjustable stop: sits at the original stop until the previous leg's TP prints, then moves.
                         adjStop = stopPriceForLeg(isLong, entry, stop, stopMode);
                         adjTrigger = Number(prevLeg.tp.toFixed(2));
@@ -5118,13 +5122,13 @@
             else if (state === 'sent') { label.textContent = 'SENT'; el.classList.remove('opacity-60'); el.classList.add('text-emerald-400'); el.disabled = false; }
             else if (state === 'unknown') { label.textContent = 'UNKNOWN'; el.classList.remove('opacity-60'); el.classList.add('text-amber-400'); el.disabled = false; }
             else if (state === 'error') { label.textContent = 'ERR'; el.classList.remove('opacity-60'); el.classList.add('text-red-400'); el.disabled = false; }
-            else { label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            else { label.textContent = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
             if (msg) el.title = msg;
         }
         function resetTwsSendState(key) {
             twsSendState[key] = 'idle';
             const el = document.querySelector('[data-tws-key="' + key + '"]');
-            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
         }
         // ---------- Send handlers ----------
         async function sendTwsEntry(ticker) {
