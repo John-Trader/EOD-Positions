@@ -888,7 +888,7 @@
                 { pct: 40, rr: 1, stopMode: 'fixed' },
                 { pct: 60, rr: 6, stopMode: 'fixed' }
             ] },
-            { id: 'short16', name: 'Short · 100% @ 1:6', builtIn: true, short: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] }
+            { id: 'short16', name: 'Short · 100% stop only', builtIn: true, short: true, legs: [{ pct: 100, rr: 0, stopMode: 'fixed', stopOnly: true }] }
         ];
         let customStrategies = [];
         let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
@@ -3477,14 +3477,14 @@
                         <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${escapeHtml(p.oca)}</div>
                         <div class="text-xs font-black text-white">
                             ${stopLabelHtml(p)}
-                            <span class="text-gray-500">+</span>
+                            ${p.stopOnly ? '<span class="text-gray-500">· stop only</span>' : `<span class="text-gray-500">+</span>
                             LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
-                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>
+                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>`}
                         </div>
                     </div>
                     <div class="flex gap-1">
                         <button onclick="copySingleValue('${p.stop.toFixed(2)}', this)" class="bg-slate-800 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
-                        <button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
+                        ${p.stopOnly ? '' : `<button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>`}
                     </div>
                 </div>
             `).join('') + timedExitSummaryHtml(built) + buildNotesHtml(built);
@@ -3535,7 +3535,7 @@
             const customTps = readCustomTpsFromDom();
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) { alert(built.error); return; }
-            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}`).join(' | ');
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)}${p.stopOnly ? ' (stop only)' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
             navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
         }
@@ -3584,7 +3584,7 @@
             if (legs.some(l => !l || !Number.isFinite(Number(l.pct)) || Number(l.pct) < 0)) return 'Leg percentages must be non-negative numbers';
             const sum = legs.reduce((a, l) => a + Number(l.pct), 0);
             if (Math.abs(sum - 100) > 0.000001) return `Strategy legs total ${Math.round(sum * 100) / 100}% (must be 100%)`;
-            if (legs.some(l => !Number.isFinite(Number(l.rr)) || !(Number(l.rr) > 0))) return 'Each leg needs a TP (R) above 0';
+            if (legs.some(l => !Number.isFinite(Number(l.rr)) || !(Number(l.rr) > 0) && !l.stopOnly)) return 'Each leg needs a TP (R) above 0, or enable stopOnly';
             if (legs.some(l => !['fixed', 'breakeven', 'plus1'].includes(l.stopMode || 'fixed'))) return 'Unknown stop mode';
             return null;
         }
@@ -3651,15 +3651,12 @@
             strat.legs.forEach((leg, i) => {
                 const qty = qtys[i];
                 if (!qty) return;
-                const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
-                const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
-                const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
-                const tp = customTp || explicitTp || defaultTp;
+                const stopOnly = leg.stopOnly === true;
                 const oca = `${ticker}_${strat.id}_L${i + 1}${suffix}`;
                 let stopMode = leg.stopMode || 'fixed';
                 let stp = stop;
                 let adjStop = null, adjTrigger = null;
-                if (stopMode !== 'fixed') {
+                if (stopMode !== 'fixed' && !stopOnly) {
                     const prevLeg = preview[preview.length - 1];
                     if (prevLeg) {
                         // Adjustable stop: sits at the original stop until the previous leg's TP prints, then moves.
@@ -3677,18 +3674,26 @@
                     stpRow[TWS_COL.ADJ_STOP] = adjStop.toFixed(2);
                 }
                 rows.push(stpRow);
-                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
+                let tp = 0, trueRr = 0, rr = 0;
+                if (!stopOnly) {
+                    const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                    const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
+                    const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
+                    tp = customTp || explicitTp || defaultTp;
+                    rr = Number(leg.rr);
+                    trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
+                    rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
+                    if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                }
                 if (timedEnabled) {
                     const isMoc = timed.time === 'MOC';
                     const exitRow = [action, qty, ticker, "STK", "SMART", "USD", isMoc ? "DAY" : "GTC", isMoc ? "MOC" : "MKT", '', '', ticker, oca];
                     exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
                     rows.push(exitRow);
                 }
-                const trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
-                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null });
-                if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                preview.push({ ticker, action, qty, stop: stp, tp: stopOnly ? 0 : tp, rr: stopOnly ? 0 : rr, trueRr: stopOnly ? 0 : trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null, stopOnly });
             });
-            if (preview.some(p => !Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0)) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
+            if (preview.some(p => !p.stopOnly && (!Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0))) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
             if (timedEnabled || preview.some(p => p.adjStop !== null)) {
                 rows.forEach(r => { r[TWS_COL.OCA_TYPE] = 2; });
                 notes.push('EXPERIMENTAL: validate all fields and proportional OCA reduction in TWS paper, including partial fills. These orders do not read account positions or cancel unrelated orders.');
@@ -3818,7 +3823,7 @@
                     <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>
+                    ${p.stopOnly ? '<span class="text-gray-500">stop only</span>' : `<span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>`}
                     <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
                 </div>
             `).join('');

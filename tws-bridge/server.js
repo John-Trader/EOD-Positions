@@ -12,7 +12,7 @@ const { IBApi, EventName } = require('@stoqey/ib');
 
 // ---------- Config ----------
 const TWS_HOST = process.env.TWS_HOST || '127.0.0.1';
-const TWS_PORT = parseInt(process.env.TWS_PORT || '7497', 10);
+const TWS_PORT = parseInt(process.env.TWS_PORT || '7496', 10);
 const CLIENT_ID = parseInt(process.env.IBKR_CLIENT_ID || '7', 10);
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '8787', 10);
 const TOKEN_FILE = path.join(__dirname, '.bridge-token');

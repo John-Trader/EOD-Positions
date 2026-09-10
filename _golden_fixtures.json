@@ -2999,20 +2999,6 @@
      "172.54",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     67,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "224.34",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3021,8 +3007,8 @@
      "action": "SELL",
      "qty": 67,
      "stop": 172.54,
-     "tp": 224.34000000000003,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3045,20 +3031,6 @@
      "172.54",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     67,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "269.91",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3067,8 +3039,8 @@
      "action": "SELL",
      "qty": 67,
      "stop": 172.54,
-     "tp": 269.90999999999997,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3091,20 +3063,6 @@
      "13.41",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     1000,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "17.26",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3113,8 +3071,8 @@
      "action": "SELL",
      "qty": 1000,
      "stop": 13.41,
-     "tp": 17.260000000000005,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3137,20 +3095,6 @@
      "13.41",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     1000,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "20.94",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3159,8 +3103,8 @@
      "action": "SELL",
      "qty": 1000,
      "stop": 13.41,
-     "tp": 20.94,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3183,20 +3127,6 @@
      "41.20",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     333,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "52.68",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3205,8 +3135,8 @@
      "action": "SELL",
      "qty": 333,
      "stop": 41.2,
-     "tp": 52.68000000000001,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3229,20 +3159,6 @@
      "41.20",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     333,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "64.26",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3251,8 +3167,8 @@
      "action": "SELL",
      "qty": 333,
      "stop": 41.2,
-     "tp": 64.26,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3275,20 +3191,6 @@
      "150.00",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     1,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "202.85",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3297,8 +3199,8 @@
      "action": "SELL",
      "qty": 1,
      "stop": 150,
-     "tp": 202.85000000000008,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3321,20 +3223,6 @@
      "150.00",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     1,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "236.33",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3343,8 +3231,8 @@
      "action": "SELL",
      "qty": 1,
      "stop": 150,
-     "tp": 236.32500000000002,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3367,20 +3255,6 @@
      "29.50",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     7,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "33.14",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3389,8 +3263,8 @@
      "action": "SELL",
      "qty": 7,
      "stop": 29.5,
-     "tp": 33.14,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3413,20 +3287,6 @@
      "29.50",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     7,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "45.03",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3435,8 +3295,8 @@
      "action": "SELL",
      "qty": 7,
      "stop": 29.5,
-     "tp": 45.03,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3459,20 +3319,6 @@
      "33.68",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     12500,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "33.96",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3481,8 +3327,8 @@
      "action": "SELL",
      "qty": 12500,
      "stop": 33.68,
-     "tp": 33.959999999999994,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3505,20 +3351,6 @@
      "33.68",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "SELL",
-     12500,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "50.58",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3527,8 +3359,8 @@
      "action": "SELL",
      "qty": 12500,
      "stop": 33.68,
-     "tp": 50.58,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3551,20 +3383,6 @@
      "179.94",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     67,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "128.14",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3573,8 +3391,8 @@
      "action": "BUY",
      "qty": 67,
      "stop": 179.94,
-     "tp": 128.13999999999996,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3597,20 +3415,6 @@
      "179.94",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     67,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "269.91",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3619,8 +3423,8 @@
      "action": "BUY",
      "qty": 67,
      "stop": 179.94,
-     "tp": 269.90999999999997,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3643,20 +3447,6 @@
      "13.96",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     1000,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "10.11",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3665,8 +3455,8 @@
      "action": "BUY",
      "qty": 1000,
      "stop": 13.96,
-     "tp": 10.109999999999996,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3689,20 +3479,6 @@
      "13.96",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     1000,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "20.94",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3711,8 +3487,8 @@
      "action": "BUY",
      "qty": 1000,
      "stop": 13.96,
-     "tp": 20.94,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3735,20 +3511,6 @@
      "42.84",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     333,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "31.36",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3757,8 +3519,8 @@
      "action": "BUY",
      "qty": 333,
      "stop": 42.84,
-     "tp": 31.36,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3781,20 +3543,6 @@
      "42.84",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     333,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "64.26",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3803,8 +3551,8 @@
      "action": "BUY",
      "qty": 333,
      "stop": 42.84,
-     "tp": 64.26,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3827,20 +3575,6 @@
      "157.55",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     1,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "104.70",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3849,8 +3583,8 @@
      "action": "BUY",
      "qty": 1,
      "stop": 157.55,
-     "tp": 104.69999999999993,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3873,20 +3607,6 @@
      "157.55",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     1,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "236.33",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3895,8 +3615,8 @@
      "action": "BUY",
      "qty": 1,
      "stop": 157.55,
-     "tp": 236.32500000000002,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3919,20 +3639,6 @@
      "30.02",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     7,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "26.38",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3941,8 +3647,8 @@
      "action": "BUY",
      "qty": 7,
      "stop": 30.02,
-     "tp": 26.380000000000003,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -3965,20 +3671,6 @@
      "30.02",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     7,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "45.03",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -3987,8 +3679,8 @@
      "action": "BUY",
      "qty": 7,
      "stop": 30.02,
-     "tp": 45.03,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -4011,20 +3703,6 @@
      "33.72",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     12500,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "33.44",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -4033,8 +3711,8 @@
      "action": "BUY",
      "qty": 12500,
      "stop": 33.72,
-     "tp": 33.440000000000005,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -4057,20 +3735,6 @@
      "33.72",
      "TST",
      "TST_short16_L1"
-    ],
-    [
-     "BUY",
-     12500,
-     "TST",
-     "STK",
-     "SMART",
-     "USD",
-     "GTC",
-     "LMT",
-     "50.58",
-     "",
-     "TST",
-     "TST_short16_L1"
     ]
    ],
    "preview": [
@@ -4079,8 +3743,8 @@
      "action": "BUY",
      "qty": 12500,
      "stop": 33.72,
-     "tp": 50.58,
-     "rr": 6,
+     "tp": 0,
+     "rr": 0,
      "oca": "TST_short16_L1",
      "stopMode": "fixed"
     }
@@ -4136,30 +3800,30 @@
   "opt2|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,3,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L1\nBUY,3,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_opt2_L1\nBUY,4,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_opt2_L2\nBUY,4,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_opt2_L2",
   "opt2|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,5000,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L1\nBUY,5000,TST,STK,SMART,USD,GTC,LMT,33.64,,TST,TST_opt2_L1\nBUY,7500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L2\nBUY,7500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_opt2_L2",
   "opt2|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,5000,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L1\nBUY,5000,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_opt2_L1\nBUY,7500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_opt2_L2\nBUY,7500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_opt2_L2",
-  "short16|L|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,224.34,,TST,TST_short16_L1",
-  "short16|L|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1\nSELL,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_short16_L1",
-  "short16|L|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,17.26,,TST,TST_short16_L1",
-  "short16|L|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1\nSELL,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_short16_L1",
-  "short16|L|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,52.68,,TST,TST_short16_L1",
-  "short16|L|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1\nSELL,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_short16_L1",
-  "short16|L|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,202.85,,TST,TST_short16_L1",
-  "short16|L|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1\nSELL,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_short16_L1",
-  "short16|L|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,33.14,,TST,TST_short16_L1",
-  "short16|L|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1\nSELL,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_short16_L1",
-  "short16|L|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,33.96,,TST,TST_short16_L1",
-  "short16|L|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1\nSELL,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_short16_L1",
-  "short16|S|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,128.14,,TST,TST_short16_L1",
-  "short16|S|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1\nBUY,67,TST,STK,SMART,USD,GTC,LMT,269.91,,TST,TST_short16_L1",
-  "short16|S|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,10.11,,TST,TST_short16_L1",
-  "short16|S|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1\nBUY,1000,TST,STK,SMART,USD,GTC,LMT,20.94,,TST,TST_short16_L1",
-  "short16|S|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,31.36,,TST,TST_short16_L1",
-  "short16|S|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1\nBUY,333,TST,STK,SMART,USD,GTC,LMT,64.26,,TST,TST_short16_L1",
-  "short16|S|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,104.70,,TST,TST_short16_L1",
-  "short16|S|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1\nBUY,1,TST,STK,SMART,USD,GTC,LMT,236.33,,TST,TST_short16_L1",
-  "short16|S|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,26.38,,TST,TST_short16_L1",
-  "short16|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1\nBUY,7,TST,STK,SMART,USD,GTC,LMT,45.03,,TST,TST_short16_L1",
-  "short16|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,33.44,,TST,TST_short16_L1",
-  "short16|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1\nBUY,12500,TST,STK,SMART,USD,GTC,LMT,50.58,,TST,TST_short16_L1"
+  "short16|L|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1",
+  "short16|L|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,67,TST,STK,SMART,USD,GTC,STP,,172.54,TST,TST_short16_L1",
+  "short16|L|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1",
+  "short16|L|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1000,TST,STK,SMART,USD,GTC,STP,,13.41,TST,TST_short16_L1",
+  "short16|L|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1",
+  "short16|L|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,333,TST,STK,SMART,USD,GTC,STP,,41.20,TST,TST_short16_L1",
+  "short16|L|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1",
+  "short16|L|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,1,TST,STK,SMART,USD,GTC,STP,,150.00,TST,TST_short16_L1",
+  "short16|L|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1",
+  "short16|L|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,7,TST,STK,SMART,USD,GTC,STP,,29.50,TST,TST_short16_L1",
+  "short16|L|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1",
+  "short16|L|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nSELL,12500,TST,STK,SMART,USD,GTC,STP,,33.68,TST,TST_short16_L1",
+  "short16|S|0|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1",
+  "short16|S|0|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,67,TST,STK,SMART,USD,GTC,STP,,179.94,TST,TST_short16_L1",
+  "short16|S|1|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1",
+  "short16|S|1|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1000,TST,STK,SMART,USD,GTC,STP,,13.96,TST,TST_short16_L1",
+  "short16|S|2|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1",
+  "short16|S|2|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,333,TST,STK,SMART,USD,GTC,STP,,42.84,TST,TST_short16_L1",
+  "short16|S|3|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1",
+  "short16|S|3|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,1,TST,STK,SMART,USD,GTC,STP,,157.55,TST,TST_short16_L1",
+  "short16|S|4|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1",
+  "short16|S|4|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,7,TST,STK,SMART,USD,GTC,STP,,30.02,TST,TST_short16_L1",
+  "short16|S|5|default": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1",
+  "short16|S|5|custom": "Action,Quantity,Symbol,SecType,Exchange,Currency,TimeInForce,OrderType,LmtPrice,AuxPrice,BasketTag,OcaGroup\nBUY,12500,TST,STK,SMART,USD,GTC,STP,,33.72,TST,TST_short16_L1"
  },
  "fields": {
   "0|500|0": {

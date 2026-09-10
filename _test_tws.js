@@ -105,6 +105,18 @@ try {
   const shortPayload = api.buildEntryOrderPayload(shortItem);
   assertEq(shortPayload.action, 'SELL', 'entry short = SELL');
 
+  // ---- buildExitOrdersPayload (stop-only short) ----
+  const shortBuilt = api.buildExitLegs('XYZ', false, 95, 100, 100, 'short16', []);
+  assertTrue(shortBuilt.ok, 'short16 stop-only builds ok');
+  assertEq(shortBuilt.preview[0].stopOnly, true, 'short16 preview marks stopOnly');
+  const shortExitPayload = api.buildExitOrdersPayload(shortBuilt);
+  assertTrue(shortExitPayload.ok, 'short stop-only payload ok');
+  assertEq(shortExitPayload.orders.length, 1, 'short stop-only = 1 order (STP only)');
+  assertEq(shortExitPayload.orders[0].orderType, 'STP', 'short stop-only is STP');
+  assertEq(shortExitPayload.orders[0].action, 'BUY', 'short exit is BUY');
+  assertEq(shortExitPayload.orders[0].quantity, 100, 'short stop-only full qty');
+  assertEq(shortExitPayload.orders[0].outsideRth, false, 'short STP not outsideRth');
+
   // ---- buildExitOrdersPayload ----
   // opt2 = 40% @ 1R + 60% @ 6R (two legs)
   const built = api.buildExitLegs('AMPL', true, 15.00, 100, 14.50, 'opt2', []);
