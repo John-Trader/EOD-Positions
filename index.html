@@ -400,14 +400,7 @@
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
                     </div>
-                    <div class="space-y-1 pt-1">
-                        <label for="tiingoApiKeyInput" class="text-[10px] font-bold text-gray-400 uppercase">Tiingo API Key</label>
-                        <div class="flex gap-2">
-                            <input type="password" id="tiingoApiKeyInput" aria-label="Tiingo API Key" autocomplete="off" placeholder="Enter Tiingo API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
-                            <button id="showTiingoKeyBtn" onclick="toggleTiingoKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
-                            <button onclick="saveTiingoKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
-                        </div>
-                    </div>
+
                 </div>
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
@@ -440,7 +433,20 @@
                                 <input type="checkbox" id="enhancedLiveModeSetting" class="custom-checkbox" onchange="saveEnhancedLiveSetting()">
                                 <span class="text-xs text-gray-300">Enhanced Live Mode</span>
                             </label>
-                            <p class="text-[10px] text-gray-400 pl-5">Streams Finnhub + Tiingo (IEX) concurrently and shows whichever ticks first. Requires both API keys saved.</p>
+                            <div id="enhancedSecondaryContainer" class="space-y-1 pl-5 hidden">
+                                <label for="enhancedSecondaryProvider" class="text-[10px] font-bold text-gray-400 uppercase">Secondary Provider</label>
+                                <select id="enhancedSecondaryProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" onchange="saveSecondaryProviderSetting()">
+                                    <option value="finnhub">Finnhub</option>
+                                    <option value="twelvedata">Twelve Data</option>
+                                    <option value="tiingo">Tiingo</option>
+                                </select>
+                                <div class="flex gap-2">
+                                    <input type="password" id="secondaryApiKeyInput" aria-label="Secondary API Key" autocomplete="off" placeholder="Enter Secondary API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                                    <button id="showSecondaryKeyBtn" onclick="toggleSecondaryApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
+                                    <button onclick="saveSecondaryApiKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-400 pl-5">Streams main + secondary providers concurrently and shows whichever ticks first. Requires both API keys saved.</p>
                             <p id="enhancedLiveModeError" class="text-[10px] text-red-400 pl-5 hidden"></p>
                         </div>
                         <label class="flex items-center gap-2 cursor-pointer">
@@ -772,9 +778,10 @@
         liveUpdateEnabled = liveUpdateEnabled === 'true';
 
         let enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
-        let activeSockets = { finnhub: null, tiingo: null };
-        let reconnectAttemptsByProvider = { finnhub: 0, tiingo: 0 };
-        let reconnectTimeoutByProvider = { finnhub: null, tiingo: null };
+        let enhancedSecondaryProvider = safeStorageGet('enhancedSecondaryProvider') || 'tiingo';
+        let activeSockets = {};
+        let reconnectAttemptsByProvider = { finnhub: 0, twelvedata: 0, tiingo: 0 };
+        let reconnectTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null };
         let tradeTimestamps = {};          // ticker -> exchange timestamp ms for cross-feed ordering
 
         let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
@@ -939,6 +946,8 @@
             collapseAfterCalc = safeStorageGet('collapseAfterCalc') === 'true';
             liveUpdateEnabled = safeStorageGet('liveUpdateEnabled') !== 'false';
             enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
+            enhancedSecondaryProvider = safeStorageGet('enhancedSecondaryProvider') || 'tiingo';
+            if (!Object.hasOwn(API_CONFIGS, enhancedSecondaryProvider) || !API_CONFIGS[enhancedSecondaryProvider].supportsWs) enhancedSecondaryProvider = 'tiingo';
             const savedRisk = safeStorageGet('riskValue');
             const savedProvider = safeStorageGet('selectedProvider');
             const savedSlippage = safeStorageGet('slippageValue');
@@ -1044,26 +1053,56 @@
             btn.setAttribute('aria-pressed', String(show));
         }
 
-        function updateTiingoKeyInput() {
-            const input = document.getElementById('tiingoApiKeyInput');
-            if (input) input.value = safeStorageGet('tiingo_key') || '';
+        function getEnhancedSecondaryProvider() {
+            const sel = document.getElementById('enhancedSecondaryProvider');
+            const provider = sel ? sel.value : safeStorageGet('enhancedSecondaryProvider');
+            return provider && API_CONFIGS[provider] && API_CONFIGS[provider].supportsWs ? provider : 'tiingo';
         }
 
-        function saveTiingoKey() {
-            const key = document.getElementById('tiingoApiKeyInput').value.trim();
-            if (key) {
-                safeStorageSet('tiingo_key', key);
-                alert('API Key Saved');
-                if (document.getElementById('apiProvider').value === 'tiingo') updateApiKeyInput();
+        function saveSecondaryProviderSetting() {
+            const sel = document.getElementById('enhancedSecondaryProvider');
+            if (sel) {
+                enhancedSecondaryProvider = sel.value;
+                safeStorageSet('enhancedSecondaryProvider', sel.value);
+            }
+            updateSecondaryApiKeyInput();
+            if (enhancedLiveMode && realtimeTasks.length) disconnectWebSocket();
+            updateTopStatus();
+        }
+
+        function updateSecondaryApiKeyInput() {
+            const provider = getEnhancedSecondaryProvider();
+            const config = API_CONFIGS[provider];
+            const input = document.getElementById('secondaryApiKeyInput');
+            if (!input) return;
+            if (config.needsKey) {
+                input.disabled = false;
+                input.placeholder = 'Enter API Key';
+                input.value = safeStorageGet(config.storageKey) || '';
+            } else {
+                input.disabled = true;
+                input.placeholder = 'No API key needed';
+                input.value = '';
             }
         }
 
-        function toggleTiingoKeyVisibility() {
-            const input = document.getElementById('tiingoApiKeyInput');
+        function saveSecondaryApiKey() {
+            const provider = getEnhancedSecondaryProvider();
+            const config = API_CONFIGS[provider];
+            const key = document.getElementById('secondaryApiKeyInput').value.trim();
+            if (config.needsKey && key) {
+                safeStorageSet(config.storageKey, key);
+                alert('API Key Saved');
+                updateSecondaryApiKeyInput();
+            }
+        }
+
+        function toggleSecondaryApiKeyVisibility() {
+            const input = document.getElementById('secondaryApiKeyInput');
             if (!input) return;
             const show = input.type === 'password';
             input.type = show ? 'text' : 'password';
-            const btn = document.getElementById('showTiingoKeyBtn');
+            const btn = document.getElementById('showSecondaryKeyBtn');
             if (btn) {
                 btn.textContent = show ? 'HIDE' : 'SHOW';
                 btn.setAttribute('aria-pressed', String(show));
@@ -1105,18 +1144,29 @@
         function updateEnhancedUI(clearError = true) {
             const chk = document.getElementById('enhancedLiveModeSetting');
             const providerSel = document.getElementById('apiProvider');
+            const secondaryContainer = document.getElementById('enhancedSecondaryContainer');
+            const secondarySel = document.getElementById('enhancedSecondaryProvider');
             const err = document.getElementById('enhancedLiveModeError');
             if (chk) chk.checked = enhancedLiveMode;
             if (providerSel) {
-                if (enhancedLiveMode) {
-                    providerSel.value = 'finnhub';
-                    providerSel.disabled = true;
-                } else {
-                    providerSel.disabled = false;
+                providerSel.disabled = false;
+                if (!enhancedLiveMode) {
                     const savedProvider = safeStorageGet('selectedProvider');
                     if (savedProvider && Object.hasOwn(API_CONFIGS, savedProvider)) {
                         providerSel.value = savedProvider;
                     }
+                }
+            }
+            if (secondaryContainer) {
+                if (enhancedLiveMode) secondaryContainer.classList.remove('hidden');
+                else secondaryContainer.classList.add('hidden');
+            }
+            if (secondarySel) {
+                const provider = enhancedSecondaryProvider;
+                if (Object.hasOwn(API_CONFIGS, provider) && API_CONFIGS[provider].supportsWs) {
+                    secondarySel.value = provider;
+                } else {
+                    secondarySel.value = 'tiingo';
                 }
             }
             if (err && clearError) {
@@ -1133,11 +1183,15 @@
             const on = chk.checked;
 
             if (on) {
-                const finnKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
-                const tiingoKey = safeStorageGet('tiingo_key');
-                if (!finnKey || !tiingoKey) {
+                const mainProvider = document.getElementById('apiProvider').value;
+                const secondaryProvider = getEnhancedSecondaryProvider();
+                const mainConfig = API_CONFIGS[mainProvider];
+                const secondaryConfig = API_CONFIGS[secondaryProvider];
+                const mainKey = mainConfig && mainConfig.storageKey ? safeStorageGet(mainConfig.storageKey) : null;
+                const secondaryKey = secondaryConfig && secondaryConfig.storageKey ? safeStorageGet(secondaryConfig.storageKey) : null;
+                if (!mainProvider || !secondaryProvider || mainProvider === secondaryProvider || !mainKey || !secondaryKey) {
                     if (err) {
-                        err.innerText = 'Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.';
+                        err.innerText = 'Enhanced Live Mode requires two different providers with both API keys saved.';
                         err.classList.remove('hidden');
                     }
                     chk.checked = false;
@@ -1316,23 +1370,19 @@
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
                     return;
                 }
-                const fOpen = activeSockets.finnhub && activeSockets.finnhub.readyState === WebSocket.OPEN;
-                const tOpen = activeSockets.tiingo && activeSockets.tiingo.readyState === WebSocket.OPEN;
-                if (fOpen && tOpen) {
-                    txt.innerText = 'LIVE (DUAL)';
+                const openProviders = Object.entries(activeSockets)
+                    .filter(([p, s]) => s && s.readyState === WebSocket.OPEN)
+                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                if (openProviders.length >= 2) {
+                    txt.innerText = `LIVE (${openProviders.join(' + ')})`;
                     txt.className = 'text-cyan-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-cyan-500';
-                } else if (fOpen) {
-                    txt.innerText = 'LIVE (FINNHUB ONLY)';
+                } else if (openProviders.length === 1) {
+                    txt.innerText = `LIVE (${openProviders[0].toUpperCase()} ONLY)`;
                     txt.className = 'text-emerald-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-                } else if (tOpen) {
-                    txt.innerText = 'LIVE (TIINGO ONLY)';
-                    txt.className = 'text-blue-400 uppercase font-bold';
-                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-blue-500';
                 } else if (statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting()) {
                     txt.innerText = 'RECONNECTING';
                     txt.className = 'text-amber-400 uppercase font-bold';
@@ -1462,8 +1512,8 @@
         });
         const apiKeyEl = document.getElementById('apiKeyInput');
         if (apiKeyEl) apiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveKey(); } });
-        const tiingoKeyEl = document.getElementById('tiingoApiKeyInput');
-        if (tiingoKeyEl) tiingoKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveTiingoKey(); } });
+        const secondaryApiKeyEl = document.getElementById('secondaryApiKeyInput');
+        if (secondaryApiKeyEl) secondaryApiKeyEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveSecondaryApiKey(); } });
         
         document.getElementById('apiProvider').addEventListener('change', (e) => {
             safeStorageSet('selectedProvider', e.target.value);
@@ -1487,13 +1537,13 @@
             }
 
             const liveContainer = document.getElementById('liveUpdateContainer');
-            if (config.supportsWs) {
+            if (enhancedLiveMode || config.supportsWs) {
                 liveContainer.style.display = 'flex';
             } else {
                 liveContainer.style.display = 'none';
                 disconnectWebSocket();
             }
-            updateTiingoKeyInput();
+            updateSecondaryApiKeyInput();
             updateTopStatus();
         }
 
@@ -1504,7 +1554,6 @@
             if (config.needsKey && key) {
                 safeStorageSet(config.storageKey, key);
                 alert('API Key Saved');
-                if (provider === 'tiingo') updateTiingoKeyInput();
             }
         }
 
@@ -2481,7 +2530,7 @@
             }
         }
 
-        async function startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container) {
+        async function startEnhancedWebSocketStream(mainProvider, mainKey, secondaryProvider, secondaryKey, tasks, riskVal, slippageVal, container) {
             disconnectWebSocket();
             requestWakeLock();
             const gen = streamGeneration;
@@ -2498,7 +2547,7 @@
             try {
                 const fetchPromises = realtimeTasks.map(async (t) => {
                     try {
-                        const data = await fetchTickerData(t.ticker, 'finnhub', finnhubKey, controller.signal);
+                        const data = await fetchTickerData(t.ticker, mainProvider, mainKey, controller.signal);
                         if (gen !== streamGeneration) return;
                         realtimeQuotes[t.ticker] = data;
                         anySuccess = true;
@@ -2519,10 +2568,10 @@
             refreshEarningsForScan();
 
             if (anySuccess) {
-                connectSocket('finnhub', finnhubKey, riskVal, slippageVal, container, gen, true);
-                connectSocket('tiingo', tiingoKey, riskVal, slippageVal, container, gen, true);
+                connectSocket(mainProvider, mainKey, riskVal, slippageVal, container, gen, true);
+                connectSocket(secondaryProvider, secondaryKey, riskVal, slippageVal, container, gen, true);
                 if (resyncTimer) clearInterval(resyncTimer);
-                resyncTimer = setInterval(() => resyncBaselines('finnhub', finnhubKey, gen, container, riskVal, slippageVal, false), RESYNC_INTERVAL_MS);
+                resyncTimer = setInterval(() => resyncBaselines(mainProvider, mainKey, gen, container, riskVal, slippageVal, false), RESYNC_INTERVAL_MS);
             }
         }
 
@@ -2691,11 +2740,15 @@
             const { risk: riskVal, slippage: slippageVal } = currentRiskAndSlippage();
             const selectedProvider = document.getElementById('apiProvider').value;
             const isEnhanced = enhancedLiveMode;
-            const finnhubKey = safeStorageGet(API_CONFIGS.finnhub.storageKey);
-            const tiingoKey = safeStorageGet('tiingo_key');
-            const provider = isEnhanced ? 'finnhub' : selectedProvider;
-            const config = API_CONFIGS[provider];
-            const apiKey = isEnhanced ? finnhubKey : (config.storageKey ? safeStorageGet(config.storageKey) : null);
+            const mainProvider = selectedProvider;
+            const secondaryProvider = isEnhanced ? getEnhancedSecondaryProvider() : null;
+            const mainConfig = API_CONFIGS[mainProvider];
+            const mainKey = mainConfig && mainConfig.storageKey ? safeStorageGet(mainConfig.storageKey) : null;
+            const secondaryConfig = isEnhanced ? API_CONFIGS[secondaryProvider] : null;
+            const secondaryKey = isEnhanced && secondaryConfig && secondaryConfig.storageKey ? safeStorageGet(secondaryConfig.storageKey) : null;
+            const provider = mainProvider;
+            const config = mainConfig;
+            const apiKey = mainKey;
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
@@ -2705,8 +2758,8 @@
                 lastCalculateAt = Date.now();
                 if (btn) btn.disabled = true;
 
-                if (isEnhanced && (!finnhubKey || !tiingoKey)) {
-                    errorMsg.innerText = "Enhanced Live Mode requires both a Finnhub API key and a Tiingo API key.";
+                if (isEnhanced && (mainProvider === secondaryProvider || !mainKey || !secondaryKey)) {
+                    errorMsg.innerText = "Enhanced Live Mode requires two different providers with both API keys saved.";
                     errorMsg.classList.remove('hidden');
                     navigateTo('settings');
                     return;
@@ -2756,7 +2809,7 @@
                 // Handle WebSocket stream for supported providers when live update is active
                 if (isEnhanced && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
-                    await startEnhancedWebSocketStream(finnhubKey, tiingoKey, tasks, riskVal, slippageVal, container);
+                    await startEnhancedWebSocketStream(mainProvider, mainKey, secondaryProvider, secondaryKey, tasks, riskVal, slippageVal, container);
                     if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
                     if (collapseAfterCalc) setScannerCollapsed(true);
                     return;
@@ -4730,7 +4783,7 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
 
         function prepareBackup(data) {
             if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0'].includes(data.version)) throw new Error('Unsupported backup version');
@@ -4740,11 +4793,11 @@
                 const value = String(data[key]);
                 if (key === 'riskValue' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid risk');
                 if (key === 'slippageValue' && (!Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error('Invalid slippage');
-                if (key === 'selectedProvider' && !Object.hasOwn(API_CONFIGS, value)) throw new Error('Unknown quote provider');
+                if ((key === 'selectedProvider' || key === 'enhancedSecondaryProvider') && !Object.hasOwn(API_CONFIGS, value)) throw new Error('Unknown quote provider');
                 if (key === 'preferredViewMode' && !['cards', 'table'].includes(value)) throw new Error('Unknown view');
                 if (key === 'maxHoldDays' && boundedHoldDays(value) !== Number(value)) throw new Error('Invalid hold days');
                 if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'preferredViewMode', 'maxHoldDays', 'timedExitTime'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
+                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'preferredViewMode', 'maxHoldDays', 'timedExitTime'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
                 values[key] = value;
             });
             if (data.globalMarketRegime !== undefined) {

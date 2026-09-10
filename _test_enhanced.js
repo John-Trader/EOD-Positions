@@ -125,7 +125,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.saveEnhancedLiveSetting();
     assert(!api.enhancedLiveMode, 'enabling without keys keeps feature off');
     assert(!chk.checked, 'enabling without keys unchecks box');
-    assert(err.innerText.includes('requires both'), 'error message shown');
+    assert(err.innerText.toLowerCase().includes('requires') && err.innerText.toLowerCase().includes('both'), 'error message shown');
     assert(!err.className.includes('hidden'), 'error is visible');
 
     // Save both keys and enable
@@ -137,8 +137,8 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.saveEnhancedLiveSetting();
     assert(api.enhancedLiveMode === true, 'enabling with both keys succeeds');
     assert(err.className.includes('hidden'), 'error hidden after success');
-    assert(document.getElementById('apiProvider').value === 'finnhub', 'provider forced to finnhub in enhanced mode');
-    assert(document.getElementById('apiProvider').disabled === true, 'provider dropdown disabled in enhanced mode');
+    assert(document.getElementById('apiProvider').value === 'finnhub', 'provider main set to finnhub in test');
+    assert(document.getElementById('apiProvider').disabled === false, 'provider dropdown stays enabled in enhanced mode');
 
     // 2. Dual-socket cleanup
     api.activeSockets.finnhub = new MockWebSocket('wss://ws.finnhub.io');
