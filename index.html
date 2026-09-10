@@ -498,11 +498,17 @@
                         <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
                     </div>
                     <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
+                    <label class="flex items-center gap-2 text-xs" title="Sends a bracket order: the opening order plus the currently selected exit strategy.">
+                        <input id="autoSendExitsOnOpenSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-send exit orders when opening a position
+                    </label>
+                    <p class="text-[10px] text-gray-500">Default is off. When enabled, the Open Long/Short button sends the entry plus the active exit strategy as a TWS bracket.</p>
+                    <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
                     <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
                     <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
+                    <label class="flex items-center gap-2 text-xs"><input id="stopVolWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when stop exceeds 2.5×/1.5× of 20-day ATR/ADR</label>
                     <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
@@ -678,17 +684,11 @@
 
             <!-- Modal Footer / Actions -->
             <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row flex-wrap gap-2 justify-between items-stretch sm:items-center">
-                <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
-                    <span>📥</span> Download TWS Basket (.csv)
-                </button>
                 <div class="flex gap-2 items-center">
-                    <label class="text-[10px] text-gray-400 flex items-center gap-1" title="Attach exits to the entry order (bracket) or send as standalone OCA pairs">
-                        <input type="checkbox" id="twsAttachEntry" class="custom-checkbox"> Attach
-                    </label>
-                    <button data-tws-key="" onclick="sendTwsModalEntry()" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
-                        <span class="tws-send-label">SEND ENTRY</span>
+                    <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-2 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
+                        <span>📥</span> <span class="hidden sm:inline">TWS Basket (.csv)</span><span class="sm:hidden">CSV</span>
                     </button>
-                    <button data-tws-key="" onclick="sendTwsModalExits()" class="bg-purple-600/80 hover:bg-purple-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                    <button id="modalSendExits" data-tws-key="" data-tws-default-label="SEND EXITS" onclick="sendTwsModalExits()" title="Send stop / take-profit exits to TWS" class="bg-purple-600/80 hover:bg-purple-500 text-white px-2 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
                         <span class="tws-send-label">SEND EXITS</span>
                     </button>
                 </div>
@@ -800,6 +800,7 @@
         let twsEnabled = safeStorageGet('twsEnabled') === 'true';
         let twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
         let twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
+        let autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
         let twsConnected = false;
         let twsAccount = '';
         let twsHealthTimer = null;
@@ -817,11 +818,14 @@
         // Optional card fields / warnings (opt-in, default OFF)
         let showRangePct = safeStorageGet('showRangePct') === 'true';
         let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+        let stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false'; // default true
         let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
         let riskMode = safeStorageGet('riskMode') || 'fixed';
         let accountValue = parseFloat(safeStorageGet('accountValue')) || 0;
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
+        let volatilityCache = {}; // ticker -> { atrPct, adrPct, refPct, checkedAt, status }
+        let volatilityRequestId = 0;
         function earningsBadgeFor(ticker) {
             if (!earningsWarnEnabled) return null;
             const item = earningsCache[ticker];
@@ -880,6 +884,12 @@
             }
             safeStorageSet('earningsCalendarCache', JSON.stringify(earningsCache));
             refreshAllVisible(document.getElementById('resultsContainer'));
+        }
+
+        async function refreshVolatilityForScan() {
+            // Placeholder: ATR/ADR stop-volatility check is a future feature.
+            if (!stopVolWarnEnabled) return;
+            volatilityRequestId++;
         }
 
         const DEFAULT_STRATEGIES = [
@@ -1020,11 +1030,13 @@
             if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
             showRangePct = safeStorageGet('showRangePct') === 'true';
             earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+            stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false';
             document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
             document.getElementById('timedExitTimeSetting').value = timedExitTime;
             document.getElementById('timedExitSetting').checked = timedExitEnabled;
             document.getElementById('showRangePctSetting').checked = showRangePct;
             document.getElementById('earningsWarnSetting').checked = earningsWarnEnabled;
+            document.getElementById('stopVolWarnSetting').checked = stopVolWarnEnabled;
             document.getElementById('timedExitTimeSetting').disabled = !timedExitEnabled;
             syncTimedExitInputs();
         }
@@ -1039,11 +1051,13 @@
             time.disabled = !timedExitEnabled;
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
+            stopVolWarnEnabled = document.getElementById('stopVolWarnSetting').checked;
+            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled, stopVolWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
             refreshEarningsForScan();
+            refreshVolatilityForScan();
         }
 
         function toggleApiKeyVisibility() {
@@ -1284,6 +1298,7 @@
             if (save) safeStorageSet('globalMarketRegime', regime);
             styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
             styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
+            updateTwsActiveStrategyDisplay();
         }
 
         function openNavMenu() {
@@ -2258,6 +2273,250 @@
             throw new Error("Unknown provider");
         }
 
+        // ---------- 20-day volatility (ATR / ADR) helpers ----------
+        function computeAdrPct(bars, currentPrice) {
+            if (!Array.isArray(bars) || bars.length < 20 || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+            const ranges = [];
+            for (let i = bars.length - 20; i < bars.length; i++) {
+                const h = Number(bars[i].h ?? bars[i].high ?? bars[i].adjHigh);
+                const l = Number(bars[i].l ?? bars[i].low ?? bars[i].adjLow);
+                if (!Number.isFinite(h) || !Number.isFinite(l) || h <= l) return null;
+                ranges.push(h - l);
+            }
+            const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+            return Number(((avgRange / currentPrice) * 100).toFixed(4));
+        }
+
+        function computeAtrPct(bars, currentPrice) {
+            if (!Array.isArray(bars) || bars.length < 21 || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+            const trs = [];
+            for (let i = bars.length - 20; i < bars.length; i++) {
+                const h = Number(bars[i].h ?? bars[i].high ?? bars[i].adjHigh);
+                const l = Number(bars[i].l ?? bars[i].low ?? bars[i].adjLow);
+                const prevClose = Number(bars[i - 1].c ?? bars[i - 1].close ?? bars[i - 1].adjClose);
+                if (!Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(prevClose)) return null;
+                const tr = Math.max(h - l, Math.abs(h - prevClose), Math.abs(l - prevClose));
+                trs.push(tr);
+            }
+            const atr = trs.reduce((a, b) => a + b, 0) / trs.length;
+            return Number(((atr / currentPrice) * 100).toFixed(4));
+        }
+
+        function parseBarDate(v) {
+            const d = v.datetime || v.date;
+            if (!d) return 0;
+            const ms = Date.parse(String(d));
+            return Number.isFinite(ms) ? ms : 0;
+        }
+
+        function sortBars(bars) {
+            return [...bars].sort((a, b) => parseBarDate(a) - parseBarDate(b));
+        }
+
+        async function fetchTwelveDataVolatility(ticker, apiKey, signal) {
+            const result = { atrPct: null, adrPct: null, latestClose: null };
+            // 1) NATR for ATR%
+            try {
+                const natrRes = await fetchWithTimeout(`https://api.twelvedata.com/natr?symbol=${encodeURIComponent(ticker)}&interval=1day&time_period=20&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                if (natrRes.ok) {
+                    const natrData = await natrRes.json();
+                    if (natrData.status !== 'error' && Array.isArray(natrData.values) && natrData.values.length) {
+                        const sorted = sortBars(natrData.values);
+                        const latest = sorted[sorted.length - 1];
+                        const natr = parseFloat(latest?.natr);
+                        if (Number.isFinite(natr) && natr > 0) {
+                            result.atrPct = natr;
+                            // include_ohlc not set, so we don't have a close; use time_series below for latestClose
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Twelve Data NATR failed:', e.message); }
+
+            // 2) time_series for ADR% and latest close (also used to normalize NATR if we only have NATR)
+            try {
+                const tsRes = await fetchWithTimeout(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=25&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                if (tsRes.ok) {
+                    const tsData = await tsRes.json();
+                    if (tsData.status !== 'error' && Array.isArray(tsData.values) && tsData.values.length >= 20) {
+                        const sorted = sortBars(tsData.values);
+                        const latest = sorted[sorted.length - 1];
+                        const close = parseFloat(latest?.close);
+                        if (Number.isFinite(close) && close > 0) {
+                            result.latestClose = close;
+                            const bars = sorted.map(v => ({ h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close) }));
+                            const adrPct = computeAdrPct(bars, close);
+                            if (adrPct !== null) result.adrPct = adrPct;
+                            if (result.atrPct === null) {
+                                const atrPct = computeAtrPct(bars, close);
+                                if (atrPct !== null) result.atrPct = atrPct;
+                            }
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Twelve Data time_series failed:', e.message); }
+
+            // If we only have NATR% and a latest close, convert NATR% to an ATR% relative to that close
+            if (result.atrPct !== null && result.latestClose !== null && result.adrPct === null) {
+                // keep as-is, ADR still missing
+            }
+
+            return result;
+        }
+
+        async function fetchTiingoVolatility(ticker, apiKey, signal) {
+            const start = addTradingDays(nyDateStr(), -30); // extra days for safety
+            const res = await fetchWithTimeout(`https://api.tiingo.com/tiingo/daily/${encodeURIComponent(ticker)}/prices?startDate=${encodeURIComponent(start)}`, { headers: { 'Authorization': 'Token ' + apiKey, 'Accept': 'application/json' } }, 10000, signal);
+            if (!res.ok) throw new Error('Tiingo history error');
+            const data = await res.json();
+            if (!Array.isArray(data) || data.length < 21) throw new Error('Tiingo history too short');
+            const sorted = sortBars(data);
+            const latest = sorted[sorted.length - 1];
+            const close = Number(latest?.adjClose ?? latest?.close);
+            if (!Number.isFinite(close) || close <= 0) throw new Error('Tiingo history invalid');
+            const bars = sorted.map(v => ({ h: Number(v.adjHigh ?? v.high), l: Number(v.adjLow ?? v.low), c: Number(v.adjClose ?? v.close) }));
+            const atrPct = computeAtrPct(bars, close);
+            const adrPct = computeAdrPct(bars, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchFinnhubVolatility(ticker, apiKey, signal) {
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - 60 * 60 * 24 * 35; // 35 calendar days back
+            const res = await fetchWithTimeout(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${from}&to=${to}&token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+            if (!res.ok) throw new Error('Finnhub candles error');
+            const d = await res.json();
+            if (d.s !== 'ok' || !Array.isArray(d.c) || d.c.length < 21) throw new Error('Finnhub candles too short');
+            const bars = [];
+            for (let i = 0; i < d.c.length; i++) {
+                const h = Number(d.h[i]), l = Number(d.l[i]), c = Number(d.c[i]);
+                if (Number.isFinite(h) && Number.isFinite(l) && Number.isFinite(c) && h > 0 && l > 0 && c > 0) {
+                    bars.push({ h, l, c, t: d.t[i] });
+                }
+            }
+            if (bars.length < 21) throw new Error('Finnhub candles too short after filter');
+            const sorted = bars.sort((a, b) => (a.t || 0) - (b.t || 0));
+            const latest = sorted[sorted.length - 1];
+            const close = latest.c;
+            const atrPct = computeAtrPct(sorted, close);
+            const adrPct = computeAdrPct(sorted, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchStockDataVolatility(ticker, apiKey, signal) {
+            const start = addTradingDays(nyDateStr(), -30);
+            const res = await fetchWithTimeout(`https://api.stockdata.org/v1/data/eod?symbols=${encodeURIComponent(ticker)}&date_from=${encodeURIComponent(start)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+            if (!res.ok) throw new Error('StockData EOD error');
+            const d = await res.json();
+            if (!d.data || !Array.isArray(d.data) || d.data.length < 21) throw new Error('StockData EOD too short');
+            const sorted = sortBars(d.data);
+            const latest = sorted[sorted.length - 1];
+            const close = Number(latest.close ?? latest.price);
+            if (!Number.isFinite(close) || close <= 0) throw new Error('StockData EOD invalid');
+            const bars = sorted.map(v => ({ h: Number(v.high ?? v.day_high), l: Number(v.low ?? v.day_low), c: Number(v.close ?? v.price) }));
+            const atrPct = computeAtrPct(bars, close);
+            const adrPct = computeAdrPct(bars, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchVolatilityData(ticker, signal) {
+            const now = Date.now();
+            const cache = volatilityCache[ticker];
+            if (cache && cache.status === 'ok' && (now - cache.checkedAt) < 300000) return cache;
+
+            let atrPct = null;
+            let adrPct = null;
+            let latestClose = null;
+
+            const tryTwelve = async () => {
+                const key = safeStorageGet(API_CONFIGS.twelvedata.storageKey);
+                if (!key) return;
+                const v = await fetchTwelveDataVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryTiingo = async () => {
+                const key = safeStorageGet(API_CONFIGS.tiingo.storageKey);
+                if (!key) return;
+                const v = await fetchTiingoVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryFinnhub = async () => {
+                const key = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+                if (!key) return;
+                const v = await fetchFinnhubVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryStockData = async () => {
+                const key = safeStorageGet(API_CONFIGS.stockdata.storageKey);
+                if (!key) return;
+                const v = await fetchStockDataVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            try {
+                await tryTwelve();
+                if (atrPct === null || adrPct === null) await tryTiingo();
+                if (atrPct === null || adrPct === null) await tryFinnhub();
+                if (atrPct === null || adrPct === null) await tryStockData();
+
+                const status = (atrPct !== null || adrPct !== null) ? 'ok' : 'error';
+                const result = { ticker, atrPct, adrPct, latestClose, refPct: null, checkedAt: now, status };
+                if (result.status === 'ok') {
+                    result.refPct = Math.max(result.atrPct || 0, result.adrPct || 0);
+                }
+                volatilityCache[ticker] = result;
+                return result;
+            } catch (e) {
+                console.warn(`Volatility fetch failed for ${ticker}:`, e.message);
+                const result = { ticker, atrPct: null, adrPct: null, latestClose: null, refPct: null, checkedAt: now, status: 'error' };
+                volatilityCache[ticker] = result;
+                return result;
+            }
+        }
+
+        async function refreshVolatilityForScan() {
+            if (!stopVolWarnEnabled) return;
+            const requestId = ++volatilityRequestId;
+            const tickers = realtimeTasks.map(t => t.ticker).filter(t => realtimeQuotes[t]);
+            if (!tickers.length) return;
+            // use the active fetch session if present, else a fresh controller
+            const controller = activeFetchSession || new AbortController();
+            await Promise.all(tickers.map(async (t) => {
+                if (requestId !== volatilityRequestId) return;
+                try {
+                    await fetchVolatilityData(t, controller.signal);
+                } catch (e) { /* non-fatal */ }
+            }));
+            if (requestId === volatilityRequestId) {
+                const container = document.getElementById('resultsContainer');
+                if (container) refreshAllVisible(container);
+            }
+        }
+
+        function stopVolatilityWarning(ticker, riskPerShare, c, isLong) {
+            if (!stopVolWarnEnabled) return null;
+            const v = volatilityCache[ticker];
+            if (!v || v.status !== 'ok' || v.refPct === null || !Number.isFinite(c) || c <= 0 || !Number.isFinite(riskPerShare) || riskPerShare <= 0) return null;
+            const stopSizePct = (riskPerShare / c) * 100;
+            const limitMultiple = isLong ? 2.5 : 1.5;
+            const limitPct = limitMultiple * v.refPct;
+            if (stopSizePct > limitPct) {
+                const ratio = stopSizePct / v.refPct;
+                return { text: `STOP ${ratio.toFixed(1)}×`, ratio };
+            }
+            return null;
+        }
+
         function disconnectWebSocket() {
             streamGeneration++;
             if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
@@ -3100,7 +3359,7 @@
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
                         <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -3152,7 +3411,7 @@
                 const label = sendBtn.querySelector('.tws-send-label');
                 const defaultHtml = `OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}`;
                 sendBtn.dataset.twsDefaultLabel = defaultHtml;
-                sendBtn.title = `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
+                sendBtn.title = autoSendExitsOnOpen ? `Send an entry + exit bracket to TWS for ${f.shares} shares` : `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
                 if (sendBtn.dataset.twsState === 'idle' && label) label.innerHTML = defaultHtml;
             }
         }
@@ -3239,7 +3498,7 @@
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnRowClass(f)}">Ord</button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -3280,7 +3539,7 @@
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
             const sendBtn = row.querySelector('[data-action="send-tws-entry"]');
-            if (sendBtn) sendBtn.title = `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
+            if (sendBtn) sendBtn.title = autoSendExitsOnOpen ? `Send an entry + exit bracket to TWS for ${f.shares} shares` : `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
         }
 
         function copyToClipboard(text, element) {
@@ -3355,13 +3614,12 @@
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
 
-            // Update TWS send keys on modal buttons so send-state feedback targets the right ticker.
-            const modalSendBtns = overlay.querySelectorAll('[data-tws-key]');
-            if (modalSendBtns) {
-                modalSendBtns.forEach(btn => {
-                    if (btn.textContent.includes('ENTRY')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'entry');
-                    else if (btn.textContent.includes('EXITS')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'exits');
-                });
+            // Update TWS send key on modal send-exits button and reset its state.
+            const modalSendExits = document.getElementById('modalSendExits');
+            if (modalSendExits) {
+                const modalExitsKey = twsSendKey(currentModalState.ticker, 'exits');
+                modalSendExits.setAttribute('data-tws-key', modalExitsKey);
+                resetTwsSendState(modalExitsKey);
             }
 
             try {
@@ -4304,6 +4562,7 @@
             if (a) regimeStrategyMap.expanding = a.value;
             if (b) regimeStrategyMap.declining = b.value;
             safeStorageSet('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+            updateTwsActiveStrategyDisplay();
         }
 
         function persistCustomStrategies() {
@@ -5033,29 +5292,44 @@
                 el.className = 'text-[10px] font-mono-num text-red-400';
             }
         }
+        function updateTwsActiveStrategyDisplay() {
+            const el = document.getElementById('twsActiveStrategyDisplay');
+            if (!el) return;
+            const longStrat = getStrategyById(defaultStrategyId(true));
+            const shortStrat = getStrategyById(defaultStrategyId(false));
+            const regime = globalMarketRegime === 'declining' ? 'Declining' : 'Expanding';
+            el.innerHTML = `Exit strategy — Regime: ${regime} · Long: ${escapeHtml(longStrat.name)} · Short: ${escapeHtml(shortStrat.name)}`;
+        }
         function saveTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
+            const autoEl = document.getElementById('autoSendExitsOnOpenSetting');
             twsEnabled = en ? en.checked : false;
             twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
             twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
+            autoSendExitsOnOpen = autoEl ? autoEl.checked : false;
             safeStorageSet('twsEnabled', String(twsEnabled));
             safeStorageSet('twsBridgeUrl', twsBridgeUrl);
             safeStorageSet('twsBridgeToken', twsBridgeToken);
+            safeStorageSet('autoSendExitsOnOpen', String(autoSendExitsOnOpen));
             if (twsEnabled && twsBridgeToken) { startTwsHealthPolling(); } else { stopTwsHealthPolling(); twsConnected = false; }
             updateTwsStatusUI();
             syncTwsSendButtons();
+            updateTwsActiveStrategyDisplay();
         }
         function loadTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
+            const autoEl = document.getElementById('autoSendExitsOnOpenSetting');
             if (en) en.checked = twsEnabled;
             if (urlEl) urlEl.value = twsBridgeUrl;
             if (tokEl) tokEl.value = twsBridgeToken;
+            if (autoEl) autoEl.checked = autoSendExitsOnOpen;
             if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
             updateTwsStatusUI();
+            updateTwsActiveStrategyDisplay();
         }
         async function testTwsConnection() {
             const el = document.getElementById('twsStatus');
@@ -5161,7 +5435,29 @@
                 showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
             }
         }
-        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry) {
+        async function sendTwsOpen(ticker) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'entry');
+            if (twsSendState[key] === 'sending') return;
+            if (!autoSendExitsOnOpen) { await sendTwsEntry(ticker); return; }
+            const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
+            const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            if (!f.shares) { showErrorToast('No shares calculated'); return; }
+            const strategyId = defaultStrategyId(f.isGreenDay);
+            setTwsSendState(key, 'sending');
+            const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
+            if (!result) {
+                setTwsSendState(key, 'idle');
+            } else if (result.ok) {
+                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+            }
+        }
+        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry, entryItem) {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const key = twsSendKey(ticker, 'exits');
             if (twsSendState[key] === 'sending') return;
@@ -5175,8 +5471,11 @@
             const payload = buildExitOrdersPayload(built);
             if (!payload.ok) { showErrorToast(payload.error); return; }
             if (attachEntry) {
-                const entryPayload = buildEntryOrderPayload({ ticker, data: { c: entry, pc: 0, h: 0, l: 0 } });
-                if (entryPayload.ok) payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
+                const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+                if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
+                const entryPayload = buildEntryOrderPayload(snapItem);
+                if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
+                payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
                 payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
             }
             setTwsSendState(key, 'sending');
@@ -5190,13 +5489,14 @@
                 setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
                 showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
             }
+            return result;
         }
         async function sendTwsBatchAll() {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const trades = selectedSnapshotTrades();
             if (!trades.length) { showErrorToast('No trades selected'); return; }
             for (const t of trades) {
-                await sendTwsEntry(t.ticker);
+                await sendTwsOpen(t.ticker);
                 await new Promise(r => setTimeout(r, 250));
             }
         }
@@ -5205,7 +5505,6 @@
             const show = twsEnabled && twsBridgeToken && twsConnected;
             document.querySelectorAll('[data-tws-key]').forEach(el => { el.style.display = show ? '' : 'none'; });
             document.querySelectorAll('.tws-send-btn').forEach(el => { el.style.display = show ? '' : 'none'; });
-            document.querySelectorAll('#twsAttachEntry').forEach(el => { el.parentElement.style.display = show ? '' : 'none'; });
         }
 
         // ========================================================
@@ -5244,17 +5543,12 @@
             const btn = e.target.closest('[data-action="send-tws-entry"]');
             if (!btn) return;
             e.stopPropagation();
-            sendTwsEntry(btn.dataset.ticker);
+            sendTwsOpen(btn.dataset.ticker);
         });
 
         // TWS Send modal functions
-        function sendTwsModalEntry() {
-            if (!currentModalState) return;
-            sendTwsEntry(currentModalState.ticker);
-        }
         function sendTwsModalExits() {
             if (!currentModalState) return;
-            const attach = document.getElementById('twsAttachEntry')?.checked || false;
             const strategyId = document.getElementById('modalStrategySelect')?.value || currentModalState.strategyId;
             const customTps = readCustomTpsFromDom();
             sendTwsExits(
@@ -5265,7 +5559,7 @@
                 parseFloat(document.getElementById('modalStopPrice')?.value) || currentModalState.stopPrice,
                 strategyId,
                 customTps,
-                attach
+                false
             );
         }
 
