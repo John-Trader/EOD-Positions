@@ -3084,7 +3084,7 @@
                     </div>
                 </div>
                 <div class="flex items-stretch gap-1.5">
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnCardClass(f)}">
                         Exit<br>Orders
                     </button>
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
@@ -3100,7 +3100,7 @@
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
                         <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="Send ${f.isGreenDay ? 'Buy' : 'Sell'} Order" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black rounded-md px-1.5 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95 whitespace-nowrap"><span class="tws-send-label">Send ${f.isGreenDay ? 'Buy' : 'Sell'} Order</span></button>` : ''}
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -3146,6 +3146,14 @@
                 syncExitButton(exitBtn, f);
                 const newExitClass = exitBtnCardClass(f);
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
+            }
+            const sendBtn = card.querySelector('[data-action="send-tws-entry"]');
+            if (sendBtn) {
+                const label = sendBtn.querySelector('.tws-send-label');
+                const defaultHtml = `OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}`;
+                sendBtn.dataset.twsDefaultLabel = defaultHtml;
+                sendBtn.title = `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
+                if (sendBtn.dataset.twsState === 'idle' && label) label.innerHTML = defaultHtml;
             }
         }
 
@@ -3230,8 +3238,8 @@
                         <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnRowClass(f)}">Ord</button>
+                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -3271,6 +3279,8 @@
                 const newExitClass = exitBtnRowClass(f);
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
+            const sendBtn = row.querySelector('[data-action="send-tws-entry"]');
+            if (sendBtn) sendBtn.title = `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
         }
 
         function copyToClipboard(text, element) {
@@ -5122,13 +5132,13 @@
             else if (state === 'sent') { label.textContent = 'SENT'; el.classList.remove('opacity-60'); el.classList.add('text-emerald-400'); el.disabled = false; }
             else if (state === 'unknown') { label.textContent = 'UNKNOWN'; el.classList.remove('opacity-60'); el.classList.add('text-amber-400'); el.disabled = false; }
             else if (state === 'error') { label.textContent = 'ERR'; el.classList.remove('opacity-60'); el.classList.add('text-red-400'); el.disabled = false; }
-            else { label.textContent = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            else { label.innerHTML = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
             if (msg) el.title = msg;
         }
         function resetTwsSendState(key) {
             twsSendState[key] = 'idle';
             const el = document.querySelector('[data-tws-key="' + key + '"]');
-            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.innerHTML = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
         }
         // ---------- Send handlers ----------
         async function sendTwsEntry(ticker) {
