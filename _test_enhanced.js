@@ -194,9 +194,21 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 
     api.activeSockets.tiingo.readyState = WebSocket.CONNECTING;
     api.updateTopStatus();
-    assert(statusEl.innerText === 'RECONNECTING', 'open + connecting shows reconnecting, not "only"');
+    assert(statusEl.innerText === 'LIVE (FINNHUB) + TIINGO RECONNECTING', 'open + connecting shows the live provider plus the reconnecting one');
 
+    api.activeSockets.finnhub.readyState = WebSocket.CLOSED;
     api.activeSockets.tiingo = null;
+    api.updateTopStatus();
+    assert(statusEl.innerText === 'STANDBY', 'no open sockets and no activity shows standby');
+
+    api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
+    api.updateTopStatus();
+    assert(statusEl.innerText === 'RECONNECTING (FINNHUB)', 'reconnect timer produces named reconnecting status');
+
+    api.activeSockets.finnhub = new MockWebSocket('wss://ws.finnhub.io');
+    api.activeSockets.finnhub.readyState = WebSocket.OPEN;
+    api.activeSockets.tiingo = null;
+    api.reconnectTimeoutByProvider.finnhub = null;
     api.updateTopStatus();
     assert(statusEl.innerText === 'LIVE (FINNHUB ONLY)', 'single open with no activity shows only');
 

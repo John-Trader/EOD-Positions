@@ -1375,13 +1375,35 @@
                 const openProviders = Object.entries(activeSockets)
                     .filter(([p, s]) => s && s.readyState === WebSocket.OPEN)
                     .map(([p]) => API_CONFIGS[p]?.name || p);
+                const connectingProviders = Object.entries(activeSockets)
+                    .filter(([p, s]) => s && s.readyState === WebSocket.CONNECTING)
+                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                const reconnectingProviders = Object.entries(reconnectTimeoutByProvider)
+                    .filter(([p, t]) => t !== null && t !== undefined)
+                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                const openSet = new Set(openProviders);
+                const pendingProviders = [...new Set([...connectingProviders, ...reconnectingProviders])]
+                    .filter(p => !openSet.has(p));
+                const isBusy = statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting();
+
                 if (openProviders.length >= 2) {
                     txt.innerText = `LIVE (${openProviders.map(p => p.toUpperCase()).join(' + ')})`;
                     txt.className = 'text-cyan-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-cyan-500';
-                } else if (statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting()) {
-                    txt.innerText = 'RECONNECTING';
+                } else if (openProviders.length === 1 && (pendingProviders.length > 0 || isBusy)) {
+                    const pendingText = pendingProviders.length > 0
+                        ? pendingProviders.map(p => p.toUpperCase()).join(' + ')
+                        : '...';
+                    txt.innerText = `LIVE (${openProviders[0].toUpperCase()}) + ${pendingText} RECONNECTING`;
+                    txt.className = 'text-amber-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+                } else if (pendingProviders.length > 0 || isBusy) {
+                    const pendingText = pendingProviders.length > 0
+                        ? pendingProviders.map(p => p.toUpperCase()).join(' + ')
+                        : '';
+                    txt.innerText = pendingText ? `RECONNECTING (${pendingText})` : 'RECONNECTING';
                     txt.className = 'text-amber-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
