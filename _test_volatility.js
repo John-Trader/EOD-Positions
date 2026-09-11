@@ -57,7 +57,7 @@ try {
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { computeAdrPct, computeAtrPct, stopVolatilityWarning, fetchVolatilityData, sortBars, volatilityCache, safeStorageGet, API_CONFIGS, providerUsable, resolveProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; } };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { computeAdrPct, computeAtrPct, computeAvgVol, liquidityWarning, stopVolatilityWarning, fetchVolatilityData, sortBars, volatilityCache, safeStorageGet, API_CONFIGS, providerUsable, resolveProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set liqWarnEnabled(v) { liqWarnEnabled = v; }, set liqVolPct(v) { liqVolPct = v; }, set liqVolPeriod(v) { liqVolPeriod = v; } };');
   const api = fn(...Object.values(sandbox));
 
   // ---- computeAdrPct / computeAtrPct ----
@@ -112,7 +112,7 @@ try {
     }
     if (url.includes('/time_series')) {
       const values = [];
-      for (let i = 0; i < 25; i++) values.push({ datetime: `2024-01-0${i+1}`.slice(-10), open: '100', high: '102', low: '100', close: '101' });
+      for (let i = 0; i < 25; i++) values.push({ datetime: `2024-01-0${i+1}`.slice(-10), open: '100', high: '102', low: '100', close: '101', volume: '1000000' });
       return { ok: true, json: async () => ({ status: 'ok', values }) };
     }
     return { ok: false, status: 404 };
@@ -129,7 +129,7 @@ try {
   fetchResponse = (url) => {
     if (url.includes('tiingo.com/tiingo/daily')) {
       const prices = [];
-      for (let i = 0; i < 25; i++) prices.push({ date: `2024-01-${String(i+1).padStart(2,'0')}`, adjOpen: 100, adjHigh: 102, adjLow: 100, adjClose: 101 });
+      for (let i = 0; i < 25; i++) prices.push({ date: `2024-01-${String(i+1).padStart(2,'0')}`, adjOpen: 100, adjHigh: 102, adjLow: 100, adjClose: 101, volume: 2000000 });
       return { ok: true, json: async () => prices };
     }
     return { ok: false, status: 404 };
@@ -155,7 +155,7 @@ try {
     if (url.includes('/history')) {
       assertEq(init.headers['X-Bridge-Token'], 'tok', 'history request sends bridge token');
       const bars = [];
-      for (let i = 0; i < 25; i++) bars.push({ h: 102, l: 100, c: 101 });
+      for (let i = 0; i < 25; i++) bars.push({ h: 102, l: 100, c: 101, v: 500000 });
       return { ok: true, json: async () => ({ ok: true, bars }) };
     }
     return { ok: false, status: 404 };
@@ -169,10 +169,36 @@ try {
   // Priority order governs fallback: with tws connected AND a tiingo key, tws (rank 1) wins.
   localStorage.setItem('tiingo_key', 'ti_key');
   let twsCalled = false;
-  fetchResponse = (url) => { if (url.includes('/history')) twsCalled = true; return { ok: true, json: async () => ({ ok: true, bars: Array.from({length:25},()=>({h:102,l:100,c:101})) }) }; };
+  fetchResponse = (url) => { if (url.includes('/history')) twsCalled = true; return { ok: true, json: async () => ({ ok: true, bars: Array.from({length:25},()=>({h:102,l:100,c:101,v:500000})) }) }; };
   delete api.volatilityCache['ORDR'];
   result = await api.fetchVolatilityData('ORDR');
   assertTrue(twsCalled, 'priority order: tws history tried before tiingo');
+
+  // ---- Liquidity max-shares warning (SMA(volume,20) × pct) ----
+  // computeAvgVol: 20 bars × 500k → 500k; 1% cap → maxShares 5000
+  const avgV = api.computeAvgVol(Array.from({ length: 20 }, () => ({ v: 500000 })));
+  assertEq(avgV, 500000, 'computeAvgVol means the last N volumes');
+  assertEq(api.computeAvgVol([{ v: 10 }]), null, 'computeAvgVol needs a full window');
+  assertEq(api.computeAvgVol(Array.from({ length: 20 }, () => ({ v: NaN }))), null, 'computeAvgVol rejects bad volume');
+
+  // liquidityWarning against the cached ORDR entry (avgVol 500k, 1% → 5000 max)
+  api.liqWarnEnabled = true;
+  api.liqVolPct = 1.0;
+  api.liqVolPeriod = 20;
+  assertEq(api.volatilityCache['ORDR'].avgVol, 500000, 'cache carries avgVol');
+  assertEq(api.liquidityWarning('ORDR', 4000), null, 'shares under cap: no warn');
+  const lw = api.liquidityWarning('ORDR', 7000);
+  assertTrue(lw && lw.text === 'VOL 1.4×' && lw.maxShares === 5000, 'shares over cap warn with ratio + max');
+  assertEq(api.liquidityWarning('ORDR', 0), null, 'zero shares never warns');
+  api.liqWarnEnabled = false;
+  assertEq(api.liquidityWarning('ORDR', 7000), null, 'toggle off suppresses warning');
+  api.liqWarnEnabled = true;
+  api.liqVolPct = 2.0; // cap 10000 → 7000 no longer warns
+  assertEq(api.liquidityWarning('ORDR', 7000), null, 'changing % widens the cap');
+  api.liqVolPct = 1.0;
+  delete api.volatilityCache['NOVOL'];
+  api.volatilityCache['NOVOL'] = { ticker: 'NOVOL', status: 'ok', atrPct: 2, adrPct: 2, latestClose: 100, avgVol: null, checkedAt: Date.now() };
+  assertEq(api.liquidityWarning('NOVOL', 9999), null, 'missing avgVol never warns');
 
   console.log('\nVolatility tests passed');
 } catch (e) {

@@ -496,14 +496,14 @@ function connect() {
             : { ok: false, contractMissing: true, error: 'symbol not found' });
     });
 
-    ib.on(EventName.historicalData, (reqId, time, open, high, low, close) => {
+    ib.on(EventName.historicalData, (reqId, time, open, high, low, close, volume) => {
         const p = pendingHistory.get(reqId);
         if (!p) return;
         if (high === -1 || String(time).startsWith('finished')) {   // end-of-dataset marker
             pendingHistory.delete(reqId); clearTimeout(p.timer);
             p.resolve(p.bars);
         } else {
-            p.bars.push({ h: high, l: low, c: close });
+            p.bars.push({ h: high, l: low, c: close, v: Number(volume) });
         }
     });
 

@@ -547,6 +547,14 @@
                     <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
                     <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
                     <label class="flex items-center gap-2 text-xs"><input id="stopVolWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when stop exceeds 2.5×/1.5× of 20-day ATR/ADR</label>
+                    <label class="flex items-center gap-2 text-xs"><input id="liqWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when shares exceed the liquidity cap</label>
+                    <div class="flex items-center gap-2 text-xs text-gray-300">
+                        <span>Max shares =</span>
+                        <input id="liqVolPctSetting" type="number" min="0.05" max="50" step="0.05" value="1" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
+                        <span>% of</span>
+                        <input id="liqVolPeriodSetting" type="number" min="1" max="250" step="1" value="20" onchange="saveFeatureSettings()" class="w-14 bg-slate-800 border border-slate-600 rounded p-1 text-center">
+                        <span>-day avg volume</span>
+                    </div>
                     <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
@@ -1026,6 +1034,9 @@
         let showRangePct = safeStorageGet('showRangePct') === 'true';
         let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
         let stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false'; // default true
+        let liqWarnEnabled = safeStorageGet('liqWarnEnabled') !== 'false';          // default true
+        let liqVolPct = Math.max(0.01, parseFloat(safeStorageGet('liqVolPct')) || 1.0);     // % of avg volume
+        let liqVolPeriod = Math.min(250, Math.max(1, parseInt(safeStorageGet('liqVolPeriod'), 10) || 20));
         let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
         let riskMode = safeStorageGet('riskMode') || 'fixed';
         let accountValue = parseFloat(safeStorageGet('accountValue')) || 0;
@@ -1235,12 +1246,18 @@
             showRangePct = safeStorageGet('showRangePct') === 'true';
             earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
             stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false';
+            liqWarnEnabled = safeStorageGet('liqWarnEnabled') !== 'false';
+            liqVolPct = Math.max(0.01, parseFloat(safeStorageGet('liqVolPct')) || 1.0);
+            liqVolPeriod = Math.min(250, Math.max(1, parseInt(safeStorageGet('liqVolPeriod'), 10) || 20));
             document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
             document.getElementById('timedExitTimeSetting').value = timedExitTime;
             document.getElementById('timedExitSetting').checked = timedExitEnabled;
             document.getElementById('showRangePctSetting').checked = showRangePct;
             document.getElementById('earningsWarnSetting').checked = earningsWarnEnabled;
             document.getElementById('stopVolWarnSetting').checked = stopVolWarnEnabled;
+            document.getElementById('liqWarnSetting').checked = liqWarnEnabled;
+            document.getElementById('liqVolPctSetting').value = liqVolPct;
+            document.getElementById('liqVolPeriodSetting').value = liqVolPeriod;
             document.getElementById('timedExitTimeSetting').disabled = !timedExitEnabled;
             syncTimedExitInputs();
         }
@@ -1256,7 +1273,15 @@
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
             stopVolWarnEnabled = document.getElementById('stopVolWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled, stopVolWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
+            liqWarnEnabled = document.getElementById('liqWarnSetting').checked;
+            const oldLiqPeriod = liqVolPeriod;
+            liqVolPct = Math.max(0.01, parseFloat(document.getElementById('liqVolPctSetting').value) || 1.0);
+            liqVolPeriod = Math.min(250, Math.max(1, parseInt(document.getElementById('liqVolPeriodSetting').value, 10) || 20));
+            document.getElementById('liqVolPctSetting').value = liqVolPct;
+            document.getElementById('liqVolPeriodSetting').value = liqVolPeriod;
+            // Period feeds the SMA — a new period needs fresh volume data.
+            if (liqVolPeriod !== oldLiqPeriod) volatilityCache = {};
+            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled, stopVolWarnEnabled, liqWarnEnabled, liqVolPct, liqVolPeriod }).forEach(([key, value]) => safeStorageSet(key, String(value)));
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
@@ -2534,6 +2559,18 @@
             return Number(((atr / currentPrice) * 100).toFixed(4));
         }
 
+        // Mean daily volume over the last `len` bars — the PineScript `ta.sma(volume, 20)`.
+        function computeAvgVol(bars, len = liqVolPeriod) {
+            if (!Array.isArray(bars) || bars.length < len || !Number.isFinite(len) || len <= 0) return null;
+            let sum = 0;
+            for (let i = bars.length - len; i < bars.length; i++) {
+                const v = Number(bars[i].v ?? bars[i].volume ?? bars[i].adjVolume);
+                if (!Number.isFinite(v) || v < 0) return null;
+                sum += v;
+            }
+            return sum / len;
+        }
+
         function parseBarDate(v) {
             const d = v.datetime || v.date;
             if (!d) return 0;
@@ -2546,7 +2583,7 @@
         }
 
         async function fetchTwelveDataVolatility(ticker, apiKey, signal) {
-            const result = { atrPct: null, adrPct: null, latestClose: null };
+            const result = { atrPct: null, adrPct: null, latestClose: null, avgVol: null };
             // 1) NATR for ATR%
             try {
                 const natrRes = await fetchWithTimeout(`https://api.twelvedata.com/natr?symbol=${encodeURIComponent(ticker)}&interval=1day&time_period=20&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
@@ -2575,7 +2612,8 @@
                         const close = parseFloat(latest?.close);
                         if (Number.isFinite(close) && close > 0) {
                             result.latestClose = close;
-                            const bars = sorted.map(v => ({ h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close) }));
+                            const bars = sorted.map(v => ({ h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close), v: parseFloat(v.volume) }));
+                            result.avgVol = computeAvgVol(bars);
                             const adrPct = computeAdrPct(bars, close);
                             if (adrPct !== null) result.adrPct = adrPct;
                             if (result.atrPct === null) {
@@ -2605,10 +2643,10 @@
             const latest = sorted[sorted.length - 1];
             const close = Number(latest?.adjClose ?? latest?.close);
             if (!Number.isFinite(close) || close <= 0) throw new Error('Tiingo history invalid');
-            const bars = sorted.map(v => ({ h: Number(v.adjHigh ?? v.high), l: Number(v.adjLow ?? v.low), c: Number(v.adjClose ?? v.close) }));
+            const bars = sorted.map(v => ({ h: Number(v.adjHigh ?? v.high), l: Number(v.adjLow ?? v.low), c: Number(v.adjClose ?? v.close), v: Number(v.volume) }));
             const atrPct = computeAtrPct(bars, close);
             const adrPct = computeAdrPct(bars, close);
-            return { atrPct, adrPct, latestClose: close };
+            return { atrPct, adrPct, latestClose: close, avgVol: computeAvgVol(bars) };
         }
 
         async function fetchFinnhubVolatility(ticker, apiKey, signal) {
@@ -2622,7 +2660,7 @@
             for (let i = 0; i < d.c.length; i++) {
                 const h = Number(d.h[i]), l = Number(d.l[i]), c = Number(d.c[i]);
                 if (Number.isFinite(h) && Number.isFinite(l) && Number.isFinite(c) && h > 0 && l > 0 && c > 0) {
-                    bars.push({ h, l, c, t: d.t[i] });
+                    bars.push({ h, l, c, t: d.t[i], v: Number(d.v && d.v[i]) });
                 }
             }
             if (bars.length < 21) throw new Error('Finnhub candles too short after filter');
@@ -2631,7 +2669,7 @@
             const close = latest.c;
             const atrPct = computeAtrPct(sorted, close);
             const adrPct = computeAdrPct(sorted, close);
-            return { atrPct, adrPct, latestClose: close };
+            return { atrPct, adrPct, latestClose: close, avgVol: computeAvgVol(sorted) };
         }
 
         async function fetchStockDataVolatility(ticker, apiKey, signal) {
@@ -2644,19 +2682,19 @@
             const latest = sorted[sorted.length - 1];
             const close = Number(latest.close ?? latest.price);
             if (!Number.isFinite(close) || close <= 0) throw new Error('StockData EOD invalid');
-            const bars = sorted.map(v => ({ h: Number(v.high ?? v.day_high), l: Number(v.low ?? v.day_low), c: Number(v.close ?? v.price) }));
+            const bars = sorted.map(v => ({ h: Number(v.high ?? v.day_high), l: Number(v.low ?? v.day_low), c: Number(v.close ?? v.price), v: Number(v.volume) }));
             const atrPct = computeAtrPct(bars, close);
             const adrPct = computeAdrPct(bars, close);
-            return { atrPct, adrPct, latestClose: close };
+            return { atrPct, adrPct, latestClose: close, avgVol: computeAvgVol(bars) };
         }
 
         async function fetchTwsVolatility(ticker, signal) {
             const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}`, signal);
             if (!d || !d.ok || !Array.isArray(d.bars) || d.bars.length < 21) throw new Error('TWS history too short');
-            const bars = d.bars.map(b => ({ h: Number(b.h), l: Number(b.l), c: Number(b.c) }));
+            const bars = d.bars.map(b => ({ h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) }));
             const close = bars[bars.length - 1].c;
             if (!Number.isFinite(close) || close <= 0) throw new Error('TWS history invalid');
-            return { atrPct: computeAtrPct(bars, close), adrPct: computeAdrPct(bars, close), latestClose: close };
+            return { atrPct: computeAtrPct(bars, close), adrPct: computeAdrPct(bars, close), latestClose: close, avgVol: computeAvgVol(bars) };
         }
 
         async function fetchVolatilityData(ticker, signal) {
@@ -2667,6 +2705,7 @@
             let atrPct = null;
             let adrPct = null;
             let latestClose = null;
+            let avgVol = null;
 
             // Fallback order follows the provider priority list, not a hardcoded order.
             const tryOne = async (p) => {
@@ -2680,16 +2719,17 @@
                 if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
                 if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
                 if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+                if (avgVol === null && Number.isFinite(v.avgVol) && v.avgVol >= 0) avgVol = v.avgVol;
             };
 
             try {
                 for (const p of providerPriorityOrder) {
-                    if (atrPct !== null && adrPct !== null) break;
+                    if (atrPct !== null && adrPct !== null && avgVol !== null) break;
                     try { await tryOne(p); } catch (e) { console.warn(`Volatility ${p} failed for ${ticker}:`, e.message); }
                 }
 
-                const status = (atrPct !== null || adrPct !== null) ? 'ok' : 'error';
-                const result = { ticker, atrPct, adrPct, latestClose, refPct: null, checkedAt: now, status };
+                const status = (atrPct !== null || adrPct !== null || avgVol !== null) ? 'ok' : 'error';
+                const result = { ticker, atrPct, adrPct, latestClose, avgVol, refPct: null, checkedAt: now, status };
                 if (result.status === 'ok') {
                     result.refPct = Math.max(result.atrPct || 0, result.adrPct || 0);
                 }
@@ -2697,14 +2737,14 @@
                 return result;
             } catch (e) {
                 console.warn(`Volatility fetch failed for ${ticker}:`, e.message);
-                const result = { ticker, atrPct: null, adrPct: null, latestClose: null, refPct: null, checkedAt: now, status: 'error' };
+                const result = { ticker, atrPct: null, adrPct: null, latestClose: null, avgVol: null, refPct: null, checkedAt: now, status: 'error' };
                 volatilityCache[ticker] = result;
                 return result;
             }
         }
 
         async function refreshVolatilityForScan() {
-            if (!stopVolWarnEnabled) return;
+            if (!stopVolWarnEnabled && !liqWarnEnabled) return;
             const requestId = ++volatilityRequestId;
             const tickers = realtimeTasks.map(t => t.ticker).filter(t => realtimeQuotes[t]);
             if (!tickers.length) return;
@@ -2741,6 +2781,37 @@
                 const ratio = stopSizePct / refPct;
                 const rounded = Math.round(ratio * 10) / 10;
                 return { text: `STOP ${rounded.toFixed(1)}×`, ratio };
+            }
+            return null;
+        }
+
+        // PineScript "Max S.S.": shares must not exceed liqVolPct% of the liqVolPeriod-day
+        // average volume (defaults 1% of 20-day avg). Warn only — the count is not capped.
+        function liquidityWarning(ticker, shares) {
+            if (!liqWarnEnabled) return null;
+            const v = volatilityCache[ticker];
+            if (!v || v.status !== 'ok' || !Number.isFinite(v.avgVol) || v.avgVol < 0) return null;
+            if (!Number.isFinite(shares) || shares <= 0) return null;
+            const maxShares = Math.floor(v.avgVol * (liqVolPct / 100));
+            if (shares > maxShares) {
+                const ratio = maxShares > 0 ? shares / maxShares : Infinity;
+                const rounded = Number.isFinite(ratio) ? Math.round(ratio * 10) / 10 : '∞';
+                return { text: `VOL ${rounded}×`, ratio, maxShares };
+            }
+            return null;
+        }
+
+        // Liquidity cap from the PineScript "Max S.S." rule: maxShares = SMA(volume, N) × pct.
+        // Warn when the calculated share count exceeds what the ticker can absorb.
+        function liquidityWarning(ticker, shares) {
+            if (!liqWarnEnabled) return null;
+            const v = volatilityCache[ticker];
+            if (!v || v.status !== 'ok' || !Number.isFinite(v.avgVol) || !Number.isFinite(shares) || shares <= 0) return null;
+            const maxShares = Math.floor(v.avgVol * (liqVolPct / 100));
+            if (maxShares <= 0) return { text: 'VOL 0', ratio: Infinity, maxShares };
+            if (shares > maxShares) {
+                const ratio = Math.round((shares / maxShares) * 10) / 10;
+                return { text: `VOL ${ratio.toFixed(1)}×`, ratio, maxShares };
             }
             return null;
         }
@@ -3553,8 +3624,9 @@
             const sideMismatch = !!(signalSide && signalSide !== setupType);
             const earn = earningsBadgeFor(ticker);
             const stopWarn = stopVolatilityWarning(ticker, riskPerShare, c, isGreenDay);
+            const liqWarn = liquidityWarning(ticker, shares);
             return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive,
-                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn, stopWarn };
+                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn, stopWarn, liqWarn };
         }
 
         function fmtMoneyShort(v) {
@@ -3670,6 +3742,7 @@
                             <span class="copy-msg absolute inset-0 text-emerald-400 text-[10px] flex items-center justify-center opacity-0">COPIED!</span>
                         </div>
                         <div data-field="notional" class="text-[8px] text-cyan-500/70 font-mono-num leading-none">${fmtMoneyShort(f.notional)}</div>
+                        <div data-field="liqWarn" class="${f.liqWarn ? '' : 'hidden '}text-[8px] font-bold text-rose-300 leading-tight" title="Shares exceed ${liqVolPct}% of ${liqVolPeriod}-day avg volume (max ~${f.liqWarn ? f.liqWarn.maxShares.toLocaleString() : 0})">⚠ ${f.liqWarn ? escapeHtml(f.liqWarn.text) : ''}</div>
                     </div>
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">Stop</div>
@@ -3715,6 +3788,12 @@
             setTextIfChanged(q('ask'), `A $${f.askText}`);
             setTextAndFlash(q('shares'), f.shares.toLocaleString());
             setTextIfChanged(q('notional'), fmtMoneyShort(f.notional));
+            const liqWarn = q('liqWarn');
+            if (liqWarn) {
+                setTextIfChanged(liqWarn, f.liqWarn ? '⚠ ' + f.liqWarn.text : '');
+                setHidden(liqWarn, !f.liqWarn);
+                liqWarn.title = f.liqWarn ? `Shares exceed ${liqVolPct}% of ${liqVolPeriod}-day avg volume (max ~${f.liqWarn.maxShares.toLocaleString()})` : '';
+            }
             setTextIfChanged(q('stopPrice'), f.stopPrice.toFixed(2));
             setTextIfChanged(q('rps'), `R/sh ${f.riskPerShare.toFixed(2)}`);
             const copyBox = card.querySelector('.copy-hover');
@@ -3813,6 +3892,7 @@
                         <span data-field="shares" class="share-val block text-lg font-black font-mono-num text-cyan-300 leading-none">${f.shares.toLocaleString()}</span>
                         <span class="copy-msg hidden text-[9px] text-emerald-400">OK</span>
                         <div data-field="notional" class="text-[7px] text-cyan-500/70 font-mono-num leading-none">${fmtMoneyShort(f.notional)}</div>
+                        <div data-field="liqWarn" class="${f.liqWarn ? '' : 'hidden '}text-[7px] font-bold text-rose-300 leading-none" title="Shares exceed ${liqVolPct}% of ${liqVolPeriod}-day avg volume (max ~${f.liqWarn ? f.liqWarn.maxShares.toLocaleString() : 0})">⚠${f.liqWarn ? escapeHtml(f.liqWarn.text) : ''}</div>
                     </button>
                     <div class="shrink-0 w-[48px] text-right">
                         <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
@@ -3851,6 +3931,12 @@
             setTextIfChanged(q('trigger'), f.trigger ? `$${f.trigger.toFixed(2)}` : '--');
             setTextAndFlash(q('shares'), f.shares.toLocaleString());
             setTextIfChanged(q('notional'), fmtMoneyShort(f.notional));
+            const liqWarn = q('liqWarn');
+            if (liqWarn) {
+                setTextIfChanged(liqWarn, f.liqWarn ? '⚠' + f.liqWarn.text : '');
+                setHidden(liqWarn, !f.liqWarn);
+                liqWarn.title = f.liqWarn ? `Shares exceed ${liqVolPct}% of ${liqVolPeriod}-day avg volume (max ~${f.liqWarn.maxShares.toLocaleString()})` : '';
+            }
             const copyBtn = row.querySelector('.copy-hover');
             if (copyBtn) copyBtn.dataset.shares = f.shares;
             setTextIfChanged(q('stopPrice'), f.stopPrice.toFixed(2));
@@ -5472,7 +5558,7 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled'];
 
         function prepareBackup(data) {
             if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
@@ -5489,9 +5575,11 @@
                 }
                 if (key === 'preferredViewMode' && !['cards', 'table'].includes(value)) throw new Error('Unknown view');
                 if (key === 'maxHoldDays' && boundedHoldDays(value) !== Number(value)) throw new Error('Invalid hold days');
+                if (key === 'liqVolPct' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid liquidity %');
+                if (key === 'liqVolPeriod' && (!Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > 250)) throw new Error('Invalid liquidity period');
                 if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
                 if (key === 'twsBridgeUrl' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(value)) throw new Error('Invalid bridge URL');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
+                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
                 values[key] = value;
             });
             if (data.globalMarketRegime !== undefined) {
