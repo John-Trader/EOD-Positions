@@ -137,7 +137,8 @@ try {
   assertEq(leg1Lmt.outsideRth, true, 'LMT outsideRth');
   assertEq(leg1Stp.tif, 'GTC', 'STP GTC');
   assertEq(leg1Lmt.tif, 'GTC', 'LMT GTC');
-  assertTrue(leg1Stp.transmit === true, 'STP transmit true');
+  assertTrue(leg1Stp.transmit === true, 'leg1 STP transmit true');
+  assertTrue(leg1Lmt.transmit === true, 'leg1 LMT transmit true');
   assertTrue(leg1Stp.orderRef.startsWith('PSC-AMPL-'), 'STP orderRef');
   assertTrue(leg1Stp.orderRef !== leg1Lmt.orderRef, 'per-order orderRef unique');
   assertEq(leg1Stp.ocaType, 1, 'standard leg ocaType=1');
@@ -147,6 +148,8 @@ try {
   const leg2Lmt = exitPayload.orders[3];
   assertTrue(leg2Stp.ocaGroup !== leg1Stp.ocaGroup, 'leg2 OCA differs from leg1');
   assertEq(leg2Stp.ocaGroup, leg2Lmt.ocaGroup, 'leg2 shares own OCA group');
+  assertTrue(leg2Stp.transmit === true, 'leg2 STP transmit true');
+  assertTrue(leg2Lmt.transmit === true, 'leg2 LMT transmit true');
 
   // Qty split: 40% + 60% of 100 = 40 + 60
   assertEq(leg1Stp.quantity + leg2Stp.quantity, 100, 'STP qty split sums to 100');

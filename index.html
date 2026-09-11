@@ -239,7 +239,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.5.8</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.6.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1934,9 +1934,9 @@
                 <div class="exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
                         <span class="font-bold">${escapeHtml(t.ticker)}</span>
-                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
-                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
-                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600" title="Exit action: SELL for long, COVER for short">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>SELL</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>COVER</option>
                         </select>
                     </div>
                     <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
@@ -2757,6 +2757,7 @@
             }
 
             applyFocusMode();
+            syncTwsSendButtons();
         }
 
         function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers, announce = true) {
@@ -3388,7 +3389,7 @@
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
                         <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
+                    ${twsEnabled ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -3530,7 +3531,7 @@
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
                     <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnRowClass(f)}">Ord</button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
+                    ${twsEnabled ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -3654,6 +3655,7 @@
                 modalSendExits.setAttribute('data-tws-key', modalExitsKey);
                 resetTwsSendState(modalExitsKey);
             }
+            syncTwsSendButtons();
 
             try {
                 document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
@@ -4497,9 +4499,9 @@
                 <div class="builder-exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
                         <span class="font-bold">${escapeHtml(t.ticker)}</span>
-                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
-                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
-                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600" title="Exit action: SELL for long, COVER for short">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>SELL</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>COVER</option>
                         </select>
                     </div>
                     <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
@@ -5144,7 +5146,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.5.2",
+                version: "2.6.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -5172,7 +5174,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -5303,7 +5305,7 @@
             const headers = { 'Content-Type': 'application/json' };
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
             try {
-                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 8000);
+                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
                 return await res.json();
             } catch (e) {
                 return { ok: false, error: e.message || 'Network error' };
@@ -5335,14 +5337,15 @@
         function updateTwsStatusUI() {
             const el = document.getElementById('twsStatus');
             if (!el) return;
-            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; return; }
-            if (twsConnected) {
+            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; }
+            else if (twsConnected) {
                 el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
                 el.className = 'text-[10px] font-mono-num text-emerald-400';
             } else {
                 el.textContent = 'Not connected';
                 el.className = 'text-[10px] font-mono-num text-red-400';
             }
+            syncTwsSendButtons();
         }
         function updateTwsActiveStrategyDisplay() {
             const el = document.getElementById('twsActiveStrategyDisplay');
@@ -5381,6 +5384,7 @@
             if (autoEl) autoEl.checked = autoSendExitsOnOpen;
             if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
             updateTwsStatusUI();
+            syncTwsSendButtons();
             updateTwsActiveStrategyDisplay();
         }
         async function testTwsConnection() {
@@ -5436,6 +5440,7 @@
                     orderType,
                     tif: row[6] || 'GTC',
                     outsideRth: orderType === 'LMT',
+                    adaptive: false,
                     transmit: true,
                     ocaGroup: row[11] || undefined,
                     ocaType: row[16] ? parseInt(row[16], 10) : 1,
@@ -5452,6 +5457,8 @@
                 orders.push(order);
             }
             if (!orders.length) return { ok: false, error: 'No orders produced' };
+            // Pure exit OCA: every member is transmitted. The bridge waits for each order's
+            // orderStatus before placing the next one, so TWS builds the OCA group correctly.
             return { ok: true, symbol: orders[0] && built.preview[0] ? built.preview[0].ticker : '', orders };
         }
         // ---------- Send-state machine ----------
@@ -5570,10 +5577,17 @@
             }
         }
         function syncTwsSendButtons() {
-            // Show/hide send buttons based on twsEnabled + readiness.
-            const show = twsEnabled && twsBridgeToken && twsConnected;
-            document.querySelectorAll('[data-tws-key]').forEach(el => { el.style.display = show ? '' : 'none'; });
-            document.querySelectorAll('.tws-send-btn').forEach(el => { el.style.display = show ? '' : 'none'; });
+            // If TWS is disabled, hide the send buttons entirely. If TWS is enabled, show them
+            // but disable (grey out) until the bridge is actually connected.
+            const enabled = twsEnabled;
+            const ready = enabled && twsBridgeToken && twsBridgeUrl && twsConnected;
+            [].forEach.call(document.querySelectorAll('[data-tws-key], .tws-send-btn'), el => {
+                el.style.display = enabled ? '' : 'none';
+                if (el.dataset.twsState === 'sending') return; // don't un-disable a button mid-send
+                el.disabled = !ready;
+                el.classList.toggle('opacity-50', !ready);
+                el.classList.toggle('cursor-not-allowed', !ready);
+            });
         }
 
         // ========================================================

@@ -96,6 +96,22 @@ function connect() {
         }
     });
 
+    ib.on(EventName.openOrder, (orderId, contract, order, orderState) => {
+        const p = pending.get(orderId);
+        if (!p) return;
+        const status = orderState && orderState.status;
+        // openOrder is the earliest acknowledgement that TWS has the order.
+        // For non-transmitted (pre-staged) orders it may or may not fire; if it does, we can continue immediately.
+        const isRejected = status === 'Rejected' || status === 'Cancelled';
+        clearTimeout(p.timer);
+        pending.delete(orderId);
+        if (isRejected) {
+            p.resolve({ orderId, status: 'Rejected', message: orderState && orderState.warningText ? String(orderState.warningText) : status });
+        } else {
+            p.resolve({ orderId, status: status || 'PreSubmitted', filled: 0, remaining: (p.order && p.order.totalQuantity) || 0 });
+        }
+    });
+
     ib.on(EventName.error, (err, code, reqId) => {
         const msg = err && err.message ? err.message : String(err);
         // Client-id conflict: TWS error 502 (couldn't connect) or a specific "already connected" message.
@@ -202,19 +218,19 @@ function placeOrder(spec) {
             pending.delete(orderId);
             resolve({ orderId, status: 'Timeout', unknown: true, message: 'No confirmation from TWS — check TWS before retrying' });
         }, 5000);
-        pending.set(orderId, { resolve, reject, timer });
+        pending.set(orderId, { resolve, reject, timer, order });
         try {
             ib.placeOrder(orderId, contract, order);
             if (order.transmit === false) {
                 // Pre-staged (non-transmitted) orders won't return an orderStatus until a transmitted order releases them.
-                // Resolve quickly if TWS does not immediately reject, so the batch can continue.
+                // Wait for an openOrder callback, or long enough for TWS to register the order, before the batch continues.
                 setTimeout(() => {
                     if (pending.has(orderId)) {
                         clearTimeout(timer);
                         pending.delete(orderId);
                         resolve({ orderId, status: 'PreSubmitted' });
                     }
-                }, 300);
+                }, 2500);
             }
         } catch (e) {
             clearTimeout(timer);
@@ -325,7 +341,8 @@ const server = http.createServer(async (req, res) => {
         for (const spec of body.orders) {
             if (spec.ref) refToId[spec.ref] = null; // placeholder
         }
-        for (const spec of body.orders) {
+        for (let i = 0; i < body.orders.length; i++) {
+            const spec = body.orders[i];
             const resolved = { ...spec };
             if (spec.parentRef && refToId[spec.parentRef] != null) resolved.parentId = refToId[spec.parentRef];
             try {
@@ -335,6 +352,8 @@ const server = http.createServer(async (req, res) => {
             } catch (e) {
                 results.push({ ok: false, error: e.message || String(e) });
             }
+            // Small pause between OCA members so TWS can form the group before the next order arrives.
+            if (i < body.orders.length - 1) await new Promise(r => setTimeout(r, 150));
         }
         const firstFail = results.find(r => !r.ok);
         const hasUnknown = results.some(r => r.unknown);
