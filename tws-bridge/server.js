@@ -231,11 +231,17 @@ const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin || '';
     const url = new URL(req.url, `http://127.0.0.1:${BRIDGE_PORT}`);
 
+    // CORS headers shared by all responses.
+    const corsOrigin = (ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin)) ? origin : 'null';
+    const corsHeaders = {
+        'Access-Control-Allow-Origin': corsOrigin,
+        'Content-Type': 'application/json',
+    };
+
     // CORS preflight
     if (req.method === 'OPTIONS') {
-        const allowed = ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin);
         res.writeHead(204, {
-            'Access-Control-Allow-Origin': allowed ? origin : 'null',
+            ...corsHeaders,
             'Access-Control-Allow-Private-Network': 'true',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, X-Bridge-Token',
@@ -248,28 +254,21 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
         const ct = req.headers['content-type'] || '';
         if (!ct.includes('application/json')) {
-            res.writeHead(415, { 'Content-Type': 'application/json' });
+            res.writeHead(415, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
         }
         const allowed = ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin);
         if (!allowed) {
-            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.writeHead(403, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Origin not allowed' }));
         }
         // Token check.
         const token = req.headers['x-bridge-token'] || '';
         if (token !== BRIDGE_TOKEN) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.writeHead(401, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Invalid or missing bridge token' }));
         }
     }
-
-    // CORS headers on actual responses.
-    const corsOrigin = (ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin)) ? origin : 'null';
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': corsOrigin,
-        'Content-Type': 'application/json',
-    };
 
     // GET /health
     if (req.method === 'GET' && url.pathname === '/health') {
