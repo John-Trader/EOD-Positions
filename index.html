@@ -239,7 +239,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.5.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.6.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -498,11 +498,17 @@
                         <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
                     </div>
                     <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
+                    <label class="flex items-center gap-2 text-xs" title="Sends a bracket order: the opening order plus the currently selected exit strategy.">
+                        <input id="autoSendExitsOnOpenSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-send exit orders when opening a position
+                    </label>
+                    <p class="text-[10px] text-gray-500">Default is off. When enabled, the Open Long/Short button sends the entry plus the active exit strategy as a TWS bracket.</p>
+                    <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
                     <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
                     <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
+                    <label class="flex items-center gap-2 text-xs"><input id="stopVolWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when stop exceeds 2.5×/1.5× of 20-day ATR/ADR</label>
                     <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
@@ -678,18 +684,12 @@
 
             <!-- Modal Footer / Actions -->
             <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row flex-wrap gap-2 justify-between items-stretch sm:items-center">
-                <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
-                    <span>📥</span> Download TWS Basket (.csv)
-                </button>
                 <div class="flex gap-2 items-center">
-                    <label class="text-[10px] text-gray-400 flex items-center gap-1" title="Attach exits to the entry order (bracket) or send as standalone OCA pairs">
-                        <input type="checkbox" id="twsAttachEntry" class="custom-checkbox"> Attach
-                    </label>
-                    <button data-tws-key="" onclick="sendTwsModalEntry()" class="bg-blue-600/80 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
-                        <span class="tws-send-label">SEND ENTRY</span>
+                    <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-2 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
+                        <span>📥</span> <span class="hidden sm:inline">TWS Basket (.csv)</span><span class="sm:hidden">CSV</span>
                     </button>
-                    <button data-tws-key="" onclick="sendTwsModalExits()" class="bg-purple-600/80 hover:bg-purple-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
-                        <span class="tws-send-label">SEND EXITS</span>
+                    <button id="modalSendExits" data-tws-key="" data-tws-default-label="Send Exit Order" onclick="sendTwsModalExits()" title="Send stop / take-profit exits to TWS" class="bg-purple-600/80 hover:bg-purple-500 text-white px-2 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">Send Exit Order</span>
                     </button>
                 </div>
                 <div class="flex gap-2">
@@ -763,6 +763,7 @@
         let realtimeQuotes = {};
         let realtimeQuoteErrors = {};
         let reconnectTimeout = null;
+        let connectionTimeout = null;      // legacy single-provider socket connection watchdog
         let reconnectAttempts = 0;
         let streamGeneration = 0;          // bumps on every CALCULATE / disconnect; stale sockets are ignored
         let resyncTimer = null;            // periodic REST resync of HOD/LOD while streaming
@@ -782,6 +783,7 @@
         let activeSockets = {};
         let reconnectAttemptsByProvider = { finnhub: 0, twelvedata: 0, tiingo: 0 };
         let reconnectTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null };
+        let connectionTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null };
         let tradeTimestamps = {};          // ticker -> exchange timestamp ms for cross-feed ordering
 
         let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
@@ -798,6 +800,7 @@
         let twsEnabled = safeStorageGet('twsEnabled') === 'true';
         let twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
         let twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
+        let autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
         let twsConnected = false;
         let twsAccount = '';
         let twsHealthTimer = null;
@@ -815,11 +818,14 @@
         // Optional card fields / warnings (opt-in, default OFF)
         let showRangePct = safeStorageGet('showRangePct') === 'true';
         let earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+        let stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false'; // default true
         let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
         let riskMode = safeStorageGet('riskMode') || 'fixed';
         let accountValue = parseFloat(safeStorageGet('accountValue')) || 0;
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
+        let volatilityCache = {}; // ticker -> { atrPct, adrPct, refPct, checkedAt, status }
+        let volatilityRequestId = 0;
         function earningsBadgeFor(ticker) {
             if (!earningsWarnEnabled) return null;
             const item = earningsCache[ticker];
@@ -880,13 +886,14 @@
             refreshAllVisible(document.getElementById('resultsContainer'));
         }
 
+
         const DEFAULT_STRATEGIES = [
             { id: 'opt1', name: 'Option 1 · 100% @ 1:6', builtIn: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] },
             { id: 'opt2', name: 'Option 2 · 40% @ 1:1 + 60% @ 1:6', builtIn: true, legs: [
                 { pct: 40, rr: 1, stopMode: 'fixed' },
                 { pct: 60, rr: 6, stopMode: 'fixed' }
             ] },
-            { id: 'short16', name: 'Short · 100% @ 1:6', builtIn: true, short: true, legs: [{ pct: 100, rr: 6, stopMode: 'fixed' }] }
+            { id: 'short16', name: 'Short · 100% stop only', builtIn: true, short: true, legs: [{ pct: 100, rr: 0, stopMode: 'fixed', stopOnly: true }] }
         ];
         let customStrategies = [];
         let regimeStrategyMap = { expanding: 'opt1', declining: 'opt2' };
@@ -1018,11 +1025,13 @@
             if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
             showRangePct = safeStorageGet('showRangePct') === 'true';
             earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
+            stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false';
             document.getElementById('maxHoldDaysSetting').value = maxHoldDays;
             document.getElementById('timedExitTimeSetting').value = timedExitTime;
             document.getElementById('timedExitSetting').checked = timedExitEnabled;
             document.getElementById('showRangePctSetting').checked = showRangePct;
             document.getElementById('earningsWarnSetting').checked = earningsWarnEnabled;
+            document.getElementById('stopVolWarnSetting').checked = stopVolWarnEnabled;
             document.getElementById('timedExitTimeSetting').disabled = !timedExitEnabled;
             syncTimedExitInputs();
         }
@@ -1037,7 +1046,8 @@
             time.disabled = !timedExitEnabled;
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
-            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
+            stopVolWarnEnabled = document.getElementById('stopVolWarnSetting').checked;
+            Object.entries({ maxHoldDays, timedExitEnabled, timedExitTime, showRangePct, earningsWarnEnabled, stopVolWarnEnabled }).forEach(([key, value]) => safeStorageSet(key, String(value)));
             timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
@@ -1282,6 +1292,7 @@
             if (save) safeStorageSet('globalMarketRegime', regime);
             styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
             styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
+            updateTwsActiveStrategyDisplay();
         }
 
         function openNavMenu() {
@@ -1373,21 +1384,43 @@
                 const openProviders = Object.entries(activeSockets)
                     .filter(([p, s]) => s && s.readyState === WebSocket.OPEN)
                     .map(([p]) => API_CONFIGS[p]?.name || p);
+                const connectingProviders = Object.entries(activeSockets)
+                    .filter(([p, s]) => s && s.readyState === WebSocket.CONNECTING)
+                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                const reconnectingProviders = Object.entries(reconnectTimeoutByProvider)
+                    .filter(([p, t]) => t !== null && t !== undefined)
+                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                const openSet = new Set(openProviders);
+                const pendingProviders = [...new Set([...connectingProviders, ...reconnectingProviders])]
+                    .filter(p => !openSet.has(p));
+                const isBusy = statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting();
+
                 if (openProviders.length >= 2) {
-                    txt.innerText = `LIVE (${openProviders.join(' + ')})`;
+                    txt.innerText = `LIVE (${openProviders.map(p => p.toUpperCase()).join(' + ')})`;
                     txt.className = 'text-cyan-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-cyan-500';
+                } else if (openProviders.length === 1 && (pendingProviders.length > 0 || isBusy)) {
+                    const pendingText = pendingProviders.length > 0
+                        ? pendingProviders.map(p => p.toUpperCase()).join(' + ')
+                        : '...';
+                    txt.innerText = `LIVE (${openProviders[0].toUpperCase()}) + ${pendingText} RECONNECTING`;
+                    txt.className = 'text-amber-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+                } else if (pendingProviders.length > 0 || isBusy) {
+                    const pendingText = pendingProviders.length > 0
+                        ? pendingProviders.map(p => p.toUpperCase()).join(' + ')
+                        : '';
+                    txt.innerText = pendingText ? `RECONNECTING (${pendingText})` : 'RECONNECTING';
+                    txt.className = 'text-amber-400 uppercase font-bold';
+                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
                 } else if (openProviders.length === 1) {
                     txt.innerText = `LIVE (${openProviders[0].toUpperCase()} ONLY)`;
                     txt.className = 'text-emerald-400 uppercase font-bold';
                     ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-                } else if (statusOverride === 'reconnecting' || isAnyReconnectPending() || isAnySocketConnecting()) {
-                    txt.innerText = 'RECONNECTING';
-                    txt.className = 'text-amber-400 uppercase font-bold';
-                    ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
-                    dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
                 } else if (statusOverride === 'offline' || !nyNow().isRTH) {
                     txt.innerText = nyNow().isRTH ? 'OFFLINE' : 'MKT CLOSED';
                     txt.className = 'text-gray-400 uppercase font-bold';
@@ -1640,7 +1673,7 @@
             toast.querySelector('#updateToastClose').onclick = hide;
         }
 
-        // ---------- Global error toast (bottom-right) ----------
+        // ---------- Global toasts (bottom-right) ----------
         function showErrorToast(message, ms = 6000) {
             let toast = document.getElementById('errorToast');
             if (!toast) {
@@ -1650,6 +1683,20 @@
                 document.body.appendChild(toast);
             }
             toast.innerText = typeof message === 'string' ? message : (message && message.message ? message.message : 'Something went wrong');
+            toast.className = 'fixed bottom-4 right-4 z-[130] bg-rose-950/90 border border-rose-500/40 text-rose-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
+            toast.style.display = 'block';
+            if (toast._hideTimer) clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
+        }
+        function showSuccessToast(message, ms = 4000) {
+            let toast = document.getElementById('errorToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'errorToast';
+                document.body.appendChild(toast);
+            }
+            toast.innerText = typeof message === 'string' ? message : 'Success';
+            toast.className = 'fixed bottom-4 right-4 z-[130] bg-emerald-950/90 border border-emerald-500/40 text-emerald-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
             toast.style.display = 'block';
             if (toast._hideTimer) clearTimeout(toast._hideTimer);
             toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
@@ -1703,6 +1750,8 @@
             const raw = String(text || '').slice(0, 30000)
                 .replace(/\r\n/g, '\n')
                 .replace(/\r/g, '\n')
+                .replace(/^Stops[\s&,.]+(?:BE\s+alarms?[\s,]*)?TP[\s-]*orders?:?\s*$/gim, '')
+                .replace(/^[-=]{3,}\s*$/gim, '')
                 .replace(/^Stops,\s*BE alarms,?\s*TP orders:?\s*$/gim, '')
                 // Strip Discord/Markdown bold stars around tickers.
                 .replace(/\$\s*(\*+)\s*([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
@@ -1765,8 +1814,9 @@
                 }
 
                 if (!legs.length) {
-                    warnings.push(`${ticker}: no LMT legs found.`);
-                    continue;
+                    // Stop-only paste: a single 100% stop leg with no profit target.
+                    const isShort = /short|buy\s+to\s+cover|buy\s+back/i.test(block);
+                    legs.push({ pct: 100, tp: 0, label: 'Stop only', action: isShort ? 'BUY' : 'SELL', stopOnly: true });
                 }
 
                 const explicitPcts = legs.map(l => l.pct);
@@ -1884,9 +1934,9 @@
                 <div class="exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
                         <span class="font-bold">${escapeHtml(t.ticker)}</span>
-                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
-                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
-                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        <select oninput="updateExitPasteSide(this)" class="exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600" title="Exit action: SELL for long, COVER for short">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>SELL</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>COVER</option>
                         </select>
                     </div>
                     <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
@@ -2234,6 +2284,259 @@
             throw new Error("Unknown provider");
         }
 
+        // ---------- 20-day volatility (ATR / ADR) helpers ----------
+        function computeAdrPct(bars, currentPrice) {
+            if (!Array.isArray(bars) || bars.length < 20 || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+            const ranges = [];
+            for (let i = bars.length - 20; i < bars.length; i++) {
+                const h = Number(bars[i].h ?? bars[i].high ?? bars[i].adjHigh);
+                const l = Number(bars[i].l ?? bars[i].low ?? bars[i].adjLow);
+                if (!Number.isFinite(h) || !Number.isFinite(l) || h <= l) return null;
+                ranges.push(h - l);
+            }
+            const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+            return Number(((avgRange / currentPrice) * 100).toFixed(4));
+        }
+
+        function computeAtrPct(bars, currentPrice) {
+            if (!Array.isArray(bars) || bars.length < 21 || !Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+            const trs = [];
+            for (let i = bars.length - 20; i < bars.length; i++) {
+                const h = Number(bars[i].h ?? bars[i].high ?? bars[i].adjHigh);
+                const l = Number(bars[i].l ?? bars[i].low ?? bars[i].adjLow);
+                const prevClose = Number(bars[i - 1].c ?? bars[i - 1].close ?? bars[i - 1].adjClose);
+                if (!Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(prevClose)) return null;
+                const tr = Math.max(h - l, Math.abs(h - prevClose), Math.abs(l - prevClose));
+                trs.push(tr);
+            }
+            const atr = trs.reduce((a, b) => a + b, 0) / trs.length;
+            return Number(((atr / currentPrice) * 100).toFixed(4));
+        }
+
+        function parseBarDate(v) {
+            const d = v.datetime || v.date;
+            if (!d) return 0;
+            const ms = Date.parse(String(d));
+            return Number.isFinite(ms) ? ms : 0;
+        }
+
+        function sortBars(bars) {
+            return [...bars].sort((a, b) => parseBarDate(a) - parseBarDate(b));
+        }
+
+        async function fetchTwelveDataVolatility(ticker, apiKey, signal) {
+            const result = { atrPct: null, adrPct: null, latestClose: null };
+            // 1) NATR for ATR%
+            try {
+                const natrRes = await fetchWithTimeout(`https://api.twelvedata.com/natr?symbol=${encodeURIComponent(ticker)}&interval=1day&time_period=20&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                if (natrRes.ok) {
+                    const natrData = await natrRes.json();
+                    if (natrData.status !== 'error' && Array.isArray(natrData.values) && natrData.values.length) {
+                        const sorted = sortBars(natrData.values);
+                        const latest = sorted[sorted.length - 1];
+                        const natr = parseFloat(latest?.natr);
+                        if (Number.isFinite(natr) && natr > 0) {
+                            result.atrPct = natr;
+                            // include_ohlc not set, so we don't have a close; use time_series below for latestClose
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Twelve Data NATR failed:', e.message); }
+
+            // 2) time_series for ADR% and latest close (also used to normalize NATR if we only have NATR)
+            try {
+                const tsRes = await fetchWithTimeout(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=25&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                if (tsRes.ok) {
+                    const tsData = await tsRes.json();
+                    if (tsData.status !== 'error' && Array.isArray(tsData.values) && tsData.values.length >= 20) {
+                        const sorted = sortBars(tsData.values);
+                        const latest = sorted[sorted.length - 1];
+                        const close = parseFloat(latest?.close);
+                        if (Number.isFinite(close) && close > 0) {
+                            result.latestClose = close;
+                            const bars = sorted.map(v => ({ h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close) }));
+                            const adrPct = computeAdrPct(bars, close);
+                            if (adrPct !== null) result.adrPct = adrPct;
+                            if (result.atrPct === null) {
+                                const atrPct = computeAtrPct(bars, close);
+                                if (atrPct !== null) result.atrPct = atrPct;
+                            }
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Twelve Data time_series failed:', e.message); }
+
+            // If we only have NATR% and a latest close, convert NATR% to an ATR% relative to that close
+            if (result.atrPct !== null && result.latestClose !== null && result.adrPct === null) {
+                // keep as-is, ADR still missing
+            }
+
+            return result;
+        }
+
+        async function fetchTiingoVolatility(ticker, apiKey, signal) {
+            const start = addTradingDays(nyDateStr(), -30); // extra days for safety
+            const res = await fetchWithTimeout(`https://api.tiingo.com/tiingo/daily/${encodeURIComponent(ticker)}/prices?startDate=${encodeURIComponent(start)}`, { headers: { 'Authorization': 'Token ' + apiKey, 'Accept': 'application/json' } }, 10000, signal);
+            if (!res.ok) throw new Error('Tiingo history error');
+            const data = await res.json();
+            if (!Array.isArray(data) || data.length < 21) throw new Error('Tiingo history too short');
+            const sorted = sortBars(data);
+            const latest = sorted[sorted.length - 1];
+            const close = Number(latest?.adjClose ?? latest?.close);
+            if (!Number.isFinite(close) || close <= 0) throw new Error('Tiingo history invalid');
+            const bars = sorted.map(v => ({ h: Number(v.adjHigh ?? v.high), l: Number(v.adjLow ?? v.low), c: Number(v.adjClose ?? v.close) }));
+            const atrPct = computeAtrPct(bars, close);
+            const adrPct = computeAdrPct(bars, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchFinnhubVolatility(ticker, apiKey, signal) {
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - 60 * 60 * 24 * 35; // 35 calendar days back
+            const res = await fetchWithTimeout(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${from}&to=${to}&token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+            if (!res.ok) throw new Error('Finnhub candles error');
+            const d = await res.json();
+            if (d.s !== 'ok' || !Array.isArray(d.c) || d.c.length < 21) throw new Error('Finnhub candles too short');
+            const bars = [];
+            for (let i = 0; i < d.c.length; i++) {
+                const h = Number(d.h[i]), l = Number(d.l[i]), c = Number(d.c[i]);
+                if (Number.isFinite(h) && Number.isFinite(l) && Number.isFinite(c) && h > 0 && l > 0 && c > 0) {
+                    bars.push({ h, l, c, t: d.t[i] });
+                }
+            }
+            if (bars.length < 21) throw new Error('Finnhub candles too short after filter');
+            const sorted = bars.sort((a, b) => (a.t || 0) - (b.t || 0));
+            const latest = sorted[sorted.length - 1];
+            const close = latest.c;
+            const atrPct = computeAtrPct(sorted, close);
+            const adrPct = computeAdrPct(sorted, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchStockDataVolatility(ticker, apiKey, signal) {
+            const start = addTradingDays(nyDateStr(), -30);
+            const res = await fetchWithTimeout(`https://api.stockdata.org/v1/data/eod?symbols=${encodeURIComponent(ticker)}&date_from=${encodeURIComponent(start)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+            if (!res.ok) throw new Error('StockData EOD error');
+            const d = await res.json();
+            if (!d.data || !Array.isArray(d.data) || d.data.length < 21) throw new Error('StockData EOD too short');
+            const sorted = sortBars(d.data);
+            const latest = sorted[sorted.length - 1];
+            const close = Number(latest.close ?? latest.price);
+            if (!Number.isFinite(close) || close <= 0) throw new Error('StockData EOD invalid');
+            const bars = sorted.map(v => ({ h: Number(v.high ?? v.day_high), l: Number(v.low ?? v.day_low), c: Number(v.close ?? v.price) }));
+            const atrPct = computeAtrPct(bars, close);
+            const adrPct = computeAdrPct(bars, close);
+            return { atrPct, adrPct, latestClose: close };
+        }
+
+        async function fetchVolatilityData(ticker, signal) {
+            const now = Date.now();
+            const cache = volatilityCache[ticker];
+            if (cache && cache.status === 'ok' && (now - cache.checkedAt) < 300000) return cache;
+
+            let atrPct = null;
+            let adrPct = null;
+            let latestClose = null;
+
+            const tryTwelve = async () => {
+                const key = safeStorageGet(API_CONFIGS.twelvedata.storageKey);
+                if (!key) return;
+                const v = await fetchTwelveDataVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryTiingo = async () => {
+                const key = safeStorageGet(API_CONFIGS.tiingo.storageKey);
+                if (!key) return;
+                const v = await fetchTiingoVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryFinnhub = async () => {
+                const key = safeStorageGet(API_CONFIGS.finnhub.storageKey);
+                if (!key) return;
+                const v = await fetchFinnhubVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            const tryStockData = async () => {
+                const key = safeStorageGet(API_CONFIGS.stockdata.storageKey);
+                if (!key) return;
+                const v = await fetchStockDataVolatility(ticker, key, signal);
+                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
+                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
+                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
+            };
+
+            try {
+                await tryTwelve();
+                if (atrPct === null || adrPct === null) await tryTiingo();
+                if (atrPct === null || adrPct === null) await tryFinnhub();
+                if (atrPct === null || adrPct === null) await tryStockData();
+
+                const status = (atrPct !== null || adrPct !== null) ? 'ok' : 'error';
+                const result = { ticker, atrPct, adrPct, latestClose, refPct: null, checkedAt: now, status };
+                if (result.status === 'ok') {
+                    result.refPct = Math.max(result.atrPct || 0, result.adrPct || 0);
+                }
+                volatilityCache[ticker] = result;
+                return result;
+            } catch (e) {
+                console.warn(`Volatility fetch failed for ${ticker}:`, e.message);
+                const result = { ticker, atrPct: null, adrPct: null, latestClose: null, refPct: null, checkedAt: now, status: 'error' };
+                volatilityCache[ticker] = result;
+                return result;
+            }
+        }
+
+        async function refreshVolatilityForScan() {
+            if (!stopVolWarnEnabled) return;
+            const requestId = ++volatilityRequestId;
+            const tickers = realtimeTasks.map(t => t.ticker).filter(t => realtimeQuotes[t]);
+            if (!tickers.length) return;
+            // use the active fetch session if present, else a fresh controller
+            const controller = activeFetchSession || new AbortController();
+            await Promise.all(tickers.map(async (t) => {
+                if (requestId !== volatilityRequestId) return;
+                try {
+                    await fetchVolatilityData(t, controller.signal);
+                } catch (e) { /* non-fatal */ }
+            }));
+            if (requestId === volatilityRequestId) {
+                const container = document.getElementById('resultsContainer');
+                if (container) refreshAllVisible(container);
+            }
+        }
+
+        function stopVolatilityWarning(ticker, riskPerShare, c, isLong) {
+            if (!stopVolWarnEnabled) return null;
+            const v = volatilityCache[ticker];
+            if (!v || v.status !== 'ok' || !Number.isFinite(c) || c <= 0 || !Number.isFinite(riskPerShare) || riskPerShare <= 0) return null;
+            let liveAtrPct = v.atrPct;
+            let liveAdrPct = v.adrPct;
+            if (v.latestClose > 0 && c !== v.latestClose) {
+                if (liveAtrPct !== null) liveAtrPct = Number(((liveAtrPct / 100 * v.latestClose / c) * 100).toFixed(4));
+                if (liveAdrPct !== null) liveAdrPct = Number(((liveAdrPct / 100 * v.latestClose / c) * 100).toFixed(4));
+            }
+            const refPct = Math.max(liveAtrPct || 0, liveAdrPct || 0);
+            if (refPct <= 0) return null;
+            const stopSizePct = (riskPerShare / c) * 100;
+            const limitMultiple = isLong ? 2.5 : 1.5;
+            const limitPct = limitMultiple * refPct;
+            if (stopSizePct > limitPct) {
+                const ratio = stopSizePct / refPct;
+                const rounded = Math.round(ratio * 10) / 10;
+                return { text: `STOP ${rounded.toFixed(1)}×`, ratio };
+            }
+            return null;
+        }
+
         function disconnectWebSocket() {
             streamGeneration++;
             if (activeFetchSession) { try { activeFetchSession.abort(); } catch (e) {} activeFetchSession = null; }
@@ -2241,8 +2544,15 @@
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
+            if (connectionTimeout) {
+                clearTimeout(connectionTimeout);
+                connectionTimeout = null;
+            }
             Object.keys(reconnectTimeoutByProvider).forEach(k => {
                 if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; }
+            });
+            Object.keys(connectionTimeoutByProvider).forEach(k => {
+                if (connectionTimeoutByProvider[k]) { clearTimeout(connectionTimeoutByProvider[k]); connectionTimeoutByProvider[k] = null; }
             });
             if (resyncTimer) {
                 clearInterval(resyncTimer);
@@ -2274,6 +2584,7 @@
             reconnectAttempts = 0;
             Object.keys(reconnectAttemptsByProvider).forEach(k => { reconnectAttemptsByProvider[k] = 0; });
             Object.keys(reconnectTimeoutByProvider).forEach(k => { if (reconnectTimeoutByProvider[k]) { clearTimeout(reconnectTimeoutByProvider[k]); reconnectTimeoutByProvider[k] = null; } });
+            Object.keys(connectionTimeoutByProvider).forEach(k => { if (connectionTimeoutByProvider[k]) { clearTimeout(connectionTimeoutByProvider[k]); connectionTimeoutByProvider[k] = null; } });
             lastTradeAt = {};
             tradeTimestamps = {};
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
@@ -2446,6 +2757,7 @@
             }
 
             applyFocusMode();
+            syncTwsSendButtons();
         }
 
         function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers, announce = true) {
@@ -2521,6 +2833,7 @@
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
+            refreshVolatilityForScan();
 
             // 2. Open WebSocket with Auto-Reconnect only if at least one baseline succeeded
             if (anySuccess) {
@@ -2566,6 +2879,7 @@
             renderRealtimeSnapshot(container, riskVal, slippageVal);
             speakResults(lastRenderedSnapshot);
             refreshEarningsForScan();
+            refreshVolatilityForScan();
 
             if (anySuccess) {
                 connectSocket(mainProvider, mainKey, riskVal, slippageVal, container, gen, true);
@@ -2623,13 +2937,30 @@
                 ? { get attempts() { return reconnectAttemptsByProvider[provider] ?? 0; },
                     set attempts(v) { reconnectAttemptsByProvider[provider] = v; },
                     get timer() { return reconnectTimeoutByProvider[provider] ?? null; },
-                    set timer(v) { reconnectTimeoutByProvider[provider] = v; } }
+                    set timer(v) { reconnectTimeoutByProvider[provider] = v; },
+                    get connectionTimeout() { return connectionTimeoutByProvider[provider] ?? null; },
+                    set connectionTimeout(v) { connectionTimeoutByProvider[provider] = v; } }
                 : { get attempts() { return reconnectAttempts; },
                     set attempts(v) { reconnectAttempts = v; },
                     get timer() { return reconnectTimeout; },
-                    set timer(v) { reconnectTimeout = v; } };
+                    set timer(v) { reconnectTimeout = v; },
+                    get connectionTimeout() { return connectionTimeout; },
+                    set connectionTimeout(v) { connectionTimeout = v; } };
+
+            // Watchdog: if the handshake has not completed in 10 seconds, force a close
+            // so onclose can schedule a reconnect instead of hanging in CONNECTING.
+            reconnectState.connectionTimeout = setTimeout(() => {
+                if (socket.readyState !== WebSocket.OPEN) {
+                    console.warn(`${provider} WebSocket connection timeout; forcing close`);
+                    try { socket.close(); } catch (e) {}
+                }
+            }, 10000);
 
             socket.onopen = () => {
+                if (reconnectState.connectionTimeout) {
+                    clearTimeout(reconnectState.connectionTimeout);
+                    reconnectState.connectionTimeout = null;
+                }
                 if (!isCurrent()) { try { socket.close(); } catch (e) {} return; }
                 reconnectState.attempts = 0;
                 setCalcBtnStreaming(true);
@@ -2711,11 +3042,19 @@
                 } catch (err) { console.warn('WebSocket message error:', err); }
             };
 
-            socket.onerror = () => {
-                if (isCurrent()) updateTopStatus('reconnecting');
+            socket.onerror = (event) => {
+                if (isCurrent()) {
+                    console.warn(`${provider} WebSocket error:`, event);
+                    updateTopStatus('reconnecting');
+                }
             };
 
-            socket.onclose = () => {
+            socket.onclose = (event) => {
+                if (reconnectState.connectionTimeout) {
+                    clearTimeout(reconnectState.connectionTimeout);
+                    reconnectState.connectionTimeout = null;
+                }
+                if (isCurrent()) console.warn(`${provider} WebSocket closed`, { code: event?.code, reason: event?.reason, wasClean: event?.wasClean });
                 if (!isCurrent()) return;
                 const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
                 const marketOpen = nyNow().isRTH;
@@ -2752,6 +3091,7 @@
             const container = document.getElementById('resultsContainer');
             const btn = document.getElementById('calcBtn');
             const errorMsg = document.getElementById('errorMsg');
+            let didStartStream = false;
 
             try {
                 calculating = true;
@@ -2799,6 +3139,9 @@
 
                 if (tasks.length === 0) return;
 
+                // ATR/ADR is fetched once per Calculate per ticker (not continuously like live prices).
+                tasks.forEach(t => delete volatilityCache[t.ticker]);
+
                 // Selections only make sense for tickers that are still on the board.
                 Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
                 updateBatchBar();
@@ -2810,15 +3153,17 @@
                 if (isEnhanced && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
                     await startEnhancedWebSocketStream(mainProvider, mainKey, secondaryProvider, secondaryKey, tasks, riskVal, slippageVal, container);
-                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
-                    if (collapseAfterCalc) setScannerCollapsed(true);
+                    didStartStream = Object.keys(realtimeQuotes).length > 0;
+                    if (!didStartStream) setCalcBtnStreaming(false);
+                    if (collapseAfterCalc && didStartStream) setScannerCollapsed(true);
                     return;
                 }
                 if (config.supportsWs && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
                     await startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container);
-                    if (Object.keys(realtimeQuotes).length === 0) setCalcBtnStreaming(false);
-                    if (collapseAfterCalc) setScannerCollapsed(true);
+                    didStartStream = Object.keys(realtimeQuotes).length > 0;
+                    if (!didStartStream) setCalcBtnStreaming(false);
+                    if (collapseAfterCalc && didStartStream) setScannerCollapsed(true);
                     return;
                 }
 
@@ -2859,6 +3204,7 @@
                     speakResults(results);
                     applyFocusMode();
                     refreshEarningsForScan();
+                    refreshVolatilityForScan();
 
                     const successCount = results.filter(r => r.success).length;
                     const metricDiv = document.createElement('div');
@@ -2875,7 +3221,7 @@
                     if (activeFetchSession === controller) activeFetchSession = null;
                     if (gen === streamGeneration) {
                         setCalcBtnStreaming(false);
-                        if (collapseAfterCalc) setScannerCollapsed(true);
+                        if (collapseAfterCalc && didStartStream) setScannerCollapsed(true);
                     }
                 }
             } finally {
@@ -2920,8 +3266,9 @@
             const signalSide = item.signalSide || null;
             const sideMismatch = !!(signalSide && signalSide !== setupType);
             const earn = earningsBadgeFor(ticker);
+            const stopWarn = stopVolatilityWarning(ticker, riskPerShare, c, isGreenDay);
             return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive,
-                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn };
+                     riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn, stopWarn };
         }
 
         function fmtMoneyShort(v) {
@@ -2970,6 +3317,7 @@
         const exitBtnCardClass = (f) => `shrink-0 w-[4.4rem] ${f.isGreenDay ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/60 border-rose-500/40 text-rose-300'} border rounded-md text-[9px] font-bold uppercase leading-tight px-1`;
         const exitBtnRowClass = (f) => `shrink-0 px-1.5 py-1.5 text-[8px] font-bold uppercase rounded ${f.isGreenDay ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40' : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'}`;
         const earnBadgeClass = 'text-[8px] font-bold text-amber-300 leading-none whitespace-nowrap';
+        const stopWarnBadgeClass = 'text-[8px] font-bold text-rose-300 leading-none whitespace-nowrap';
 
         function syncExitButton(exitBtn, f) {
             if (!exitBtn) return;
@@ -3001,6 +3349,7 @@
                             <div class="flex items-center gap-1 mt-1 leading-none">
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
                                 <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
+                                <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}${stopWarnBadgeClass}" title="Stop is wider than ${f.isGreenDay ? '2.5' : '1.5'}× the 20-day ATR/ADR">⚠ ${f.stopWarn ? escapeHtml(f.stopWarn.text) : ''}</span>
                             </div>
                             <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                         </div>
@@ -3024,10 +3373,9 @@
                     </div>
                 </div>
                 <div class="flex items-stretch gap-1.5">
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnCardClass(f)}">
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnCardClass(f)}">
                         Exit<br>Orders
                     </button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-black uppercase rounded-md px-1.5 py-1 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">SEND</span></button>` : ''}
                     <div class="flex-1 min-w-0 bg-slate-900/50 rounded-md py-1 text-center border border-cyan-500/20 copy-hover" data-shares="${f.shares}" onclick="copyToClipboard(this.dataset.shares, this)">
                         <div class="text-[8px] text-cyan-400/80 uppercase font-bold">Shares</div>
                         <div class="text-lg font-mono-num font-black text-cyan-300 relative leading-tight">
@@ -3041,6 +3389,7 @@
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.stopPrice.toFixed(2)}</div>
                         <div data-field="rps" class="text-[8px] text-gray-500 font-mono-num leading-none">R/sh ${f.riskPerShare.toFixed(2)}</div>
                     </div>
+                    ${twsEnabled ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="shrink-0 w-[4.4rem] bg-blue-600/80 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded-md px-1 py-1 leading-tight border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}</span></button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -3059,6 +3408,8 @@
             }
             const sideWarn = q('sideWarn');
             if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
+            const stopWarn = q('stopWarn');
+            if (stopWarn) { setTextIfChanged(stopWarn, f.stopWarn ? '⚠ ' + f.stopWarn.text : ''); setHidden(stopWarn, !f.stopWarn); }
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
@@ -3086,6 +3437,14 @@
                 syncExitButton(exitBtn, f);
                 const newExitClass = exitBtnCardClass(f);
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
+            }
+            const sendBtn = card.querySelector('[data-action="send-tws-entry"]');
+            if (sendBtn) {
+                const label = sendBtn.querySelector('.tws-send-label');
+                const defaultHtml = `OPEN<br>${f.isGreenDay ? 'LONG' : 'SHORT'}`;
+                sendBtn.dataset.twsDefaultLabel = defaultHtml;
+                sendBtn.title = autoSendExitsOnOpen ? `Send an entry + exit bracket to TWS for ${f.shares} shares` : `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
+                if (sendBtn.dataset.twsState === 'idle' && label) label.innerHTML = defaultHtml;
             }
         }
 
@@ -3143,6 +3502,7 @@
                         <div class="flex items-center gap-1 mt-0.5 leading-none">
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
                             <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
+                            <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}text-[9px] text-rose-300 leading-none" title="Stop wider than ${f.isGreenDay ? '2.5' : '1.5'}× 20-day ATR/ADR">⚠</span>
                         </div>
                         <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                     </div>
@@ -3170,8 +3530,8 @@
                         <div class="text-[8px] text-gray-500 uppercase font-bold leading-none">Stop</div>
                         <div data-field="stopPrice" class="text-[12px] font-mono-num font-bold text-red-400 leading-tight">${f.stopPrice.toFixed(2)}</div>
                     </div>
-                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" class="${exitBtnRowClass(f)}">Ord</button>
-                    ${twsEnabled && twsBridgeToken ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
+                    <button data-action="open-exit-orders" data-ticker="${f.ticker}" data-long="${f.isGreenDay}" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stopPrice}" data-ref="${f.isGreenDay ? f.l : f.h}" title="Review and send stop / take-profit exit orders" class="${exitBtnRowClass(f)}">Ord</button>
+                    ${twsEnabled ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
             return row;
@@ -3189,6 +3549,7 @@
                 if (setupType.className !== newSetupClass) setupType.className = newSetupClass;
             }
             setHidden(q('sideWarn'), !f.sideMismatch);
+            setHidden(q('stopWarn'), !f.stopWarn);
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
@@ -3211,6 +3572,8 @@
                 const newExitClass = exitBtnRowClass(f);
                 if (exitBtn.className !== newExitClass) exitBtn.className = newExitClass;
             }
+            const sendBtn = row.querySelector('[data-action="send-tws-entry"]');
+            if (sendBtn) sendBtn.title = autoSendExitsOnOpen ? `Send an entry + exit bracket to TWS for ${f.shares} shares` : `Send a Market Adaptive ${f.isGreenDay ? 'BUY' : 'SELL'} order to TWS for ${f.shares} shares`;
         }
 
         function copyToClipboard(text, element) {
@@ -3285,14 +3648,14 @@
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
 
-            // Update TWS send keys on modal buttons so send-state feedback targets the right ticker.
-            const modalSendBtns = overlay.querySelectorAll('[data-tws-key]');
-            if (modalSendBtns) {
-                modalSendBtns.forEach(btn => {
-                    if (btn.textContent.includes('ENTRY')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'entry');
-                    else if (btn.textContent.includes('EXITS')) btn.dataset.twsKey = twsSendKey(currentModalState.ticker, 'exits');
-                });
+            // Update TWS send key on modal send-exits button and reset its state.
+            const modalSendExits = document.getElementById('modalSendExits');
+            if (modalSendExits) {
+                const modalExitsKey = twsSendKey(currentModalState.ticker, 'exits');
+                modalSendExits.setAttribute('data-tws-key', modalExitsKey);
+                resetTwsSendState(modalExitsKey);
             }
+            syncTwsSendButtons();
 
             try {
                 document.getElementById('modalTickerBadge').innerText = currentModalState.ticker;
@@ -3415,23 +3778,37 @@
                 return;
             }
             ruleText.innerText = (built.strategy && built.strategy.name ? built.strategy.name + ' · ' : '') + `Exit by day ${maxHoldDays}. TIF GTC.`;
-            cardsContainer.innerHTML = built.preview.map((p, i) => `
+            const modalRiskPerShare = Math.abs(entry - stop);
+            const modalStopWarn = stopVolatilityWarning(currentModalState.ticker, modalRiskPerShare, entry, currentModalState.isLong);
+            const modalWarnHtml = modalStopWarn ? `<div class="text-[10px] text-rose-300 font-bold mb-2">⚠ ${escapeHtml(modalStopWarn.text)} — stop is wider than ${currentModalState.isLong ? '2.5' : '1.5'}× 20-day ATR/ADR</div>` : '';
+            cardsContainer.innerHTML = modalWarnHtml + built.preview.map((p, i) => `
                 <div class="bg-slate-900/60 p-2.5 rounded-xl border border-white/10 flex justify-between items-center gap-2">
                     <div>
                         <div class="text-[10px] text-gray-400 font-bold uppercase">${p.action} ${p.qty} · ${escapeHtml(p.oca)}</div>
                         <div class="text-xs font-black text-white">
                             ${stopLabelHtml(p)}
-                            <span class="text-gray-500">+</span>
+                            ${p.stopOnly ? '<span class="text-gray-500">· stop only</span>' : `<span class="text-gray-500">+</span>
                             LMT <input type="number" step="0.01" id="modal-tp-${i}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-xs px-1 py-0.5 rounded border border-slate-600 text-center" oninput="onModalTpInput(this, ${p.legIndex})">
-                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>
+                            <span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R' + (p.stopMode!=='fixed'?' · stop ' + escapeHtml(p.stopMode):'') + ')' : (p.stopMode!=='fixed'?'(stop ' + escapeHtml(p.stopMode) + ')':'')}</span>`}
                         </div>
                     </div>
                     <div class="flex gap-1">
                         <button onclick="copySingleValue('${p.stop.toFixed(2)}', this)" class="bg-slate-800 text-red-300 border border-red-500/30 px-2 py-1 rounded text-[10px] font-bold">Stop</button>
-                        <button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>
+                        ${p.stopOnly ? '' : `<button onclick="copyModalTp(${i}, this)" class="bg-slate-800 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold">TP</button>`}
                     </div>
                 </div>
             `).join('') + timedExitSummaryHtml(built) + buildNotesHtml(built);
+
+            const modalSendExits = document.getElementById('modalSendExits');
+            if (modalSendExits) {
+                const exitOrderCount = built.rows.filter(r => r[7]).length;
+                const exitLabel = exitOrderCount > 1 ? 'Send Exit Orders' : 'Send Exit Order';
+                modalSendExits.setAttribute('data-tws-default-label', exitLabel);
+                if (modalSendExits.getAttribute('data-tws-state') !== 'sent' && modalSendExits.getAttribute('data-tws-state') !== 'error' && modalSendExits.getAttribute('data-tws-state') !== 'unknown') {
+                    const span = modalSendExits.querySelector('.tws-send-label');
+                    if (span) span.innerText = exitLabel;
+                }
+            }
         }
 
         function copySingleValue(val, btnElement) {
@@ -3479,7 +3856,7 @@
             const customTps = readCustomTpsFromDom();
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
             if (!built.ok) { alert(built.error); return; }
-            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}`).join(' | ');
+            const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)}${p.stopOnly ? ' (stop only)' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
             navigator.clipboard.writeText(summary).then(() => alert('Order summary copied to clipboard!'));
         }
@@ -3528,7 +3905,7 @@
             if (legs.some(l => !l || !Number.isFinite(Number(l.pct)) || Number(l.pct) < 0)) return 'Leg percentages must be non-negative numbers';
             const sum = legs.reduce((a, l) => a + Number(l.pct), 0);
             if (Math.abs(sum - 100) > 0.000001) return `Strategy legs total ${Math.round(sum * 100) / 100}% (must be 100%)`;
-            if (legs.some(l => !Number.isFinite(Number(l.rr)) || !(Number(l.rr) > 0))) return 'Each leg needs a TP (R) above 0';
+            if (legs.some(l => !Number.isFinite(Number(l.rr)) || !(Number(l.rr) > 0) && !l.stopOnly)) return 'Each leg needs a TP (R) above 0, or enable stopOnly';
             if (legs.some(l => !['fixed', 'breakeven', 'plus1'].includes(l.stopMode || 'fixed'))) return 'Unknown stop mode';
             return null;
         }
@@ -3564,13 +3941,15 @@
             }
             const rps = allowNoEntry ? 0 : (isLong ? (entry - stop) : (stop - entry));
             const action = isLong ? 'SELL' : 'BUY';
+            const explicitLegsForStrat = explicit && explicit.length ? explicit : (explicit ? [{ pct: 100, tp: 0, label: 'Stop only', stopOnly: true }] : []);
             const strat = explicit ? {
                 id: 'pasted',
                 name: 'Pasted',
-                legs: explicit.map(l => ({
+                legs: explicitLegsForStrat.map(l => ({
                     pct: l.pct,
                     rr: (rps > 0 && l.tp > 0) ? Math.abs(l.tp - entry) / rps : ((allowNoEntry && l.tp > 0) ? 1 : 0),
-                    stopMode: 'fixed'
+                    stopMode: 'fixed',
+                    stopOnly: l.stopOnly === true || !(l.tp > 0)
                 }))
             } : getStrategyById(strategyId || defaultStrategyId(isLong));
             const legErr = strategyLegsError(strat);
@@ -3595,17 +3974,14 @@
             strat.legs.forEach((leg, i) => {
                 const qty = qtys[i];
                 if (!qty) return;
-                const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
-                const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
-                const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
-                const tp = customTp || explicitTp || defaultTp;
+                const stopOnly = leg.stopOnly === true;
                 const oca = `${ticker}_${strat.id}_L${i + 1}${suffix}`;
                 let stopMode = leg.stopMode || 'fixed';
                 let stp = stop;
                 let adjStop = null, adjTrigger = null;
-                if (stopMode !== 'fixed') {
+                if (stopMode !== 'fixed' && !stopOnly) {
                     const prevLeg = preview[preview.length - 1];
-                    if (prevLeg) {
+                    if (prevLeg && !prevLeg.stopOnly) {
                         // Adjustable stop: sits at the original stop until the previous leg's TP prints, then moves.
                         adjStop = stopPriceForLeg(isLong, entry, stop, stopMode);
                         adjTrigger = Number(prevLeg.tp.toFixed(2));
@@ -3621,18 +3997,26 @@
                     stpRow[TWS_COL.ADJ_STOP] = adjStop.toFixed(2);
                 }
                 rows.push(stpRow);
-                rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
+                let tp = 0, trueRr = 0, rr = 0;
+                if (!stopOnly) {
+                    const defaultTp = isLong ? entry + Number(leg.rr) * rps : entry - Number(leg.rr) * rps;
+                    const explicitTp = explicit && explicit[i] && explicit[i].tp > 0 ? explicit[i].tp : null;
+                    const customTp = Array.isArray(customTps) && customTps[i] > 0 ? customTps[i] : null;
+                    tp = customTp || explicitTp || defaultTp;
+                    rr = Number(leg.rr);
+                    trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
+                    rows.push([action, qty, ticker, "STK", "SMART", "USD", "GTC", "LMT", tp.toFixed(2), '', ticker, oca]);
+                    if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                }
                 if (timedEnabled) {
                     const isMoc = timed.time === 'MOC';
                     const exitRow = [action, qty, ticker, "STK", "SMART", "USD", isMoc ? "DAY" : "GTC", isMoc ? "MOC" : "MKT", '', '', ticker, oca];
                     exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
                     rows.push(exitRow);
                 }
-                const trueRr = rps > 0 ? Number((Math.abs(tp - entry) / rps).toFixed(2)) : 0;
-                preview.push({ ticker, action, qty, stop: stp, tp, rr: leg.rr, trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null });
-                if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
+                preview.push({ ticker, action, qty, stop: stp, tp: stopOnly ? 0 : tp, rr: stopOnly ? 0 : rr, trueRr: stopOnly ? 0 : trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null, stopOnly });
             });
-            if (preview.some(p => !Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0)) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
+            if (preview.some(p => !p.stopOnly && (!Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0))) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
             if (timedEnabled || preview.some(p => p.adjStop !== null)) {
                 rows.forEach(r => { r[TWS_COL.OCA_TYPE] = 2; });
                 notes.push('EXPERIMENTAL: validate all fields and proportional OCA reduction in TWS paper, including partial fills. These orders do not read account positions or cancel unrelated orders.');
@@ -3757,16 +4141,19 @@
                 return;
             }
             body.innerHTML = trades.map(t => {
+                const riskPerShare = Math.abs(t.entry - t.stop);
+                const warn = stopVolatilityWarning(t.ticker, riskPerShare, t.entry, t.isLong);
                 const rows = t.built.preview.map((p, i) => `
                 <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
                     <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
                     <span class="w-14 text-center">${p.action} ${p.qty}</span>
                     <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
-                    <span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>
+                    ${p.stopOnly ? '<span class="text-gray-500">stop only</span>' : `<span class="text-emerald-300 inline-flex items-center gap-1">LMT <input type="number" step="0.01" data-ticker="${p.ticker}" data-leg-idx="${p.legIndex}" value="${p.tp.toFixed(2)}" class="w-16 bg-slate-800 text-emerald-300 font-mono-num font-bold text-[10px] px-1 py-0 rounded border border-slate-600 text-center" oninput="onBatchPreviewTpInput(this)"><span class="text-emerald-400">${p.trueRr > 0 ? '(' + p.trueRr + 'R)' : ''}</span>${p.label ? `<span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>`}
                     <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
                 </div>
             `).join('');
-                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${rows}</div>`;
+                const warnHtml = warn ? `<div class="text-[10px] text-rose-300 font-bold mb-1">⚠ ${escapeHtml(warn.text)} — stop is wider than ${t.isLong ? '2.5' : '1.5'}× 20-day ATR/ADR</div>` : '';
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-2">${warnHtml}${rows}</div>`;
             }).join('') + timedExitSummaryHtml(trades[0].built) + trades.map(t => buildNotesHtml(t.built)).join('');
         }
 
@@ -3823,8 +4210,8 @@
                         <div class="shrink-0 flex items-center gap-1">
                             <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>
                             <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
-                                <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
-                                <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
+                                <option value="long" ${isLong ? 'selected' : ''}>SELL</option>
+                                <option value="short" ${!isLong ? 'selected' : ''}>COVER</option>
                             </select>
                         </div>
                         <div class="shrink-0 flex items-center gap-2">
@@ -4045,7 +4432,7 @@
             const box = el.querySelector('.b-preview');
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit });
             if (!built.ok) { box.innerText = built.error; return; }
-            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)} / LMT $${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
+            box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)}${p.stopOnly ? '' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
                 + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
@@ -4112,9 +4499,9 @@
                 <div class="builder-exit-paste-trade" data-idx="${i}" data-ticker="${t.ticker}">
                     <div class="flex items-center gap-2">
                         <span class="font-bold">${escapeHtml(t.ticker)}</span>
-                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600">
-                            <option value="long" ${t.isLong ? 'selected' : ''}>LONG</option>
-                            <option value="short" ${!t.isLong ? 'selected' : ''}>SHORT</option>
+                        <select oninput="updateBuilderExitPasteSide(this)" class="builder-exit-paste-side bg-slate-800 text-white text-[10px] font-bold rounded border border-slate-600" title="Exit action: SELL for long, COVER for short">
+                            <option value="long" ${t.isLong ? 'selected' : ''}>SELL</option>
+                            <option value="short" ${!t.isLong ? 'selected' : ''}>COVER</option>
                         </select>
                     </div>
                     <div class="text-cyan-300"><span class="text-red-300 font-bold">Stop $${t.stop.toFixed(2)}</span> | ${t.legs.map(l => `${l.pct}% @ $${l.tp.toFixed(2)}${l.label ? ' (' + escapeHtml(l.label) + ')' : ''}`).join(' | ')}</div>
@@ -4229,6 +4616,7 @@
             if (a) regimeStrategyMap.expanding = a.value;
             if (b) regimeStrategyMap.declining = b.value;
             safeStorageSet('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+            updateTwsActiveStrategyDisplay();
         }
 
         function persistCustomStrategies() {
@@ -4758,7 +5146,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.5.1",
+                version: "2.6.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -4783,10 +5171,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -4917,7 +5305,7 @@
             const headers = { 'Content-Type': 'application/json' };
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
             try {
-                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 8000);
+                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
                 return await res.json();
             } catch (e) {
                 return { ok: false, error: e.message || 'Network error' };
@@ -4949,48 +5337,73 @@
         function updateTwsStatusUI() {
             const el = document.getElementById('twsStatus');
             if (!el) return;
-            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; return; }
-            if (twsConnected) {
+            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; }
+            else if (twsConnected) {
                 el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
                 el.className = 'text-[10px] font-mono-num text-emerald-400';
             } else {
                 el.textContent = 'Not connected';
                 el.className = 'text-[10px] font-mono-num text-red-400';
             }
+            syncTwsSendButtons();
+        }
+        function updateTwsActiveStrategyDisplay() {
+            const el = document.getElementById('twsActiveStrategyDisplay');
+            if (!el) return;
+            const longStrat = getStrategyById(defaultStrategyId(true));
+            const shortStrat = getStrategyById(defaultStrategyId(false));
+            const regime = globalMarketRegime === 'declining' ? 'Declining' : 'Expanding';
+            el.innerHTML = `Exit strategy — Regime: ${regime} · Long: ${escapeHtml(longStrat.name)} · Short: ${escapeHtml(shortStrat.name)}`;
         }
         function saveTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
+            const autoEl = document.getElementById('autoSendExitsOnOpenSetting');
             twsEnabled = en ? en.checked : false;
             twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
             twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
+            autoSendExitsOnOpen = autoEl ? autoEl.checked : false;
             safeStorageSet('twsEnabled', String(twsEnabled));
             safeStorageSet('twsBridgeUrl', twsBridgeUrl);
             safeStorageSet('twsBridgeToken', twsBridgeToken);
+            safeStorageSet('autoSendExitsOnOpen', String(autoSendExitsOnOpen));
             if (twsEnabled && twsBridgeToken) { startTwsHealthPolling(); } else { stopTwsHealthPolling(); twsConnected = false; }
             updateTwsStatusUI();
             syncTwsSendButtons();
+            updateTwsActiveStrategyDisplay();
         }
         function loadTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
+            const autoEl = document.getElementById('autoSendExitsOnOpenSetting');
             if (en) en.checked = twsEnabled;
             if (urlEl) urlEl.value = twsBridgeUrl;
             if (tokEl) tokEl.value = twsBridgeToken;
+            if (autoEl) autoEl.checked = autoSendExitsOnOpen;
             if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
             updateTwsStatusUI();
+            syncTwsSendButtons();
+            updateTwsActiveStrategyDisplay();
         }
         async function testTwsConnection() {
             const el = document.getElementById('twsStatus');
             if (el) { el.textContent = 'Testing…'; el.className = 'text-[10px] font-mono-num text-amber-400'; }
             const data = await bridgeHealth();
             updateTwsStatusUI();
-            if (data && data.connected) {
-                showErrorToast('TWS connected' + (data.account ? ' · ' + data.account : ''), 4000);
-            } else {
+            if (!data || !data.connected) {
                 showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+                return;
+            }
+            // POST ping validates token and CORS for the actual order endpoint.
+            const ping = await bridgeRequest('/orders', { symbol: 'TEST', orders: [], orderRef: 'PSC-ping-' + Date.now() });
+            if (ping && ping.ok) {
+                showSuccessToast('TWS connected' + (data.account ? ' · ' + data.account : '') + ' · order POST ok', 4000);
+            } else if (ping && ping.error) {
+                showErrorToast('TWS bridge reached but order POST failed: ' + ping.error, 6000);
+            } else {
+                showErrorToast('TWS bridge reached but order POST failed: ' + (ping ? 'unknown' : 'no response'), 6000);
             }
         }
         // ---------- Payload builders ----------
@@ -5021,11 +5434,13 @@
                 if (!orderType) continue;
                 n++;
                 const order = {
+                    symbol: row[2],
                     action: row[0],
                     quantity: parseInt(row[1], 10) || 0,
                     orderType,
                     tif: row[6] || 'GTC',
                     outsideRth: orderType === 'LMT',
+                    adaptive: false,
                     transmit: true,
                     ocaGroup: row[11] || undefined,
                     ocaType: row[16] ? parseInt(row[16], 10) : 1,
@@ -5042,6 +5457,8 @@
                 orders.push(order);
             }
             if (!orders.length) return { ok: false, error: 'No orders produced' };
+            // Pure exit OCA: every member is transmitted. The bridge waits for each order's
+            // orderStatus before placing the next one, so TWS builds the OCA group correctly.
             return { ok: true, symbol: orders[0] && built.preview[0] ? built.preview[0].ticker : '', orders };
         }
         // ---------- Send-state machine ----------
@@ -5057,13 +5474,13 @@
             else if (state === 'sent') { label.textContent = 'SENT'; el.classList.remove('opacity-60'); el.classList.add('text-emerald-400'); el.disabled = false; }
             else if (state === 'unknown') { label.textContent = 'UNKNOWN'; el.classList.remove('opacity-60'); el.classList.add('text-amber-400'); el.disabled = false; }
             else if (state === 'error') { label.textContent = 'ERR'; el.classList.remove('opacity-60'); el.classList.add('text-red-400'); el.disabled = false; }
-            else { label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            else { label.innerHTML = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
             if (msg) el.title = msg;
         }
         function resetTwsSendState(key) {
             twsSendState[key] = 'idle';
             const el = document.querySelector('[data-tws-key="' + key + '"]');
-            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.textContent = 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
+            if (el) { el.dataset.twsState = 'idle'; const label = el.querySelector('.tws-send-label') || el; label.innerHTML = el.dataset.twsDefaultLabel || 'SEND'; el.classList.remove('opacity-60','text-emerald-400','text-amber-400','text-red-400'); el.disabled = false; }
         }
         // ---------- Send handlers ----------
         async function sendTwsEntry(ticker) {
@@ -5078,6 +5495,7 @@
             const result = await bridgeRequest('/order', payload);
             if (result.ok) {
                 setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+                showSuccessToast('Opening order ' + (result.orderId || '') + ' sent to TWS');
             } else if (result.unknown) {
                 setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
                 showErrorToast('UNKNOWN — check TWS before retrying', 8000);
@@ -5086,7 +5504,29 @@
                 showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
             }
         }
-        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry) {
+        async function sendTwsOpen(ticker) {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const key = twsSendKey(ticker, 'entry');
+            if (twsSendState[key] === 'sending') return;
+            if (!autoSendExitsOnOpen) { await sendTwsEntry(ticker); return; }
+            const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
+            const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            if (!f.shares) { showErrorToast('No shares calculated'); return; }
+            const strategyId = defaultStrategyId(f.isGreenDay);
+            setTwsSendState(key, 'sending');
+            const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
+            if (!result) {
+                setTwsSendState(key, 'idle');
+            } else if (result.ok && !result.unknown) {
+                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+            }
+        }
+        async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry, entryItem) {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const key = twsSendKey(ticker, 'exits');
             if (twsSendState[key] === 'sending') return;
@@ -5100,37 +5540,54 @@
             const payload = buildExitOrdersPayload(built);
             if (!payload.ok) { showErrorToast(payload.error); return; }
             if (attachEntry) {
-                const entryPayload = buildEntryOrderPayload({ ticker, data: { c: entry, pc: 0, h: 0, l: 0 } });
-                if (entryPayload.ok) payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
+                const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+                if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
+                const entryPayload = buildEntryOrderPayload(snapItem);
+                if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
+                payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
                 payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
+                // Bracket: only the final child transmits, releasing the parent and all children together.
+                payload.orders.forEach((o, i) => { o.transmit = i === payload.orders.length - 1; });
             }
             setTwsSendState(key, 'sending');
             const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
-            if (result.ok) {
-                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Sent');
-            } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+            const firstFail = result.results ? result.results.find(r => !r.ok) : null;
+            const failMsg = firstFail ? (firstFail.error || firstFail.message) : null;
+            if (result.ok && !result.unknown) {
+                const sentCount = result.results ? result.results.length : 1;
+                setTwsSendState(key, 'sent', sentCount + ' orders sent');
+                const what = attachEntry ? 'Bracket' : (sentCount > 1 ? 'Exit orders' : 'Exit order');
+                showSuccessToast(what + ' sent to TWS');
+            } else if (result.unknown || (result.ok && result.results && result.results.some(r => r.unknown))) {
+                setTwsSendState(key, 'unknown', failMsg || result.message || result.error || 'No confirmation from TWS');
                 showErrorToast('UNKNOWN — check TWS before retrying', 8000);
             } else {
-                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
-                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+                setTwsSendState(key, 'error', failMsg || result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (failMsg || result.error || result.message || 'unknown'), 6000);
             }
+            return result;
         }
         async function sendTwsBatchAll() {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const trades = selectedSnapshotTrades();
             if (!trades.length) { showErrorToast('No trades selected'); return; }
             for (const t of trades) {
-                await sendTwsEntry(t.ticker);
+                await sendTwsOpen(t.ticker);
                 await new Promise(r => setTimeout(r, 250));
             }
         }
         function syncTwsSendButtons() {
-            // Show/hide send buttons based on twsEnabled + readiness.
-            const show = twsEnabled && twsBridgeToken && twsConnected;
-            document.querySelectorAll('[data-tws-key]').forEach(el => { el.style.display = show ? '' : 'none'; });
-            document.querySelectorAll('.tws-send-btn').forEach(el => { el.style.display = show ? '' : 'none'; });
-            document.querySelectorAll('#twsAttachEntry').forEach(el => { el.parentElement.style.display = show ? '' : 'none'; });
+            // If TWS is disabled, hide the send buttons entirely. If TWS is enabled, show them
+            // but disable (grey out) until the bridge is actually connected.
+            const enabled = twsEnabled;
+            const ready = enabled && twsBridgeToken && twsBridgeUrl && twsConnected;
+            [].forEach.call(document.querySelectorAll('[data-tws-key], .tws-send-btn'), el => {
+                el.style.display = enabled ? '' : 'none';
+                if (el.dataset.twsState === 'sending') return; // don't un-disable a button mid-send
+                el.disabled = !ready;
+                el.classList.toggle('opacity-50', !ready);
+                el.classList.toggle('cursor-not-allowed', !ready);
+            });
         }
 
         // ========================================================
@@ -5169,17 +5626,12 @@
             const btn = e.target.closest('[data-action="send-tws-entry"]');
             if (!btn) return;
             e.stopPropagation();
-            sendTwsEntry(btn.dataset.ticker);
+            sendTwsOpen(btn.dataset.ticker);
         });
 
         // TWS Send modal functions
-        function sendTwsModalEntry() {
-            if (!currentModalState) return;
-            sendTwsEntry(currentModalState.ticker);
-        }
         function sendTwsModalExits() {
             if (!currentModalState) return;
-            const attach = document.getElementById('twsAttachEntry')?.checked || false;
             const strategyId = document.getElementById('modalStrategySelect')?.value || currentModalState.strategyId;
             const customTps = readCustomTpsFromDom();
             sendTwsExits(
@@ -5190,7 +5642,7 @@
                 parseFloat(document.getElementById('modalStopPrice')?.value) || currentModalState.stopPrice,
                 strategyId,
                 customTps,
-                attach
+                false
             );
         }
 
