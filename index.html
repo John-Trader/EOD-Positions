@@ -688,8 +688,8 @@
                     <button onclick="downloadTWSBasketCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-2 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95">
                         <span>📥</span> <span class="hidden sm:inline">TWS Basket (.csv)</span><span class="sm:hidden">CSV</span>
                     </button>
-                    <button id="modalSendExits" data-tws-key="" data-tws-default-label="SEND EXITS" onclick="sendTwsModalExits()" title="Send stop / take-profit exits to TWS" class="bg-purple-600/80 hover:bg-purple-500 text-white px-2 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
-                        <span class="tws-send-label">SEND EXITS</span>
+                    <button id="modalSendExits" data-tws-key="" data-tws-default-label="Send Exit Order" onclick="sendTwsModalExits()" title="Send stop / take-profit exits to TWS" class="bg-purple-600/80 hover:bg-purple-500 text-white px-2 py-2 rounded-lg text-xs font-bold transition-all active:scale-95">
+                        <span class="tws-send-label">Send Exit Order</span>
                     </button>
                 </div>
                 <div class="flex gap-2">
@@ -1052,7 +1052,6 @@
             syncTimedExitInputs();
             refreshAllVisible(document.getElementById('resultsContainer'));
             refreshEarningsForScan();
-            refreshVolatilityForScan();
         }
 
         function toggleApiKeyVisibility() {
@@ -1674,7 +1673,7 @@
             toast.querySelector('#updateToastClose').onclick = hide;
         }
 
-        // ---------- Global error toast (bottom-right) ----------
+        // ---------- Global toasts (bottom-right) ----------
         function showErrorToast(message, ms = 6000) {
             let toast = document.getElementById('errorToast');
             if (!toast) {
@@ -1684,6 +1683,20 @@
                 document.body.appendChild(toast);
             }
             toast.innerText = typeof message === 'string' ? message : (message && message.message ? message.message : 'Something went wrong');
+            toast.className = 'fixed bottom-4 right-4 z-[130] bg-rose-950/90 border border-rose-500/40 text-rose-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
+            toast.style.display = 'block';
+            if (toast._hideTimer) clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
+        }
+        function showSuccessToast(message, ms = 4000) {
+            let toast = document.getElementById('errorToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'errorToast';
+                document.body.appendChild(toast);
+            }
+            toast.innerText = typeof message === 'string' ? message : 'Success';
+            toast.className = 'fixed bottom-4 right-4 z-[130] bg-emerald-950/90 border border-emerald-500/40 text-emerald-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
             toast.style.display = 'block';
             if (toast._hideTimer) clearTimeout(toast._hideTimer);
             toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
@@ -3122,6 +3135,9 @@
 
                 if (tasks.length === 0) return;
 
+                // ATR/ADR is fetched once per Calculate per ticker (not continuously like live prices).
+                tasks.forEach(t => delete volatilityCache[t.ticker]);
+
                 // Selections only make sense for tickers that are still on the board.
                 Array.from(selectedTickers).forEach(t => { if (!seen.has(t)) selectedTickers.delete(t); });
                 updateBatchBar();
@@ -3777,6 +3793,17 @@
                     </div>
                 </div>
             `).join('') + timedExitSummaryHtml(built) + buildNotesHtml(built);
+
+            const modalSendExits = document.getElementById('modalSendExits');
+            if (modalSendExits) {
+                const exitOrderCount = built.rows.filter(r => r[7]).length;
+                const exitLabel = exitOrderCount > 1 ? 'Send Exit Orders' : 'Send Exit Order';
+                modalSendExits.setAttribute('data-tws-default-label', exitLabel);
+                if (modalSendExits.getAttribute('data-tws-state') !== 'sent' && modalSendExits.getAttribute('data-tws-state') !== 'error' && modalSendExits.getAttribute('data-tws-state') !== 'unknown') {
+                    const span = modalSendExits.querySelector('.tws-send-label');
+                    if (span) span.innerText = exitLabel;
+                }
+            }
         }
 
         function copySingleValue(val, btnElement) {
@@ -5356,10 +5383,18 @@
             if (el) { el.textContent = 'Testing…'; el.className = 'text-[10px] font-mono-num text-amber-400'; }
             const data = await bridgeHealth();
             updateTwsStatusUI();
-            if (data && data.connected) {
-                showErrorToast('TWS connected' + (data.account ? ' · ' + data.account : ''), 4000);
-            } else {
+            if (!data || !data.connected) {
                 showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+                return;
+            }
+            // POST ping validates token and CORS for the actual order endpoint.
+            const ping = await bridgeRequest('/orders', { symbol: 'TEST', orders: [], orderRef: 'PSC-ping-' + Date.now() });
+            if (ping && ping.ok) {
+                showSuccessToast('TWS connected' + (data.account ? ' · ' + data.account : '') + ' · order POST ok', 4000);
+            } else if (ping && ping.error) {
+                showErrorToast('TWS bridge reached but order POST failed: ' + ping.error, 6000);
+            } else {
+                showErrorToast('TWS bridge reached but order POST failed: ' + (ping ? 'unknown' : 'no response'), 6000);
             }
         }
         // ---------- Payload builders ----------
