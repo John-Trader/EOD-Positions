@@ -57,7 +57,7 @@ try {
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { computeAdrPct, computeAtrPct, stopVolatilityWarning, fetchVolatilityData, sortBars, volatilityCache, safeStorageGet, API_CONFIGS };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { computeAdrPct, computeAtrPct, stopVolatilityWarning, fetchVolatilityData, sortBars, volatilityCache, safeStorageGet, API_CONFIGS, providerUsable, resolveProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; } };');
   const api = fn(...Object.values(sandbox));
 
   // ---- computeAdrPct / computeAtrPct ----
@@ -137,6 +137,42 @@ try {
   result = await api.fetchVolatilityData('TITI');
   assertTrue(result.status === 'ok', 'Tiingo fallback provides OK volatility');
   assertTrue(result.atrPct !== null && result.adrPct !== null, 'Tiingo provides both ATR% and ADR%');
+
+  // ---- TWS /history fallback via provider priority ----
+  // Enable TWS bridge; priority list puts tws first so /history wins over any key provider.
+  localStorage.setItem('twsEnabled', 'true');
+  api.twsEnabled = true;
+  api.twsQuotesEnabled = true;
+  api.twsConnected = true;
+  api.twsBridgeUrl = 'http://127.0.0.1:8787';
+  api.twsBridgeToken = 'tok';
+  api.providerPriorityOrder = ['tws', 'tiingo', 'twelvedata', 'finnhub', 'stockdata'];
+  assertTrue(api.providerUsable('tws'), 'tws usable when bridge enabled+connected');
+  assertTrue(!api.providerUsable('finnhub'), 'finnhub unusable without key');
+  const r = api.resolveProviders();
+  assertEq(r.primary, 'tws', 'resolveProviders picks tws as primary');
+  fetchResponse = (url, init) => {
+    if (url.includes('/history')) {
+      assertEq(init.headers['X-Bridge-Token'], 'tok', 'history request sends bridge token');
+      const bars = [];
+      for (let i = 0; i < 25; i++) bars.push({ h: 102, l: 100, c: 101 });
+      return { ok: true, json: async () => ({ ok: true, bars }) };
+    }
+    return { ok: false, status: 404 };
+  };
+  delete api.volatilityCache['TWST'];
+  result = await api.fetchVolatilityData('TWST');
+  assertTrue(result.status === 'ok', 'TWS /history provides OK volatility');
+  assertApprox(result.atrPct, 2 / 101 * 100, 0.01, 'TWS ATR% computed from daily bars');
+  assertApprox(result.adrPct, 2 / 101 * 100, 0.01, 'TWS ADR% computed from daily bars');
+
+  // Priority order governs fallback: with tws connected AND a tiingo key, tws (rank 1) wins.
+  localStorage.setItem('tiingo_key', 'ti_key');
+  let twsCalled = false;
+  fetchResponse = (url) => { if (url.includes('/history')) twsCalled = true; return { ok: true, json: async () => ({ ok: true, bars: Array.from({length:25},()=>({h:102,l:100,c:101})) }) }; };
+  delete api.volatilityCache['ORDR'];
+  result = await api.fetchVolatilityData('ORDR');
+  assertTrue(twsCalled, 'priority order: tws history tried before tiingo');
 
   console.log('\nVolatility tests passed');
 } catch (e) {

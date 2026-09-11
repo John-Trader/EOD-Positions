@@ -110,7 +110,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 (async () => {
   try {
     const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval, clearInterval, parseFloat, parseInt, Number, Array, Math, Date: FakeDate, String, Blob: class { constructor(p, o) { this.parts = p; this.opts = o || {}; } }, URL: { createObjectURL: () => 'blob:mock', revokeObjectURL: () => {} } };
-    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, updateTopStatus, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, get liveUpdateEnabled() { return liveUpdateEnabled; }, set liveUpdateEnabled(v) { liveUpdateEnabled = v; }, activeSockets, connectionTimeoutByProvider, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow };');
+    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, updateTopStatus, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, get liveUpdateEnabled() { return liveUpdateEnabled; }, set liveUpdateEnabled(v) { liveUpdateEnabled = v; }, activeSockets, connectionTimeoutByProvider, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow, loadProviderPriorityOrder, providerUsable, resolveProviders, syncProviderSelects, demoteProvider, availableProviders, demotedProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; } };');
     const api = fn(...Object.values(sandbox));
     const container = document.getElementById('resultsContainer');
 
@@ -211,6 +211,47 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.reconnectTimeoutByProvider.finnhub = null;
     api.updateTopStatus();
     assert(statusEl.innerText === 'LIVE (FINNHUB ONLY)', 'single open with no activity shows only');
+
+    // 6. Provider priority chain
+    // Empty storage → valid default order containing every provider.
+    const order = api.loadProviderPriorityOrder();
+    assert(Array.isArray(order) && order.length === 5, 'default order has all 5 providers');
+    assert(order.includes('tws'), 'tws is in the priority chain');
+    assert(order[0] === 'finnhub' || order.includes('finnhub'), 'finnhub present');
+
+    // providerUsable: keyed providers need keys; tws needs bridge enabled+connected.
+    assert(api.providerUsable('finnhub'), 'finnhub usable with key saved');
+    assert(!api.providerUsable('twelvedata'), 'twelvedata unusable without key');
+    assert(!api.providerUsable('tws'), 'tws unusable until bridge connects');
+    api.twsEnabled = true; api.twsQuotesEnabled = true; api.twsConnected = true;
+    assert(api.providerUsable('tws'), 'tws usable when bridge connected');
+    api.twsConnected = false; api.twsEnabled = false; api.twsQuotesEnabled = false;
+
+    // resolveProviders: first two usable ws-capable entries.
+    api.providerPriorityOrder = ['finnhub', 'tiingo', 'twelvedata', 'stockdata', 'tws'];
+    api.enhancedLiveMode = true;
+    const rr = api.resolveProviders();
+    assert(rr.primary === 'finnhub' && rr.secondary === 'tiingo', 'resolves primary+secondary from order');
+
+    // Demotion cascade: demoting finnhub makes tiingo primary, twelvedata secondary
+    // once twelvedata gets a key.
+    localStorage.setItem('twelvedata_key', 'td');
+    api.demoteProvider('finnhub');
+    const rr2 = api.resolveProviders();
+    assert(rr2.primary === 'tiingo' && rr2.secondary === 'twelvedata', 'demotion cascades remaining providers up');
+    api.demotedProviders.delete('finnhub');
+
+    // TWS top of list + delayed status text.
+    api.providerPriorityOrder = ['tws', 'finnhub', 'tiingo', 'twelvedata', 'stockdata'];
+    api.twsEnabled = true; api.twsQuotesEnabled = true; api.twsConnected = true;
+    api.enhancedLiveMode = true;
+    api.activeSockets.tws = new MockWebSocket('ws://127.0.0.1:8787/stream');
+    api.activeSockets.tws.readyState = WebSocket.OPEN;
+    api.activeSockets.finnhub.readyState = WebSocket.OPEN;
+    api.updateTopStatus();
+    assert(statusEl.innerText.includes('TWS'), 'top status shows TWS when it is streaming');
+    api.twsEnabled = false; api.twsQuotesEnabled = false; api.twsConnected = false;
+    api.activeSockets.tws = null;
 
     console.log('Enhanced Live Mode tests passed!');
     process.exit(0);

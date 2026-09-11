@@ -75,14 +75,14 @@ function assertTrue(cond, label) {
   console.log('PASS', label);
 }
 
-try {
+(async () => { try {
   const sandbox = {
     elements, document, localStorage, window, navigator, URL, crypto, fetch, AbortController,
     console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {},
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsEnabled, twsSendState, splitSharesByPct, sanitizeTicker };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, twsOpenOrders, handleTwsExecution, twsSeenExecs, activeTradesLog, saveActiveTradesLog, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, get twsPositions() { return twsPositions; } };');
   const api = fn(...Object.values(sandbox));
 
   console.log('Script loaded successfully');
@@ -174,9 +174,77 @@ try {
   api.sendTwsEntry('AMPL');
   assertEq(api.twsSendState['AMPL:entry'], 'idle', 'sendTwsEntry blocked when disabled — stays idle');
 
+  // ---- TWS provider config ----
+  assertTrue(api.API_CONFIGS.tws && api.API_CONFIGS.tws.needsKey === false, 'tws needsKey false');
+  assertTrue(api.API_CONFIGS.tws.supportsWs === true, 'tws supportsWs');
+  assertTrue(api.API_CONFIGS.tws.storageKey === null, 'tws storageKey null (uses bridge token)');
+
+  // ---- providerUsable / resolution / demotion ----
+  assertTrue(!api.providerUsable('tws'), 'tws unusable when bridge off');
+  api.twsEnabled = true; api.twsQuotesEnabled = true; api.twsConnected = true;
+  api.twsBridgeUrl = 'http://127.0.0.1:8787'; api.twsBridgeToken = 'tok';
+  assertTrue(api.providerUsable('tws'), 'tws usable when bridge on + connected');
+  api.demoteProvider('tws');
+  assertTrue(api.demotedProviders.has('tws'), 'tws demoted');
+  assertTrue(!api.resolveProviders() || api.resolveProviders().primary !== 'tws', 'demoted tws is not primary');
+  api.demotedProviders.delete('tws');
+
+  // ---- delayed flag lives in the side map, not on the quote ----
+  api.delayedByTicker['AMPL'] = true;
+  assertEq(api.delayedByTicker['AMPL'], true, 'delayed side-map holds flag');
+
+  // ---- account sync: NetLiquidation → accountValue, ignores junk ----
+  api.applyTwsAccountValue('NetLiquidation', '25000.50');
+  assertEq(api.accountValue, 25000.50, 'NetLiquidation sets accountValue');
+  api.applyTwsAccountValue('NetLiquidation', '0');
+  assertEq(api.accountValue, 25000.50, 'zero NetLiquidation ignored (keeps last valid)');
+  api.applyTwsAccountValue('AvailableFunds', '999');
+  assertEq(api.accountValue, 25000.50, 'non-NetLiq key ignored');
+
+  // ---- positions: upsert + lookup + duplicate-order detection ----
+  api.twsPositionsEnabled = true;
+  api.upsertTwsPosition('AMPL', 300, 14.52, 15.00);
+  const pos = api.twsPositionFor('AMPL');
+  assertEq(pos.qty, 300, 'held qty 300');
+  assertEq(pos.avgCost, 14.52, 'held avgCost');
+  api.upsertTwsPosition('AMPL', 0, 0, 0);
+  assertEq(api.twsPositionFor('AMPL'), null, 'flat position removed');
+
+  api.twsOrdersEnabled = true;
+  api.twsOpenOrders.length = 0;
+  api.twsOpenOrders.push({ orderId: 11, symbol: 'AMPL', action: 'BUY', orderRef: 'PSC-AMPL-abc', status: 'Submitted' });
+  api.twsOpenOrders.push({ orderId: 12, symbol: 'AMPL', action: 'SELL', orderRef: 'PSC-AMPL-def', status: 'Submitted' });
+  api.twsOpenOrders.push({ orderId: 13, symbol: 'AMPL', action: 'BUY', orderRef: 'manual-1', status: 'Submitted' });
+  assertEq(api.findDuplicatePscOrders('AMPL', 'BUY').length, 1, 'duplicate check counts only PSC BUY orders');
+  assertEq(api.findDuplicatePscOrders('AMPL', 'SELL').length, 1, 'PSC SELL order found');
+
+  // ---- contract preflight caches per session ----
+  api.twsValidatedContracts.clear();
+  api.twsValidatedContracts.add('AMPL');
+  const pf = await api.preflightContract('AMPL');
+  assertEq(pf.ok, true, 'cached contract passes preflight without a request');
+
+  // ---- fill → journal (PSC refs only, dedupe by execId) ----
+  api.twsFillsJournalEnabled = true;
+  api.twsSeenExecs.clear();
+  const beforeLog = api.activeTradesLog.length;
+  api.handleTwsExecution({ execId: 'e1', orderRef: 'PSC-AMPL-x', symbol: 'AMPL', side: 'BOT', shares: 100, price: 15.0 });
+  assertEq(api.activeTradesLog.length, beforeLog + 1, 'entry fill opens journal row');
+  assertEq(api.activeTradesLog[0].entryPrice, 15.0, 'journal entry price from fill');
+  assertEq(api.activeTradesLog[0].side, 'LONG', 'BOT → LONG');
+  api.handleTwsExecution({ execId: 'e1', orderRef: 'PSC-AMPL-x', symbol: 'AMPL', side: 'BOT', shares: 100, price: 15.0 });
+  assertEq(api.activeTradesLog.length, beforeLog + 1, 'duplicate execId deduped');
+  api.handleTwsExecution({ execId: 'e2', orderRef: 'OTHER-1', symbol: 'AMPL', side: 'BOT', shares: 50, price: 15.0 });
+  assertEq(api.activeTradesLog.length, beforeLog + 1, 'non-PSC ref ignored');
+  api.handleTwsExecution({ execId: 'e3', orderRef: 'PSC-AMPL-y', symbol: 'AMPL', side: 'SLD', shares: 100, price: 15.5 });
+  assertEq(api.activeTradesLog[0].status, 'CLOSED', 'exit fill closes the journal row');
+  assertEq(api.activeTradesLog[0].exitPrice, 15.5, 'journal exit price from fill');
+  assertTrue(Math.abs(api.activeTradesLog[0].pnl - 50) < 0.001, 'realized P&L computed (100 sh × $0.50)');
+  api.activeTradesLog.length = 0;
+
   console.log('\nAll TWS tests passed');
   process.exit(0);
 } catch (e) {
   console.error('Error during TWS tests:', e);
   process.exit(1);
-}
+} })();

@@ -230,6 +230,18 @@
         </div>
     </aside>
 
+    <!-- TWS Open Orders drawer -->
+    <div id="twsOrdersDrawer" class="hidden fixed inset-x-0 bottom-0 z-[65] glass-modal border-t border-white/10 shadow-2xl flex-col max-h-[50vh]">
+        <div class="px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2">
+            <span class="text-xs font-black uppercase tracking-tight text-white">TWS Working Orders</span>
+            <div class="flex items-center gap-2">
+                <button onclick="cancelAllPscOrders()" class="text-[9px] font-black text-red-300 border border-red-500/40 rounded px-2 py-1 hover:bg-red-500/10" title="Cancel every order whose ref starts with PSC- (manual orders untouched)">CANCEL PSC ALL</button>
+                <button onclick="closeTwsOrdersDrawer()" class="text-gray-400 hover:text-white text-lg leading-none font-bold">&times;</button>
+            </div>
+        </div>
+        <div id="twsOrdersList" class="overflow-y-auto flex-1"></div>
+    </div>
+
     <!-- PAGE 1: SCANNER -->
     <div id="page-scanner" class="w-full flex flex-col items-center">
     <!-- Main Container -->
@@ -239,7 +251,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.6.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.7.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -249,6 +261,8 @@
                     </span>
                     <span id="liveStatusText" class="text-emerald-400 uppercase">LIVE</span>
                 </div>
+                <span id="twsPnlChip" class="hidden text-[9px] font-black font-mono-num px-1.5 py-0.5 rounded" title="TWS daily P&L"></span>
+                <button id="twsOrdersBtn" onclick="openTwsOrdersDrawer()" class="hidden text-[9px] font-black text-cyan-300 bg-slate-950/60 border border-cyan-500/30 px-1.5 py-0.5 rounded-full" title="Working TWS orders">ORD</button>
                 <div class="text-[9px] font-mono text-gray-400 font-bold bg-slate-950/60 px-1.5 py-0.5 rounded-full border border-white/10">
                     <span id="countdown" class="text-gray-300">CLOSED</span>
                 </div>
@@ -388,19 +402,23 @@
             </div>
             <div class="p-3 space-y-4 text-sm">
                 <div class="space-y-1">
-                    <label for="apiProvider" class="text-[10px] font-bold text-gray-400 uppercase">API Provider</label>
-                    <select id="apiProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Provider Priority</label>
+                    <p class="text-[9px] text-gray-500">Top available = primary · next = secondary. Unavailable providers are skipped. Click a row to edit its API key.</p>
+                    <div id="providerPriorityList" class="space-y-1"></div>
+                    <!-- Legacy selects kept in DOM (hidden) — every existing code path reads .value from them. -->
+                    <select id="apiProvider" class="hidden" tabindex="-1" aria-hidden="true">
                         <option value="finnhub">Finnhub</option>
                         <option value="twelvedata">Twelve Data</option>
                         <option value="stockdata">StockData.org</option>
                         <option value="tiingo">Tiingo</option>
+                        <option value="tws">TWS</option>
                     </select>
                     <div class="flex gap-2">
                         <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
                         <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
                         <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
                     </div>
-
+                    <p id="providerKeyHint" class="text-[9px] text-gray-500 hidden">TWS uses the TWS Bridge token — no API key needed.</p>
                 </div>
                 <div class="space-y-1">
                     <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
@@ -434,19 +452,17 @@
                                 <span class="text-xs text-gray-300">Enhanced Live Mode</span>
                             </label>
                             <div id="enhancedSecondaryContainer" class="space-y-1 pl-5 hidden">
-                                <label for="enhancedSecondaryProvider" class="text-[10px] font-bold text-gray-400 uppercase">Secondary Provider</label>
-                                <select id="enhancedSecondaryProvider" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" onchange="saveSecondaryProviderSetting()">
+                                <!-- Hidden legacy select — synced to resolved secondary; kept for existing code/tests. -->
+                                <select id="enhancedSecondaryProvider" class="hidden" tabindex="-1" aria-hidden="true" onchange="saveSecondaryProviderSetting()">
                                     <option value="finnhub">Finnhub</option>
                                     <option value="twelvedata">Twelve Data</option>
                                     <option value="tiingo">Tiingo</option>
+                                    <option value="tws">TWS</option>
                                 </select>
-                                <div class="flex gap-2">
-                                    <input type="password" id="secondaryApiKeyInput" aria-label="Secondary API Key" autocomplete="off" placeholder="Enter Secondary API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
-                                    <button id="showSecondaryKeyBtn" onclick="toggleSecondaryApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
-                                    <button onclick="saveSecondaryApiKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
-                                </div>
+                                <input type="password" id="secondaryApiKeyInput" aria-hidden="true" tabindex="-1" autocomplete="off" class="hidden">
+                                <p class="text-[10px] text-gray-400">Secondary = the next available provider in the priority list above. Reorder the list to change it.</p>
                             </div>
-                            <p class="text-[10px] text-gray-400 pl-5">Streams main + secondary providers concurrently and shows whichever ticks first. Requires both API keys saved.</p>
+                            <p class="text-[10px] text-gray-400 pl-5">Streams primary + secondary providers concurrently and shows whichever ticks first. Both must be available (key saved / bridge connected).</p>
                             <p id="enhancedLiveModeError" class="text-[10px] text-red-400 pl-5 hidden"></p>
                         </div>
                         <label class="flex items-center gap-2 cursor-pointer">
@@ -482,6 +498,7 @@
                     <label class="text-[9px] text-gray-500 uppercase block">Account value ($)
                         <input type="text" inputmode="numeric" pattern="[0-9,]*" id="accountValueSetting" autocomplete="off" class="w-full max-w-[200px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-bold font-mono-num" placeholder="0.00" oninput="saveRiskSettings()" onblur="formatAccountValueSetting()">
                     </label>
+                    <span id="twsAccountTag" class="hidden text-[9px] font-black text-emerald-300 uppercase">TWS live</span>
                     <p class="text-[10px] text-gray-400">In percent mode, the risk input on the scanner is treated as a percentage of account value.</p>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
@@ -503,6 +520,27 @@
                     </label>
                     <p class="text-[10px] text-gray-500">Default is off. When enabled, the Open Long/Short button sends the entry plus the active exit strategy as a TWS bracket.</p>
                     <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
+                    <div class="border-t border-white/5 pt-2 space-y-1.5">
+                        <div class="text-[10px] font-bold text-gray-400 uppercase">TWS data (each optional)</div>
+                        <label class="flex items-center gap-2 text-xs" title="Adds TWS to the provider priority list — live quotes + daily-bar volatility fallback through the bridge.">
+                            <input id="twsQuotesEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> TWS as a quote provider (priority list)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs" title="Polls NetLiquidation every 15s and fills the account-value input.">
+                            <input id="twsSyncAccountSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-update account value (NetLiquidation)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs" title="HOLD badges on cards, position pre-fill in the exit modal, already-holding confirmation.">
+                            <input id="twsPositionsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Positions (HOLD badges + auto-fill)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs" title="WORKING-order badges, orders drawer with per-order cancel and PSC cancel-all.">
+                            <input id="twsOrdersEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Open orders (badges + cancel)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs" title="PSC-* fills toast + journal entries with real quantity/price/commission.">
+                            <input id="twsFillsJournalEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Fills → journal
+                        </label>
+                        <label class="flex items-center gap-2 text-xs" title="Daily P&L chip in the header.">
+                            <input id="twsPnlEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Daily P&L chip
+                        </label>
+                    </div>
                 </div>
                 <div class="border-t border-white/10 pt-3 space-y-2">
                     <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
@@ -737,7 +775,8 @@
             finnhub: { name: 'Finnhub', storageKey: 'finnhub_key', needsKey: true, supportsWs: true },
             twelvedata: { name: 'Twelve Data', storageKey: 'twelvedata_key', needsKey: true, supportsWs: true },
             stockdata: { name: 'StockData.org', storageKey: 'stockdata_key', needsKey: true, supportsWs: false },
-            tiingo: { name: 'Tiingo', storageKey: 'tiingo_key', needsKey: true, supportsWs: true }
+            tiingo: { name: 'Tiingo', storageKey: 'tiingo_key', needsKey: true, supportsWs: true },
+            tws: { name: 'TWS', storageKey: null, needsKey: false, supportsWs: true, local: true }
         };
 
         // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
@@ -781,10 +820,18 @@
         let enhancedLiveMode = safeStorageGet('enhancedLiveMode') === 'true';
         let enhancedSecondaryProvider = safeStorageGet('enhancedSecondaryProvider') || 'tiingo';
         let activeSockets = {};
-        let reconnectAttemptsByProvider = { finnhub: 0, twelvedata: 0, tiingo: 0 };
-        let reconnectTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null };
-        let connectionTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null };
+        let reconnectAttemptsByProvider = { finnhub: 0, twelvedata: 0, tiingo: 0, tws: 0 };
+        let reconnectTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null, tws: null };
+        let connectionTimeoutByProvider = { finnhub: null, twelvedata: null, tiingo: null, tws: null };
         let tradeTimestamps = {};          // ticker -> exchange timestamp ms for cross-feed ordering
+        let delayedByTicker = {};          // ticker -> true while the winning feed is delayed (TWS)
+        let delayedToastShown = false;
+        // Provider priority chain: persisted order; rank1 = primary, rank2 = secondary.
+        // demotedProviders is session-only — a provider that fails gets skipped until reload.
+        let providerPriorityOrder = loadProviderPriorityOrder();
+        let providerKeyFocus = null;       // provider whose key the input row edits
+        const demotedProviders = new Set();
+        let lastStreamRequest = null;      // {tasks, riskVal, slippageVal, container} for failover restarts
 
         let globalMarketRegime = safeStorageGet('globalMarketRegime') || 'expanding'; // 'expanding' (8>20) | 'declining' (8<20)
         let currentViewMode = safeStorageGet('preferredViewMode') || 'cards'; // 'cards' | 'table'
@@ -804,10 +851,169 @@
         let twsConnected = false;
         let twsAccount = '';
         let twsHealthTimer = null;
+        // Independent TWS data features — all default OFF, all gated on twsEnabled.
+        let twsQuotesEnabled = safeStorageGet('twsQuotesEnabled') === 'true';
+        let twsSyncAccount = safeStorageGet('twsSyncAccount') === 'true';
+        let twsPositionsEnabled = safeStorageGet('twsPositionsEnabled') === 'true';
+        let twsOrdersEnabled = safeStorageGet('twsOrdersEnabled') === 'true';
+        let twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
+        let twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
+        let twsPositions = {};             // symbol -> {qty, avgCost, mktPrice}
+        let twsOpenOrders = [];            // shaped open orders incl. manual TWS orders
+        let twsLastPnl = null;             // {dailyPnL, unrealizedPnL, realizedPnL}
+        let twsSeenExecs = new Set();      // execId dedupe for fill→journal
+        let twsValidatedContracts = new Set(); // symbol -> contract preflight passed this session
+        let twsAuxPollCount = 0;           // staggers positions/orders/fills polls across health ticks
+        let twsLastAccountValue = null;    // last good NetLiquidation from TWS (never zeroed)
+        let twsManualAccountValue = null;  // user's typed account value while auto-sync is on
         let isStreamingLive = false;
         let calculating = false;
         let lastCalculateAt = 0;
         let maxHoldDays = parseInt(safeStorageGet('maxHoldDays'), 10) || 5;
+
+        // ---------- Provider priority chain ----------
+        // providerPriorityOrder: JSON array of provider keys, rank 1 = primary, rank 2 = secondary.
+        function loadProviderPriorityOrder() {
+            try {
+                const raw = safeStorageGet('providerPriorityOrder');
+                if (raw) {
+                    const arr = JSON.parse(raw);
+                    if (Array.isArray(arr)) {
+                        const valid = arr.filter(p => Object.hasOwn(API_CONFIGS, p));
+                        const missing = Object.keys(API_CONFIGS).filter(p => !valid.includes(p));
+                        if (valid.length) return [...valid, ...missing];
+                    }
+                }
+            } catch (e) {}
+            // Migrate from legacy two-dropdown model.
+            const order = [];
+            const sel = safeStorageGet('selectedProvider');
+            if (sel && Object.hasOwn(API_CONFIGS, sel)) order.push(sel);
+            const sec = safeStorageGet('enhancedSecondaryProvider');
+            if (sec && Object.hasOwn(API_CONFIGS, sec) && !order.includes(sec)) order.push(sec);
+            Object.keys(API_CONFIGS).forEach(p => { if (!order.includes(p)) order.push(p); });
+            return order;
+        }
+
+        // "Configured" check — keyed providers need a saved key; TWS needs the bridge enabled+connected.
+        function providerUsable(p) {
+            const cfg = API_CONFIGS[p];
+            if (!cfg) return false;
+            if (cfg.needsKey) return !!safeStorageGet(cfg.storageKey);
+            return twsEnabled && twsQuotesEnabled && twsConnected; // tws
+        }
+
+        function availableProviders() {
+            return providerPriorityOrder.filter(p => !demotedProviders.has(p) && providerUsable(p));
+        }
+
+        // primary = first usable; secondary = next usable that supportsWs (only when enhanced on).
+        function resolveProviders() {
+            const usable = availableProviders();
+            const primary = usable[0] || null;
+            const secondary = enhancedLiveMode
+                ? (usable.find(p => p !== primary && API_CONFIGS[p].supportsWs) || null)
+                : null;
+            return { primary, secondary };
+        }
+
+        // Sync the hidden selects + legacy storage keys to the resolved providers so every
+        // legacy read path (calculateAll, updateTopStatus, backup) stays coherent.
+        function syncProviderSelects(resolved) {
+            const r = resolved || resolveProviders();
+            const mainSel = document.getElementById('apiProvider');
+            const secSel = document.getElementById('enhancedSecondaryProvider');
+            if (r.primary && mainSel && mainSel.value !== r.primary) mainSel.value = r.primary;
+            if (r.secondary && secSel && secSel.value !== r.secondary) secSel.value = r.secondary;
+            if (r.primary) safeStorageSet('selectedProvider', r.primary);
+            if (r.secondary) { enhancedSecondaryProvider = r.secondary; safeStorageSet('enhancedSecondaryProvider', r.secondary); }
+            return r;
+        }
+
+        function saveProviderPriorityOrder() {
+            safeStorageSet('providerPriorityOrder', JSON.stringify(providerPriorityOrder));
+            syncProviderSelects();
+            renderProviderPriorityList();
+        }
+
+        // Session demotion: provider failed enough — skip it until reload (persisted order untouched).
+        function demoteProvider(p) {
+            if (!API_CONFIGS[p] || demotedProviders.has(p)) return false;
+            demotedProviders.add(p);
+            console.warn(`Provider ${p} demoted for this session`);
+            return true;
+        }
+
+        function moveProvider(p, dir) {
+            const i = providerPriorityOrder.indexOf(p);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= providerPriorityOrder.length) return;
+            [providerPriorityOrder[i], providerPriorityOrder[j]] = [providerPriorityOrder[j], providerPriorityOrder[i]];
+            saveProviderPriorityOrder();
+            if (realtimeTasks.length) restartStreamForFailover();
+        }
+
+        function focusProviderKey(p) {
+            providerKeyFocus = p;
+            updateApiKeyInput();
+            renderProviderPriorityList();
+        }
+
+        function providerStatusDot(p) {
+            const cfg = API_CONFIGS[p];
+            if (p === 'tws') return twsConnected ? 'bg-emerald-400' : 'bg-gray-500';
+            if (cfg.needsKey && safeStorageGet(cfg.storageKey)) return 'bg-emerald-400';
+            return 'bg-red-400';
+        }
+
+        function renderProviderPriorityList() {
+            const list = document.getElementById('providerPriorityList');
+            if (!list) return;
+            const { primary, secondary } = resolveProviders();
+            list.innerHTML = '';
+            providerPriorityOrder.forEach((p, i) => {
+                const cfg = API_CONFIGS[p];
+                const row = document.createElement('div');
+                const focused = providerKeyFocus === p || (!providerKeyFocus && i === 0);
+                row.className = 'flex items-center gap-2 px-2 py-1.5 rounded border ' + (focused ? 'border-blue-500/50 bg-slate-800' : 'border-white/10 bg-slate-900/60');
+                const badge = p === primary ? '<span class="text-[8px] font-black text-cyan-300 uppercase">Primary</span>'
+                            : p === secondary ? '<span class="text-[8px] font-black text-emerald-300 uppercase">Secondary</span>' : '';
+                const demoted = demotedProviders.has(p) ? ' <span class="text-[8px] text-amber-400">skipped</span>' : '';
+                row.innerHTML = `
+                    <span class="inline-block w-2 h-2 rounded-full ${providerStatusDot(p)}"></span>
+                    <span class="flex-1 text-xs font-bold text-gray-200">${cfg.name}${demoted}</span>
+                    ${badge}
+                    <button class="text-[10px] text-gray-400 hover:text-white px-1" data-move="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
+                    <button class="text-[10px] text-gray-400 hover:text-white px-1" data-move="1" ${i === providerPriorityOrder.length - 1 ? 'disabled' : ''}>▼</button>`;
+                row.addEventListener('click', (e) => {
+                    const mv = e.target.dataset && e.target.dataset.move;
+                    if (mv) { moveProvider(p, parseInt(mv, 10)); return; }
+                    focusProviderKey(p);
+                });
+                list.appendChild(row);
+            });
+        }
+
+        // After a provider is demoted (or availability changes), restart the active stream
+        // with the newly-resolved primary/secondary — the "cascade" the user described.
+        function restartStreamForFailover() {
+            if (!lastStreamRequest || !liveUpdateEnabled) return;
+            const { tasks, riskVal, slippageVal, container } = lastStreamRequest;
+            const r = syncProviderSelects();
+            if (!r.primary) return;
+            if (enhancedLiveMode && r.secondary) {
+                startEnhancedWebSocketStream(r.primary, providerStreamKey(r.primary), r.secondary, providerStreamKey(r.secondary), tasks, riskVal, slippageVal, container);
+            } else {
+                startWebSocketStream(r.primary, providerStreamKey(r.primary), tasks, riskVal, slippageVal, container);
+            }
+        }
+
+        // The key a provider's stream/REST uses: storage key for keyed providers, bridge token for tws.
+        function providerStreamKey(p) {
+            const cfg = API_CONFIGS[p];
+            return cfg && cfg.storageKey ? safeStorageGet(cfg.storageKey) : null;
+        }
+
 
         // Day-N timed exit (opt-in): adds a GoodAfterTime MKT/MOC order to every OCA leg.
         let timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
@@ -956,14 +1162,15 @@
             enhancedSecondaryProvider = safeStorageGet('enhancedSecondaryProvider') || 'tiingo';
             if (!Object.hasOwn(API_CONFIGS, enhancedSecondaryProvider) || !API_CONFIGS[enhancedSecondaryProvider].supportsWs) enhancedSecondaryProvider = 'tiingo';
             const savedRisk = safeStorageGet('riskValue');
-            const savedProvider = safeStorageGet('selectedProvider');
             const savedSlippage = safeStorageGet('slippageValue');
             const savedCount = safeStorageGet('visibleCount');
             const savedRiskMode = safeStorageGet('riskMode') || 'fixed';
             const savedAccount = safeStorageGet('accountValue');
-            
+
+            providerPriorityOrder = loadProviderPriorityOrder();
+            if (!providerKeyFocus) providerKeyFocus = resolveProviders().primary || providerPriorityOrder[0];
+
             if (savedRisk) document.getElementById('riskValue').value = savedRisk;
-            if (Object.hasOwn(API_CONFIGS, savedProvider)) document.getElementById('apiProvider').value = savedProvider;
             if (savedSlippage !== null) document.getElementById('slippageValue').value = savedSlippage;
             if (savedCount) visibleCount = parseInt(savedCount);
             riskMode = savedRiskMode;
@@ -1010,6 +1217,7 @@
             applyScannerCollapsed();
             loadFeatureSettings();
             loadTwsSettings();
+            renderProviderPriorityList();
             updateEnhancedUI();
         }
 
@@ -1064,9 +1272,7 @@
         }
 
         function getEnhancedSecondaryProvider() {
-            const sel = document.getElementById('enhancedSecondaryProvider');
-            const provider = sel ? sel.value : safeStorageGet('enhancedSecondaryProvider');
-            return provider && API_CONFIGS[provider] && API_CONFIGS[provider].supportsWs ? provider : 'tiingo';
+            return resolveProviders().secondary || 'tiingo';
         }
 
         function saveSecondaryProviderSetting() {
@@ -1158,26 +1364,13 @@
             const secondarySel = document.getElementById('enhancedSecondaryProvider');
             const err = document.getElementById('enhancedLiveModeError');
             if (chk) chk.checked = enhancedLiveMode;
-            if (providerSel) {
-                providerSel.disabled = false;
-                if (!enhancedLiveMode) {
-                    const savedProvider = safeStorageGet('selectedProvider');
-                    if (savedProvider && Object.hasOwn(API_CONFIGS, savedProvider)) {
-                        providerSel.value = savedProvider;
-                    }
-                }
-            }
+            if (providerSel) providerSel.disabled = false;
+            // Hidden selects mirror the resolved priority-list providers.
+            const resolved = syncProviderSelects();
+            if (secondarySel && resolved.secondary) secondarySel.value = resolved.secondary;
             if (secondaryContainer) {
                 if (enhancedLiveMode) secondaryContainer.classList.remove('hidden');
                 else secondaryContainer.classList.add('hidden');
-            }
-            if (secondarySel) {
-                const provider = enhancedSecondaryProvider;
-                if (Object.hasOwn(API_CONFIGS, provider) && API_CONFIGS[provider].supportsWs) {
-                    secondarySel.value = provider;
-                } else {
-                    secondarySel.value = 'tiingo';
-                }
             }
             if (err && clearError) {
                 err.classList.add('hidden');
@@ -1193,15 +1386,13 @@
             const on = chk.checked;
 
             if (on) {
-                const mainProvider = document.getElementById('apiProvider').value;
-                const secondaryProvider = getEnhancedSecondaryProvider();
-                const mainConfig = API_CONFIGS[mainProvider];
-                const secondaryConfig = API_CONFIGS[secondaryProvider];
-                const mainKey = mainConfig && mainConfig.storageKey ? safeStorageGet(mainConfig.storageKey) : null;
-                const secondaryKey = secondaryConfig && secondaryConfig.storageKey ? safeStorageGet(secondaryConfig.storageKey) : null;
-                if (!mainProvider || !secondaryProvider || mainProvider === secondaryProvider || !mainKey || !secondaryKey) {
+                // Validate against the usable chain — enhancedLiveMode isn't set yet here.
+                const usable = availableProviders();
+                const mainProvider = usable[0] || null;
+                const secondaryProvider = usable.find(p => p !== mainProvider && API_CONFIGS[p].supportsWs) || null;
+                if (!mainProvider || !secondaryProvider || mainProvider === secondaryProvider) {
                     if (err) {
-                        err.innerText = 'Enhanced Live Mode requires two different providers with both API keys saved.';
+                        err.innerText = 'Enhanced Live Mode requires two different providers with both available (API key saved or bridge connected).';
                         err.classList.remove('hidden');
                     }
                     chk.checked = false;
@@ -1381,9 +1572,10 @@
                     dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
                     return;
                 }
+                const anyDelayed = Object.values(delayedByTicker).some(Boolean);
                 const openProviders = Object.entries(activeSockets)
                     .filter(([p, s]) => s && s.readyState === WebSocket.OPEN)
-                    .map(([p]) => API_CONFIGS[p]?.name || p);
+                    .map(([p]) => (API_CONFIGS[p]?.name || p) + (p === 'tws' && anyDelayed ? '·DELAYED' : ''));
                 const connectingProviders = Object.entries(activeSockets)
                     .filter(([p, s]) => s && s.readyState === WebSocket.CONNECTING)
                     .map(([p]) => API_CONFIGS[p]?.name || p);
@@ -1446,7 +1638,7 @@
                 ping.className = 'hidden';
                 dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-gray-500';
             } else if (liveUpdateEnabled && realtimeSocket && realtimeSocket.readyState === WebSocket.OPEN) {
-                txt.innerText = 'LIVE';
+                txt.innerText = (provider === 'tws' && Object.values(delayedByTicker).some(Boolean)) ? 'TWS·DELAYED' : 'LIVE';
                 txt.className = 'text-emerald-400 uppercase font-bold';
                 ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
                 dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
@@ -1555,22 +1747,31 @@
         });
 
         function updateApiKeyInput() {
-            const provider = document.getElementById('apiProvider').value;
+            // The key input edits the focused provider row (defaults to resolved primary).
+            const provider = providerKeyFocus || resolveProviders().primary || providerPriorityOrder[0];
             const config = API_CONFIGS[provider];
             const apiInput = document.getElementById('apiKeyInput');
+            const hint = document.getElementById('providerKeyHint');
+            const saveBtn = apiInput && apiInput.parentElement && apiInput.parentElement.querySelector('button[onclick*="saveKey"]');
+            if (!config) return;
             if (config.needsKey) {
                 apiInput.disabled = false;
-                apiInput.placeholder = 'Enter API Key';
+                apiInput.placeholder = `Enter ${config.name} API Key`;
                 const key = safeStorageGet(config.storageKey);
                 apiInput.value = key || '';
+                if (hint) hint.classList.add('hidden');
+                if (saveBtn) saveBtn.disabled = false;
             } else {
                 apiInput.disabled = true;
                 apiInput.placeholder = 'No API key needed';
                 apiInput.value = '';
+                if (hint) { hint.classList.remove('hidden'); hint.innerText = provider === 'tws' ? 'TWS uses the TWS Bridge token — no API key needed.' : 'No API key needed.'; }
+                if (saveBtn) saveBtn.disabled = true;
             }
 
             const liveContainer = document.getElementById('liveUpdateContainer');
-            if (enhancedLiveMode || config.supportsWs) {
+            const anyStreaming = enhancedLiveMode || providerPriorityOrder.some(p => API_CONFIGS[p].supportsWs && providerUsable(p));
+            if (anyStreaming) {
                 liveContainer.style.display = 'flex';
             } else {
                 liveContainer.style.display = 'none';
@@ -1581,12 +1782,14 @@
         }
 
         function saveKey() {
-            const provider = document.getElementById('apiProvider').value;
+            const provider = providerKeyFocus || resolveProviders().primary || providerPriorityOrder[0];
             const config = API_CONFIGS[provider];
+            if (!config) return;
             const key = document.getElementById('apiKeyInput').value.trim();
             if (config.needsKey && key) {
                 safeStorageSet(config.storageKey, key);
                 alert('API Key Saved');
+                renderProviderPriorityList();
             }
         }
 
@@ -2190,12 +2393,15 @@
         }
 
         async function fetchTickerData(ticker, provider, apiKey, signal) {
-            const providers = [provider, ...Object.keys(API_CONFIGS).filter(p => p !== provider)];
+            // Try the requested provider first, then the rest in priority order.
+            const providers = [provider, ...providerPriorityOrder.filter(p => p !== provider)];
             let firstError = null;
             for (const p of providers) {
                 const cfg = API_CONFIGS[p];
-                const key = p === provider ? apiKey : (cfg.storageKey ? safeStorageGet(cfg.storageKey) : null);
-                if (!key) continue;
+                if (!cfg) continue;
+                const key = p === provider ? apiKey : providerStreamKey(p);
+                if (cfg.needsKey && !key) continue;          // keyed provider with no saved key
+                if (!cfg.needsKey && !providerUsable(p)) continue; // tws requires bridge+quotes enabled
                 try {
                     const data = await fetchProviderQuote(ticker, p, key, signal);
                     if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
@@ -2280,6 +2486,20 @@
                     throw new Error(`Invalid Ticker: ${ticker}`);
                 }
                 return { c, h, l, pc, bid, ask };
+            } else if (provider === 'tws') {
+                const q = await bridgeGet(`/quote?symbol=${encodeURIComponent(ticker)}`, signal);
+                if (!q || !q.ok) throw new Error((q && q.error) || `Invalid Ticker: ${ticker}`);
+                const c = Number(q.c), h = Number(q.h), l = Number(q.l), pc = Number(q.pc);
+                if (!Number.isFinite(c) || c <= 0) throw new Error(`Invalid Ticker: ${ticker}`);
+                // h/l may be missing pre-market — fall back to pc/c rather than failing.
+                return {
+                    c,
+                    h: (Number.isFinite(h) && h > 0) ? h : Math.max(c, pc || c),
+                    l: (Number.isFinite(l) && l > 0) ? l : Math.min(c, pc || c),
+                    pc: (Number.isFinite(pc) && pc > 0) ? pc : c,
+                    bid: (Number.isFinite(q.bid) && q.bid > 0) ? Number(q.bid) : null,
+                    ask: (Number.isFinite(q.ask) && q.ask > 0) ? Number(q.ask) : null,
+                };
             }
             throw new Error("Unknown provider");
         }
@@ -2429,6 +2649,15 @@
             return { atrPct, adrPct, latestClose: close };
         }
 
+        async function fetchTwsVolatility(ticker, signal) {
+            const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}`, signal);
+            if (!d || !d.ok || !Array.isArray(d.bars) || d.bars.length < 21) throw new Error('TWS history too short');
+            const bars = d.bars.map(b => ({ h: Number(b.h), l: Number(b.l), c: Number(b.c) }));
+            const close = bars[bars.length - 1].c;
+            if (!Number.isFinite(close) || close <= 0) throw new Error('TWS history invalid');
+            return { atrPct: computeAtrPct(bars, close), adrPct: computeAdrPct(bars, close), latestClose: close };
+        }
+
         async function fetchVolatilityData(ticker, signal) {
             const now = Date.now();
             const cache = volatilityCache[ticker];
@@ -2438,47 +2667,25 @@
             let adrPct = null;
             let latestClose = null;
 
-            const tryTwelve = async () => {
-                const key = safeStorageGet(API_CONFIGS.twelvedata.storageKey);
-                if (!key) return;
-                const v = await fetchTwelveDataVolatility(ticker, key, signal);
-                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
-                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
-                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
-            };
-
-            const tryTiingo = async () => {
-                const key = safeStorageGet(API_CONFIGS.tiingo.storageKey);
-                if (!key) return;
-                const v = await fetchTiingoVolatility(ticker, key, signal);
-                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
-                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
-                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
-            };
-
-            const tryFinnhub = async () => {
-                const key = safeStorageGet(API_CONFIGS.finnhub.storageKey);
-                if (!key) return;
-                const v = await fetchFinnhubVolatility(ticker, key, signal);
-                if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
-                if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
-                if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
-            };
-
-            const tryStockData = async () => {
-                const key = safeStorageGet(API_CONFIGS.stockdata.storageKey);
-                if (!key) return;
-                const v = await fetchStockDataVolatility(ticker, key, signal);
+            // Fallback order follows the provider priority list, not a hardcoded order.
+            const tryOne = async (p) => {
+                const cfg = API_CONFIGS[p];
+                if (!cfg) return;
+                if (cfg.needsKey && !safeStorageGet(cfg.storageKey)) return;
+                if (p === 'tws' && !providerUsable('tws')) return;
+                const fetcher = { twelvedata: fetchTwelveDataVolatility, tiingo: fetchTiingoVolatility, finnhub: fetchFinnhubVolatility, stockdata: fetchStockDataVolatility, tws: fetchTwsVolatility }[p];
+                if (!fetcher) return;
+                const v = await fetcher(ticker, cfg.storageKey ? safeStorageGet(cfg.storageKey) : null, signal);
                 if (atrPct === null && v.atrPct !== null) atrPct = v.atrPct;
                 if (adrPct === null && v.adrPct !== null) adrPct = v.adrPct;
                 if (latestClose === null && v.latestClose !== null) latestClose = v.latestClose;
             };
 
             try {
-                await tryTwelve();
-                if (atrPct === null || adrPct === null) await tryTiingo();
-                if (atrPct === null || adrPct === null) await tryFinnhub();
-                if (atrPct === null || adrPct === null) await tryStockData();
+                for (const p of providerPriorityOrder) {
+                    if (atrPct !== null && adrPct !== null) break;
+                    try { await tryOne(p); } catch (e) { console.warn(`Volatility ${p} failed for ${ticker}:`, e.message); }
+                }
 
                 const status = (atrPct !== null || adrPct !== null) ? 'ok' : 'error';
                 const result = { ticker, atrPct, adrPct, latestClose, refPct: null, checkedAt: now, status };
@@ -2587,6 +2794,7 @@
             Object.keys(connectionTimeoutByProvider).forEach(k => { if (connectionTimeoutByProvider[k]) { clearTimeout(connectionTimeoutByProvider[k]); connectionTimeoutByProvider[k] = null; } });
             lastTradeAt = {};
             tradeTimestamps = {};
+            delayedByTicker = {};
             Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
             setCalcBtnStreaming(false);
             updateTopStatus();
@@ -2758,6 +2966,7 @@
 
             applyFocusMode();
             syncTwsSendButtons();
+            refreshTwsBadges();
         }
 
         function tickRealtimeSnapshot(container, riskVal, slippageVal, changedTickers, announce = true) {
@@ -2787,6 +2996,7 @@
             if (announce) announceTriggerTransitions(results, changedTickers, risk, slippage);
             applyFocusMode();
             syncTwsSendButtons();
+            refreshTwsBadges();
         }
 
         // Re-render every visible card/row from the current quotes (e.g. after Risk $ changes).
@@ -2805,6 +3015,8 @@
             Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
             lastTradeAt = {};
             tradeTimestamps = {};
+            delayedByTicker = {};
+            delayedToastShown = false;
             triggerActiveState = {};
 
             // 1. Fetch Baseline Data via REST (HOD, LOD, PrevClose) per ticker
@@ -2852,6 +3064,8 @@
             Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
             lastTradeAt = {};
             tradeTimestamps = {};
+            delayedByTicker = {};
+            delayedToastShown = false;
             triggerActiveState = {};
 
             const controller = new AbortController();
@@ -2913,6 +3127,7 @@
             const wsUrl = provider === 'finnhub' ? `wss://ws.finnhub.io?token=${encodeURIComponent(apiKey)}`
                           : provider === 'twelvedata' ? `wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`
                           : provider === 'tiingo' ? 'wss://api.tiingo.com/iex'
+                          : provider === 'tws' ? twsBridgeUrl.replace(/\/$/, '').replace(/^http/, 'ws') + '/stream'
                           : null;
             if (!wsUrl) return;
 
@@ -2987,6 +3202,12 @@
                             eventData: { thresholdLevel: 6, tickers }
                         }));
                     }
+                } else if (provider === 'tws') {
+                    const tickers = validTasks.map(t => t.ticker.toUpperCase());
+                    socket.send(JSON.stringify({ type: 'auth', token: twsBridgeToken }));
+                    if (tickers.length) {
+                        socket.send(JSON.stringify({ type: 'subscribe', tickers, features: ['account', 'positions', 'orders', 'execs', 'pnl'] }));
+                    }
                 }
             };
 
@@ -3003,19 +3224,19 @@
                             response.data.forEach(trade => {
                                 const tkr = String(trade.s).toUpperCase();
                                 const ts = Number.isFinite(trade.t) ? Number(trade.t) : Date.now();
-                                if (applyLivePriceIfNewer(tkr, Number(trade.p), ts)) changedTickers.add(tkr);
+                                if (applyLivePriceIfNewer(tkr, Number(trade.p), ts)) { delayedByTicker[tkr] = false; changedTickers.add(tkr); }
                             });
                         } else {
                             response.data.forEach(trade => {
                                 const tkr = String(trade.s).toUpperCase();
-                                if (applyLivePrice(tkr, Number(trade.p))) changedTickers.add(tkr);
+                                if (applyLivePrice(tkr, Number(trade.p))) { delayedByTicker[tkr] = false; changedTickers.add(tkr); }
                             });
                         }
                     } else if (provider === 'twelvedata') {
                         if (response.event !== 'price') return;
                         const tkr = String(response.symbol).toUpperCase();
                         const extra = { bid: Number(response.bid), ask: Number(response.ask) };
-                        if (applyLivePrice(tkr, Number(response.price), extra)) changedTickers.add(tkr);
+                        if (applyLivePrice(tkr, Number(response.price), extra)) { delayedByTicker[tkr] = false; changedTickers.add(tkr); }
                     } else if (provider === 'tiingo') {
                         if (response.messageType === 'E') {
                             console.warn('Tiingo WS error:', response.data);
@@ -3028,9 +3249,44 @@
                         const price = Number(response.data[2]);
                         const ts = parseTiingoWsTimestamp(response.data[0]);
                         if (isEnhanced) {
-                            if (applyLivePriceIfNewer(key, price, ts)) changedTickers.add(key);
+                            if (applyLivePriceIfNewer(key, price, ts)) { delayedByTicker[key] = false; changedTickers.add(key); }
                         } else {
-                            if (applyLivePrice(key, price)) changedTickers.add(key);
+                            if (applyLivePrice(key, price)) { delayedByTicker[key] = false; changedTickers.add(key); }
+                        }
+                    } else if (provider === 'tws') {
+                        // The bridge echoes the client symbol string — no normalization needed.
+                        if (response.type === 'tick' && response.s) {
+                            const tkr = String(response.s).toUpperCase();
+                            const extra = { bid: Number(response.bid), ask: Number(response.ask) };
+                            const applied = isEnhanced
+                                ? applyLivePriceIfNewer(tkr, Number(response.c), Number(response.t), extra)
+                                : applyLivePrice(tkr, Number(response.c), extra);
+                            if (applied) {
+                                delayedByTicker[tkr] = !!response.delayed;
+                                if (response.delayed) notifyDelayedData();
+                                changedTickers.add(tkr);
+                            }
+                        } else if (response.type === 'tick_delayed' && response.s) {
+                            const tkr = String(response.s).toUpperCase();
+                            delayedByTicker[tkr] = true;
+                            notifyDelayedData();
+                        } else if (response.type === 'error' && response.s) {
+                            realtimeQuoteErrors[String(response.s).toUpperCase()] = response.error || 'TWS error';
+                        } else if (response.type === 'status') {
+                            twsConnected = !!response.connected;
+                            renderProviderPriorityList();
+                        } else if (response.type === 'account' && twsSyncAccount) {
+                            applyTwsAccountValue(response.key, response.value);
+                        } else if (response.type === 'position' && twsPositionsEnabled) {
+                            upsertTwsPosition(response.symbol, response.qty, response.avgCost, response.mktPrice);
+                        } else if (response.type === 'order' && twsOrdersEnabled) {
+                            // openOrder cache keeps the canonical list; this just marks a quick change.
+                            refreshTwsOrders();
+                        } else if (response.type === 'exec' && twsFillsJournalEnabled) {
+                            handleTwsExecution(response);
+                        } else if (response.type === 'pnl' && twsPnlEnabled) {
+                            twsLastPnl = { dailyPnL: response.dailyPnL, unrealizedPnL: response.unrealizedPnL, realizedPnL: response.realizedPnL };
+                            updateTwsPnlChip();
                         }
                     }
 
@@ -3055,10 +3311,17 @@
                     reconnectState.connectionTimeout = null;
                 }
                 if (isCurrent()) console.warn(`${provider} WebSocket closed`, { code: event?.code, reason: event?.reason, wasClean: event?.wasClean });
+                if (provider === 'tws') { twsConnected = false; renderProviderPriorityList(); }
                 if (!isCurrent()) return;
                 const canRetry = liveUpdateEnabled && realtimeTasks.length > 0 && Object.keys(realtimeQuotes).length > 0;
                 const marketOpen = nyNow().isRTH;
-                if (canRetry && (marketOpen || reconnectState.attempts < MAX_RECONNECT_ATTEMPTS)) {
+                // Enhanced mode has a fallback chain — cap retries so a dead provider
+                // cascades instead of spinning forever. Single-provider keeps the old
+                // infinite-during-RTH retry policy.
+                const keepRetrying = isEnhanced
+                    ? canRetry && reconnectState.attempts < MAX_RECONNECT_ATTEMPTS
+                    : canRetry && (marketOpen || reconnectState.attempts < MAX_RECONNECT_ATTEMPTS);
+                if (keepRetrying) {
                     updateTopStatus('reconnecting');
                     const backoff = Math.min(1000 * Math.pow(2, reconnectState.attempts), 15000);
                     reconnectState.attempts++;
@@ -3067,7 +3330,14 @@
                         connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced);
                     }, backoff);
                 } else {
-                    updateTopStatus('offline');
+                    // Retries exhausted off-market — demote for the session and cascade the
+                    // remaining providers up one rank (secondary becomes primary, etc.).
+                    if (demoteProvider(provider) && isEnhanced && realtimeTasks.length) {
+                        showErrorToast(`${API_CONFIGS[provider].name} offline — cascading to next provider`, 4000);
+                        restartStreamForFailover();
+                    } else {
+                        updateTopStatus('offline');
+                    }
                 }
                 setCalcBtnStreaming(isAnySocketOpen());
             };
@@ -3077,14 +3347,14 @@
             if (calculating) return;
             if (Date.now() - lastCalculateAt < 500) return;
             const { risk: riskVal, slippage: slippageVal } = currentRiskAndSlippage();
-            const selectedProvider = document.getElementById('apiProvider').value;
             const isEnhanced = enhancedLiveMode;
-            const mainProvider = selectedProvider;
-            const secondaryProvider = isEnhanced ? getEnhancedSecondaryProvider() : null;
+            const resolved = syncProviderSelects();
+            const mainProvider = resolved.primary;
+            const secondaryProvider = resolved.secondary;
             const mainConfig = API_CONFIGS[mainProvider];
-            const mainKey = mainConfig && mainConfig.storageKey ? safeStorageGet(mainConfig.storageKey) : null;
             const secondaryConfig = isEnhanced ? API_CONFIGS[secondaryProvider] : null;
-            const secondaryKey = isEnhanced && secondaryConfig && secondaryConfig.storageKey ? safeStorageGet(secondaryConfig.storageKey) : null;
+            const mainKey = mainProvider ? providerStreamKey(mainProvider) : null;
+            const secondaryKey = secondaryProvider ? providerStreamKey(secondaryProvider) : null;
             const provider = mainProvider;
             const config = mainConfig;
             const apiKey = mainKey;
@@ -3098,8 +3368,14 @@
                 lastCalculateAt = Date.now();
                 if (btn) btn.disabled = true;
 
-                if (isEnhanced && (mainProvider === secondaryProvider || !mainKey || !secondaryKey)) {
-                    errorMsg.innerText = "Enhanced Live Mode requires two different providers with both API keys saved.";
+                if (!provider || !config) {
+                    errorMsg.innerText = "No available provider — save an API key or connect the TWS bridge in Settings.";
+                    errorMsg.classList.remove('hidden');
+                    navigateTo('settings');
+                    return;
+                }
+                if (isEnhanced && (mainProvider === secondaryProvider || !providerUsable(mainProvider) || !providerUsable(secondaryProvider))) {
+                    errorMsg.innerText = "Enhanced Live Mode requires two different providers with both available (API key saved or bridge connected).";
                     errorMsg.classList.remove('hidden');
                     navigateTo('settings');
                     return;
@@ -3150,6 +3426,7 @@
                 container.innerHTML = `<div id="scanFetchingMsg" class="text-center text-[11px] text-gray-500 font-mono-num py-6">Fetching ${tasks.length} ticker${tasks.length === 1 ? '' : 's'}…</div>`;
 
                 // Handle WebSocket stream for supported providers when live update is active
+                lastStreamRequest = { tasks, riskVal, slippageVal, container };
                 if (isEnhanced && liveUpdateEnabled) {
                     setCalcBtnStreaming(true);
                     await startEnhancedWebSocketStream(mainProvider, mainKey, secondaryProvider, secondaryKey, tasks, riskVal, slippageVal, container);
@@ -3166,6 +3443,7 @@
                     if (collapseAfterCalc && didStartStream) setScannerCollapsed(true);
                     return;
                 }
+                lastStreamRequest = null;
 
                 disconnectWebSocket();
                 const gen = streamGeneration;
@@ -3350,6 +3628,7 @@
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
                                 <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
                                 <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}${stopWarnBadgeClass}" title="Stop is wider than ${f.isGreenDay ? '2.5' : '1.5'}× the 20-day ATR/ADR">⚠ ${f.stopWarn ? escapeHtml(f.stopWarn.text) : ''}</span>
+                                <span data-tws-badge-ticker="${f.ticker}" class="hidden text-[8px] font-bold leading-none"></span>
                             </div>
                             <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                         </div>
@@ -3503,6 +3782,7 @@
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
                             <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
                             <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}text-[9px] text-rose-300 leading-none" title="Stop wider than ${f.isGreenDay ? '2.5' : '1.5'}× 20-day ATR/ADR">⚠</span>
+                            <span data-tws-badge-ticker="${f.ticker}" class="hidden text-[8px] font-bold leading-none"></span>
                         </div>
                         <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
                     </div>
@@ -3645,6 +3925,14 @@
                 strategyId: defaultStrategyId(!!isLong),
                 customTps: []
             };
+
+            // TWS position auto-fill: if we hold this ticker in the same direction, use
+            // the real quantity + average cost. User can still edit the inputs.
+            const held = twsPositionFor(currentModalState.ticker);
+            if (held && ((currentModalState.isLong && held.qty > 0) || (!currentModalState.isLong && held.qty < 0))) {
+                currentModalState.shares = Math.abs(held.qty);
+                if (Number.isFinite(held.avgCost) && held.avgCost > 0) currentModalState.entryPrice = held.avgCost;
+            }
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
 
@@ -4373,8 +4661,13 @@
             const sharesInput = div.querySelector('.b-shares');
             const stopInput = div.querySelector('.b-stop');
             if (tickerInput) tickerInput.value = ticker || '';
-            if (entryInput) entryInput.value = (Number(p.entry) > 0 ? Number(p.entry).toFixed(2) : '');
-            if (sharesInput) sharesInput.value = (Number(p.shares) > 0 ? p.shares : '');
+            // TWS position auto-fill: use held qty/avgCost when the paste didn't supply them.
+            const heldPos = twsPositionFor(ticker);
+            const heldForSide = heldPos && ((isLong && heldPos.qty > 0) || (!isLong && heldPos.qty < 0)) ? heldPos : null;
+            const fillEntry = (Number(p.entry) > 0) ? p.entry : (heldForSide && heldForSide.avgCost > 0 ? heldForSide.avgCost : null);
+            const fillShares = (Number(p.shares) > 0) ? p.shares : (heldForSide ? Math.abs(heldForSide.qty) : null);
+            if (entryInput) entryInput.value = (Number(fillEntry) > 0 ? Number(fillEntry).toFixed(2) : '');
+            if (sharesInput) sharesInput.value = (Number(fillShares) > 0 ? fillShares : '');
             if (stopInput) stopInput.value = (Number(p.stop) > 0 ? Number(p.stop).toFixed(2) : '');
             div.querySelectorAll('input, select').forEach(el => el.setAttribute('autocomplete', 'off'));
             wrap.appendChild(div);
@@ -4828,7 +5121,7 @@
             const curPrice = getTradePrice(trade.ticker);
             if (!curPrice) return `<span class="text-[9px] text-gray-500 font-mono">No live quote</span>`;
             const isLong = trade.side === 'LONG';
-            const rps = isLong ? Math.abs(trade.entryPrice - trade.stopPrice) : Math.abs(trade.stopPrice - trade.entryPrice);
+            const rps = Number.isFinite(trade.stopPrice) ? Math.abs(trade.entryPrice - trade.stopPrice) : 0;
             const rMult = rps > 0 ? (isLong ? (curPrice - trade.entryPrice) / rps : (trade.entryPrice - curPrice) / rps) : 0;
             const pnlDollars = (isLong ? (curPrice - trade.entryPrice) : (trade.entryPrice - curPrice)) * trade.shares;
 
@@ -4854,13 +5147,13 @@
         async function refreshActiveTradesPrices() {
             const btn = document.getElementById('refreshActiveTradesBtn');
             if (btn) btn.innerText = 'Refreshing...';
-            const provider = document.getElementById('apiProvider').value;
-            const config = API_CONFIGS[provider];
-            const apiKey = config.storageKey ? safeStorageGet(config.storageKey) : null;
+            const provider = resolveProviders().primary;
+            const config = provider ? API_CONFIGS[provider] : null;
+            const apiKey = config && config.storageKey ? safeStorageGet(config.storageKey) : null;
             const tickers = [...new Set(activeTradesLog.filter(t => t.status === 'ACTIVE').map(t => t.ticker))];
-            if (!apiKey) {
+            if (!provider || !providerUsable(provider)) {
                 if (btn) btn.innerText = 'Refresh Prices';
-                alert('Save an API key in Settings first.');
+                alert('Save an API key or connect the TWS bridge in Settings first.');
                 return;
             }
             if (activeTradesSession) { try { activeTradesSession.abort(); } catch (e) {} activeTradesSession = null; }
@@ -5171,10 +5464,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -5182,10 +5475,15 @@
                 if (key === 'riskValue' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid risk');
                 if (key === 'slippageValue' && (!Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error('Invalid slippage');
                 if ((key === 'selectedProvider' || key === 'enhancedSecondaryProvider') && !Object.hasOwn(API_CONFIGS, value)) throw new Error('Unknown quote provider');
+                if (key === 'providerPriorityOrder') {
+                    let arr; try { arr = JSON.parse(value); } catch (e) { throw new Error('Invalid provider priority'); }
+                    if (!Array.isArray(arr) || !arr.length || arr.some(p => typeof p !== 'string' || !Object.hasOwn(API_CONFIGS, p))) throw new Error('Invalid provider priority');
+                }
                 if (key === 'preferredViewMode' && !['cards', 'table'].includes(value)) throw new Error('Unknown view');
                 if (key === 'maxHoldDays' && boundedHoldDays(value) !== Number(value)) throw new Error('Invalid hold days');
                 if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'preferredViewMode', 'maxHoldDays', 'timedExitTime'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
+                if (key === 'twsBridgeUrl' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(value)) throw new Error('Invalid bridge URL');
+                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
                 values[key] = value;
             });
             if (data.globalMarketRegime !== undefined) {
@@ -5209,7 +5507,11 @@
             if (data.activeTradesLog !== undefined) {
                 if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
                 data.activeTradesLog.forEach(t => {
-                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice)) throw new Error('Invalid trade record');
+                    // TWS-fill entries have no precomputed stop — validate params only when a stop exists.
+                    const paramsOk = t.fillSource === 'tws' && !Number.isFinite(t.stopPrice)
+                        ? (Number.isFinite(t.entryPrice) && t.entryPrice > 0 && Number.isSafeInteger(t.shares) && t.shares > 0 ? null : 'bad fill params')
+                        : validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice);
+                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || paramsOk) throw new Error('Invalid trade record');
                     if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
                 });
                 if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
@@ -5311,6 +5613,25 @@
                 return { ok: false, error: e.message || 'Network error' };
             }
         }
+        async function bridgeGet(path, signal) {
+            if (!twsReady()) throw new Error('TWS bridge not configured');
+            const url = twsBridgeUrl.replace(/\/$/, '') + path;
+            const headers = {};
+            if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+            const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
+            return await res.json();
+        }
+        // Returns {status, json} so callers can tell "endpoint missing" (404) from "symbol not found".
+        async function bridgeGetRaw(path, signal) {
+            if (!twsReady()) throw new Error('TWS bridge not configured');
+            const url = twsBridgeUrl.replace(/\/$/, '') + path;
+            const headers = {};
+            if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+            const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
+            let json = null;
+            try { json = await res.json(); } catch (e) {}
+            return { status: res.status, json };
+        }
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; return { ok: false, connected: false }; }
             try {
@@ -5327,25 +5648,34 @@
         function startTwsHealthPolling() {
             if (twsHealthTimer) return;
             twsHealthTimer = setInterval(() => {
-                if (!document.hidden) bridgeHealth().then(updateTwsStatusUI);
+                if (!document.hidden) bridgeHealth().then(updateTwsStatusUI).then(pollTwsAux);
             }, 15000);
-            bridgeHealth().then(updateTwsStatusUI);
+            bridgeHealth().then(updateTwsStatusUI).then(pollTwsAux);
         }
         function stopTwsHealthPolling() {
             if (twsHealthTimer) { clearInterval(twsHealthTimer); twsHealthTimer = null; }
         }
         function updateTwsStatusUI() {
             const el = document.getElementById('twsStatus');
-            if (!el) return;
-            if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; }
-            else if (twsConnected) {
-                el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
-                el.className = 'text-[10px] font-mono-num text-emerald-400';
-            } else {
-                el.textContent = 'Not connected';
-                el.className = 'text-[10px] font-mono-num text-red-400';
+            if (el) {
+                if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; }
+                else if (twsConnected) {
+                    el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
+                    el.className = 'text-[10px] font-mono-num text-emerald-400';
+                } else {
+                    el.textContent = 'Not connected';
+                    el.className = 'text-[10px] font-mono-num text-red-400';
+                }
+            }
+            const ordBtn = document.getElementById('twsOrdersBtn');
+            if (ordBtn) {
+                const n = twsOpenOrders.length;
+                if (twsEnabled && twsOrdersEnabled && n > 0) ordBtn.classList.remove('hidden'); else ordBtn.classList.add('hidden');
+                if (n > 0) ordBtn.innerText = n + ' ORD';
             }
             syncTwsSendButtons();
+            renderProviderPriorityList();
+            refreshTwsBadges();
         }
         function updateTwsActiveStrategyDisplay() {
             const el = document.getElementById('twsActiveStrategyDisplay');
@@ -5360,18 +5690,50 @@
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
             const autoEl = document.getElementById('autoSendExitsOnOpenSetting');
+            const wasSyncing = twsSyncAccount;
+            // Snapshot the manual value before the first sync replaces it.
+            if (!wasSyncing && (document.getElementById('twsSyncAccountSetting') || {}).checked) {
+                twsManualAccountValue = accountValue;
+            }
             twsEnabled = en ? en.checked : false;
             twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
             twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
             autoSendExitsOnOpen = autoEl ? autoEl.checked : false;
+            const toggles = {
+                twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
+                twsPositionsEnabled: 'twsPositionsEnabledSetting', twsOrdersEnabled: 'twsOrdersEnabledSetting',
+                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting'
+            };
+            for (const [key, elId] of Object.entries(toggles)) {
+                const el = document.getElementById(elId);
+                const v = !!(el && el.checked);
+                if (key === 'twsQuotesEnabled') twsQuotesEnabled = v;
+                else if (key === 'twsSyncAccount') twsSyncAccount = v;
+                else if (key === 'twsPositionsEnabled') twsPositionsEnabled = v;
+                else if (key === 'twsOrdersEnabled') twsOrdersEnabled = v;
+                else if (key === 'twsFillsJournalEnabled') twsFillsJournalEnabled = v;
+                else if (key === 'twsPnlEnabled') twsPnlEnabled = v;
+                safeStorageSet(key, String(v));
+            }
             safeStorageSet('twsEnabled', String(twsEnabled));
             safeStorageSet('twsBridgeUrl', twsBridgeUrl);
             safeStorageSet('twsBridgeToken', twsBridgeToken);
             safeStorageSet('autoSendExitsOnOpen', String(autoSendExitsOnOpen));
+            // Turning off account sync restores the user's last typed value.
+            if (wasSyncing && !twsSyncAccount && twsManualAccountValue != null) {
+                accountValue = twsManualAccountValue;
+                safeStorageSet('accountValue', String(accountValue));
+                const el = document.getElementById('accountValueSetting');
+                if (el) el.value = accountValue > 0 ? accountValue.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '';
+            }
             if (twsEnabled && twsBridgeToken) { startTwsHealthPolling(); } else { stopTwsHealthPolling(); twsConnected = false; }
             updateTwsStatusUI();
             syncTwsSendButtons();
             updateTwsActiveStrategyDisplay();
+            updateTwsAccountTag();
+            updateTwsPnlChip();
+            renderProviderPriorityList();
+            refreshTwsBadges();
         }
         function loadTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
@@ -5382,10 +5744,21 @@
             if (urlEl) urlEl.value = twsBridgeUrl;
             if (tokEl) tokEl.value = twsBridgeToken;
             if (autoEl) autoEl.checked = autoSendExitsOnOpen;
+            const tvals = { twsQuotesEnabled, twsSyncAccount, twsPositionsEnabled, twsOrdersEnabled, twsFillsJournalEnabled, twsPnlEnabled };
+            for (const [key, elId] of Object.entries({
+                twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
+                twsPositionsEnabled: 'twsPositionsEnabledSetting', twsOrdersEnabled: 'twsOrdersEnabledSetting',
+                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting'
+            })) {
+                const el = document.getElementById(elId);
+                if (el) el.checked = !!tvals[key];
+            }
             if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
             updateTwsStatusUI();
             syncTwsSendButtons();
             updateTwsActiveStrategyDisplay();
+            updateTwsAccountTag();
+            updateTwsPnlChip();
         }
         async function testTwsConnection() {
             const el = document.getElementById('twsStatus');
@@ -5491,6 +5864,19 @@
             if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
             const payload = buildEntryOrderPayload(item);
             if (!payload.ok) { showErrorToast(payload.error); return; }
+            // Same-direction position already held → confirm before adding on.
+            const pos = twsPositionFor(ticker);
+            if (pos && ((payload.action === 'BUY' && pos.qty > 0) || (payload.action === 'SELL' && pos.qty < 0))) {
+                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another ${payload.action} order anyway?`)) return;
+            }
+            // Duplicate working PSC entry for the same ticker+side → confirm before resending.
+            if (twsOrdersEnabled) {
+                const dup = findDuplicatePscOrders(ticker, payload.action);
+                if (dup.length && !confirm(`${dup.length} working PSC ${payload.action} order(s) already exist for ${ticker} — send another?`)) return;
+            }
+            // Contract preflight once per symbol per session.
+            const pf = await preflightContract(ticker);
+            if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
             setTwsSendState(key, 'sending');
             const result = await bridgeRequest('/order', payload);
             if (result.ok) {
@@ -5509,6 +5895,12 @@
             const key = twsSendKey(ticker, 'entry');
             if (twsSendState[key] === 'sending') return;
             if (!autoSendExitsOnOpen) { await sendTwsEntry(ticker); return; }
+            const pos = twsPositionFor(ticker);
+            const item0 = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+            const f0 = item0 && getRealtimeFields(item0, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            if (pos && f0 && ((f0.isGreenDay && pos.qty > 0) || (!f0.isGreenDay && pos.qty < 0))) {
+                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another bracket anyway?`)) return;
+            }
             const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
             if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
             const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
@@ -5539,6 +5931,8 @@
             }
             const payload = buildExitOrdersPayload(built);
             if (!payload.ok) { showErrorToast(payload.error); return; }
+            const pf = await preflightContract(ticker);
+            if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
             if (attachEntry) {
                 const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
                 if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
@@ -5590,6 +5984,267 @@
             });
         }
 
+        // ---------- TWS data features (all opt-in, independent toggles) ----------
+        function notifyDelayedData() {
+            if (delayedToastShown) return;
+            delayedToastShown = true;
+            showErrorToast('TWS is streaming delayed data — no market-data subscription. Enhanced mode will prefer real-time feeds.', 8000);
+        }
+
+        // --- Account value sync (NetLiquidation -> accountValue) ---
+        function applyTwsAccountValue(key, value) {
+            if (key !== 'NetLiquidation') return;
+            const n = parseFloat(value);
+            if (!Number.isFinite(n) || n <= 0) return;
+            if (n === twsLastAccountValue) return;
+            twsLastAccountValue = n;
+            accountValue = n;
+            safeStorageSet('accountValue', String(n));
+            const el = document.getElementById('accountValueSetting');
+            if (el) el.value = n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+            updateTwsAccountTag();
+            updateRiskInputUI();
+            const container = document.getElementById('resultsContainer');
+            if (container && realtimeTasks.length) refreshAllVisible(container);
+        }
+        async function pollTwsAccount() {
+            if (!twsSyncAccount || !twsConnected || !twsReady()) return;
+            try {
+                const d = await bridgeGet('/account');
+                const n = d && d.values ? parseFloat(d.values.NetLiquidation) : NaN;
+                if (Number.isFinite(n) && n > 0) {
+                    if (n !== accountValue) applyTwsAccountValue('NetLiquidation', n);
+                    twsLastAccountValue = n;
+                }
+            } catch (e) { /* keep last valid value */ }
+            updateTwsAccountTag();
+        }
+        function updateTwsAccountTag() {
+            const tag = document.getElementById('twsAccountTag');
+            const el = document.getElementById('accountValueSetting');
+            if (!tag || !el) return;
+            const on = twsEnabled && twsSyncAccount;
+            if (on) tag.classList.remove('hidden'); else tag.classList.add('hidden');
+            el.readOnly = on;
+            if (on) el.classList.add('opacity-60'); else el.classList.remove('opacity-60');
+            if (on && twsLastAccountValue != null) {
+                tag.innerText = 'TWS live · ' + twsLastAccountValue.toLocaleString('en-US', { maximumFractionDigits: 0 });
+            } else if (on) {
+                tag.innerText = 'TWS live · waiting…';
+            }
+        }
+
+        // --- Positions (HOLD badges + exit-modal auto-fill) ---
+        function upsertTwsPosition(symbol, qty, avgCost, mktPrice) {
+            if (!symbol) return;
+            const s = String(symbol).toUpperCase();
+            if (qty) twsPositions[s] = { qty: Number(qty), avgCost: Number(avgCost), mktPrice: Number(mktPrice) };
+            else delete twsPositions[s];
+        }
+        async function refreshTwsPositions() {
+            if (!twsPositionsEnabled || !twsConnected || !twsReady()) return;
+            try {
+                const d = await bridgeGet('/positions');
+                if (!d || !d.ok || !Array.isArray(d.positions)) return;
+                const next = {};
+                for (const p of d.positions) {
+                    if (!p || !p.symbol || !p.qty) continue;
+                    next[String(p.symbol).toUpperCase()] = { qty: Number(p.qty), avgCost: Number(p.avgCost), mktPrice: Number(p.mktPrice) };
+                }
+                twsPositions = next;
+                refreshTwsBadges();
+            } catch (e) {}
+        }
+        // Position for a ticker; negative qty = short. Returns null when flat/unknown.
+        function twsPositionFor(ticker) {
+            if (!twsPositionsEnabled) return null;
+            return twsPositions[String(ticker || '').toUpperCase()] || null;
+        }
+        // --- Open orders (WORKING badge + drawer + cancel) ---
+        async function refreshTwsOrders() {
+            if (!twsOrdersEnabled || !twsConnected || !twsReady()) return;
+            try {
+                const d = await bridgeGet('/orders');
+                if (!d || !d.ok || !Array.isArray(d.orders)) return;
+                twsOpenOrders = d.orders;
+                refreshTwsBadges();
+                renderTwsOrdersDrawer();
+            } catch (e) {}
+        }
+        function twsOrdersFor(ticker) {
+            if (!twsOrdersEnabled) return [];
+            const s = String(ticker || '').toUpperCase();
+            return twsOpenOrders.filter(o => String(o.symbol || '').toUpperCase() === s);
+        }
+        // Duplicate-PSC-order check before resending: same ticker + same entry side working.
+        function findDuplicatePscOrders(ticker, action) {
+            return twsOrdersFor(ticker).filter(o => isPscRef(o.orderRef) && o.action === action);
+        }
+        function isPscRef(ref) { return typeof ref === 'string' && ref.startsWith('PSC-'); }
+        async function cancelTwsOrder(orderId) {
+            const r = await bridgeRequest('/cancel', { orderId });
+            if (r && (r.status === 'Cancelled' || r.ok)) { showSuccessToast('Order ' + orderId + ' cancelled'); }
+            else showErrorToast('Cancel failed: ' + (r && (r.error || r.message) || 'unknown'), 6000);
+            await refreshTwsOrders();
+        }
+        async function cancelAllPscOrders() {
+            const n = twsOpenOrders.filter(o => isPscRef(o.orderRef)).length;
+            if (!n) { showErrorToast('No working PSC orders'); return; }
+            if (!confirm('Cancel ' + n + ' PSC order(s)? Manual/non-PSC orders are left alone.')) return;
+            const r = await bridgeRequest('/cancel-all', { scope: 'psc' });
+            if (r && r.ok) showSuccessToast('Cancelled ' + (r.cancelled || 0) + ' PSC order(s)');
+            else showErrorToast('Cancel-all finished with issues — check TWS', 6000);
+            await refreshTwsOrders();
+        }
+        // --- Fills -> journal ---
+        async function refreshTwsExecutions() {
+            if (!twsFillsJournalEnabled || !twsConnected || !twsReady()) return;
+            try {
+                const d = await bridgeGet('/executions');
+                if (!d || !d.ok || !Array.isArray(d.executions)) return;
+                for (const ex of d.executions) handleTwsExecution(ex);
+            } catch (e) {}
+        }
+        function handleTwsExecution(ex) {
+            if (!ex || !ex.execId || twsSeenExecs.has(ex.execId)) return;
+            if (!isPscRef(ex.orderRef)) return;
+            twsSeenExecs.add(ex.execId);
+            const ticker = String(ex.symbol || '').toUpperCase();
+            const side = ex.side === 'BOT' ? 'BOT' : (ex.side === 'SLD' ? 'SLD' : (ex.side || '').toUpperCase());
+            const qty = Number(ex.shares) || 0;
+            const price = Number(ex.price) || 0;
+            if (!ticker || !qty || !price) return;
+            showSuccessToast('Filled ' + qty + ' ' + ticker + ' @ ' + price.toFixed(2), 5000);
+            // Entry fills (BOT opening long / SLD opening short) open a journal row.
+            // Exit fills (SLD against a held long / BOT against a held short) close one.
+            const open = activeTradesLog.find(t => t.ticker === ticker && t.status === 'ACTIVE');
+            const isEntry = !open && (side === 'BOT' || side === 'SLD');
+            if (isEntry) {
+                activeTradesLog.unshift({
+                    id: Date.now() + Math.random(),
+                    ticker, side: side === 'BOT' ? 'LONG' : 'SHORT',
+                    strategyId: 'tws', regime: 'TWS fill',
+                    marketRegime: globalMarketRegime, holdLimit: maxHoldDays,
+                    targets: [], tp1: null, tp2: null,
+                    entryDate: nyDateStr(), entryPrice: price, shares: qty,
+                    stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
+                    commission: Number(ex.commission) || 0
+                });
+            } else if (open && ((open.side === 'LONG' && side === 'SLD') || (open.side === 'SHORT' && side === 'BOT'))) {
+                open.status = 'CLOSED';
+                open.exitPrice = price;
+                open.exitDate = nyDateStr();
+                open.exitCommission = Number(ex.commission) || 0;
+                open.pnl = (open.side === 'LONG' ? 1 : -1) * (price - open.entryPrice) * Math.min(qty, open.shares) - (open.commission || 0) - open.exitCommission;
+                if (qty < open.shares) { // partial exit — shrink remaining instead of closing fully
+                    open.shares = open.shares - qty;
+                    open.status = 'ACTIVE';
+                    delete open.exitPrice; delete open.exitDate;
+                }
+            }
+            saveActiveTradesLog();
+            updateActiveTradesCountBadge();
+            renderActiveTradesPage();
+        }
+        // --- P&L chip ---
+        async function refreshTwsPnl() {
+            if (!twsPnlEnabled || !twsConnected || !twsReady()) return;
+            try {
+                const d = await bridgeGet('/pnl');
+                if (d && d.ok) { twsLastPnl = d; updateTwsPnlChip(); }
+            } catch (e) {}
+        }
+        function updateTwsPnlChip() {
+            const el = document.getElementById('twsPnlChip');
+            if (!el) return;
+            const on = twsEnabled && twsPnlEnabled && twsLastPnl && Number.isFinite(Number(twsLastPnl.dailyPnL));
+            if (on) el.classList.remove('hidden'); else el.classList.add('hidden');
+            if (on) {
+                const v = Number(twsLastPnl.dailyPnL);
+                el.innerText = (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(2);
+                el.className = 'text-[9px] font-black font-mono-num px-1.5 py-0.5 rounded ' + (v >= 0 ? 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30' : 'text-red-300 bg-red-500/10 border border-red-500/30');
+            }
+        }
+        // --- Contract preflight (once per symbol per session, before first order) ---
+        // Lenient: only a definitive {ok:false} from a bridge that has the endpoint blocks the
+        // send — a network hiccup or an old bridge without /contract just skips the check.
+        async function preflightContract(symbol) {
+            const s = String(symbol || '').toUpperCase();
+            if (!s || twsValidatedContracts.has(s)) return { ok: true };
+            try {
+                const r = await bridgeGetRaw('/contract?symbol=' + encodeURIComponent(s));
+                const d = r.json;
+                if (d && d.ok) { twsValidatedContracts.add(s); return { ok: true }; }
+                // contractMissing flag = TWS itself rejected the symbol (vs. old bridge's
+                // bare 404, a transport error, or TWS being offline — those skip the check).
+                if (d && d.contractMissing) {
+                    return { ok: false, error: 'TWS could not find ' + s + ' — check the symbol' };
+                }
+                return { ok: true };
+            } catch (e) { return { ok: true }; }
+        }
+        // --- Aux poll on the existing health cadence ---
+        async function pollTwsAux() {
+            if (!twsReady() || !twsConnected) { updateTwsAccountTag(); updateTwsPnlChip(); return; }
+            twsAuxPollCount++;
+            if (twsSyncAccount) await pollTwsAccount();
+            if (twsPositionsEnabled && twsAuxPollCount % 2 === 0) refreshTwsPositions();
+            if (twsOrdersEnabled && twsAuxPollCount % 2 === 0) refreshTwsOrders();
+            if (twsFillsJournalEnabled && twsAuxPollCount % 4 === 0) refreshTwsExecutions();
+            if (twsPnlEnabled) refreshTwsPnl();
+            renderProviderPriorityList();
+            refreshTwsBadges();
+            // Upward cascade: a higher-ranked provider just became usable (e.g. TWS
+            // connected) — hand the stream off to the newly resolved primary.
+            if (liveUpdateEnabled && realtimeTasks.length) {
+                const r = resolveProviders();
+                const cur = (document.getElementById('apiProvider') || {}).value;
+                if (r.primary && r.primary !== cur) restartStreamForFailover();
+            }
+        }
+        // --- HOLD / WORKING / DELAYED badges on cards + rows ---
+        function refreshTwsBadges() {
+            document.querySelectorAll('[data-tws-badge-ticker]').forEach(el => {
+                const ticker = el.dataset.twsBadgeTicker;
+                const pos = twsPositionFor(ticker);
+                const orders = twsOrdersFor(ticker);
+                const delayed = !!delayedByTicker[ticker];
+                const bits = [];
+                if (pos) bits.push(`<span class="text-amber-300" title="TWS position ${pos.qty} @ ${Number(pos.avgCost).toFixed(2)}">HOLD ${Math.abs(pos.qty)} @${Number(pos.avgCost).toFixed(2)}</span>`);
+                if (orders.length) bits.push(`<span class="text-cyan-300 cursor-pointer" data-action="open-tws-orders" data-ticker="${ticker}" title="${orders.length} working order(s) — click to manage">${orders.length} ORD</span>`);
+                if (delayed) bits.push('<span class="text-amber-400" title="Delayed data — no market-data subscription">DELAYED</span>');
+                el.innerHTML = bits.join(' ');
+                if (bits.length) el.classList.remove('hidden'); else el.classList.add('hidden');
+            });
+        }
+        function renderTwsOrdersDrawer() {
+            const list = document.getElementById('twsOrdersList');
+            if (!list) return;
+            if (!twsOrdersEnabled || !twsOpenOrders.length) {
+                list.innerHTML = '<div class="text-[10px] text-gray-500 py-3 text-center">No working orders</div>';
+                return;
+            }
+            list.innerHTML = twsOpenOrders.map(o => `
+                <div class="flex items-center gap-2 px-2 py-1.5 border-b border-white/5 text-[10px] font-mono-num">
+                    <span class="font-black ${o.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${o.action}</span>
+                    <span class="text-white font-bold">${escapeHtml(o.symbol || '')}</span>
+                    <span class="text-gray-300">${o.qty ?? ''} ${o.type || ''}${o.lmtPrice ? ' @' + o.lmtPrice : ''}${o.auxPrice ? ' stp@' + o.auxPrice : ''}</span>
+                    <span class="text-gray-500 truncate flex-1" title="${escapeHtml(o.orderRef || '')}">${escapeHtml(o.orderRef || '')}</span>
+                    <span class="text-gray-500">${escapeHtml(o.status || '')}</span>
+                    <button data-action="cancel-tws-order" data-order-id="${o.orderId}" class="text-red-300 hover:text-red-200 font-bold px-1">✕</button>
+                </div>`).join('');
+        }
+        function openTwsOrdersDrawer() {
+            renderTwsOrdersDrawer();
+            const d = document.getElementById('twsOrdersDrawer');
+            if (d) { d.classList.remove('hidden'); d.classList.add('flex'); }
+            refreshTwsOrders();
+        }
+        function closeTwsOrdersDrawer() {
+            const d = document.getElementById('twsOrdersDrawer');
+            if (d) { d.classList.add('hidden'); d.classList.remove('flex'); }
+        }
+
         // ========================================================
         // TWS BRIDGE — END
         // ========================================================
@@ -5600,6 +6255,7 @@
                 closeStrategyModal();
                 closeBatchReviewDrawer();
                 closeNavMenu();
+                closeTwsOrdersDrawer();
             }
         });
 
@@ -5627,6 +6283,18 @@
             if (!btn) return;
             e.stopPropagation();
             sendTwsOpen(btn.dataset.ticker);
+        });
+
+        // TWS working-order badges → drawer; drawer row ✕ → cancel that order.
+        document.addEventListener('click', (e) => {
+            const openBtn = e.target.closest('[data-action="open-tws-orders"]');
+            if (openBtn) { e.stopPropagation(); openTwsOrdersDrawer(); return; }
+            const cancelBtn = e.target.closest('[data-action="cancel-tws-order"]');
+            if (cancelBtn) {
+                e.stopPropagation();
+                const oid = Number(cancelBtn.dataset.orderId);
+                if (Number.isFinite(oid)) cancelTwsOrder(oid);
+            }
         });
 
         // TWS Send modal functions
