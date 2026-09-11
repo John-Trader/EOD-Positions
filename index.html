@@ -4208,8 +4208,8 @@
                         <div class="shrink-0 flex items-center gap-1">
                             <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>
                             <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
-                                <option value="long" ${isLong ? 'selected' : ''}>LONG</option>
-                                <option value="short" ${!isLong ? 'selected' : ''}>SHORT</option>
+                                <option value="long" ${isLong ? 'selected' : ''}>SELL</option>
+                                <option value="short" ${!isLong ? 'selected' : ''}>COVER</option>
                             </select>
                         </div>
                         <div class="shrink-0 flex items-center gap-2">
