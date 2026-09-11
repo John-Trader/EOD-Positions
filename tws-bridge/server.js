@@ -138,6 +138,57 @@ const pendingContract = new Map();     // reqId -> {resolve, timer, detail}
 const pendingHistory = new Map();      // reqId -> {resolve, timer, bars}
 const pendingExec = new Map();         // reqId -> {resolve, timer, execs, commissions}
 
+// snapshot reconciliation: a reqAllOpenOrders/reqPositions snapshot reports exactly what
+// IB considers open/held — the cache is pruned to that set on the matching End event.
+let orderSnapshotSeen = null;          // Set<orderId> while an orders snapshot is in flight
+const orderSnapshotWaiters = [];
+let orderSnapshotTimer = null;
+let positionSnapshotSeen = null;       // Set<'acct:conId'> while a positions snapshot is in flight
+const positionSnapshotWaiters = [];
+let positionSnapshotTimer = null;
+
+function pruneToSeen(cache, seenSet) { // exported for tests
+    for (const id of [...cache.keys()]) if (!seenSet.has(id)) cache.delete(id);
+}
+
+function finishOrderSnapshot() {
+    if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
+    const seen = orderSnapshotSeen;
+    orderSnapshotSeen = null;
+    if (seen) pruneToSeen(openOrdersCache, seen);
+    const list = Array.from(openOrdersCache.values());
+    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()(list);
+}
+
+function finishPositionSnapshot() {
+    if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
+    const seen = positionSnapshotSeen;
+    positionSnapshotSeen = null;
+    if (seen) pruneToSeen(positionsCache, seen);
+    const list = Array.from(positionsCache.values());
+    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()(list);
+}
+
+function requestOrdersSnapshot() {
+    return new Promise((resolve) => {
+        orderSnapshotWaiters.push(resolve);
+        if (orderSnapshotSeen) return;                 // join the in-flight snapshot
+        orderSnapshotSeen = new Set();
+        try { if (connected && ib) ib.reqAllOpenOrders(); } catch (_) {}
+        orderSnapshotTimer = setTimeout(finishOrderSnapshot, 4000);
+    });
+}
+
+function requestPositionsSnapshot() {
+    return new Promise((resolve) => {
+        positionSnapshotWaiters.push(resolve);
+        if (positionSnapshotSeen) return;
+        positionSnapshotSeen = new Set();
+        try { if (connected && ib) ib.reqPositions(); } catch (_) {}
+        positionSnapshotTimer = setTimeout(finishPositionSnapshot, 4000);
+    });
+}
+
 // cached data
 const mktSubs = new Map();             // symbol -> {reqId, refCount, quote, delayed, lastTradeTs}
 const openOrdersCache = new Map();     // orderId -> shaped order (incl. manual TWS orders)
@@ -242,8 +293,8 @@ function connect() {
         console.log(`[bridge] Connected to TWS on ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
         ib.reqIds();
         try { ib.reqMarketDataType(1); } catch (_) {}     // ask for real-time; TWS downgrades to delayed if unentitled
-        try { ib.reqPositions(); } catch (_) {}
-        try { ib.reqAllOpenOrders(); } catch (_) {}
+        try { if (!positionSnapshotSeen) { positionSnapshotSeen = new Set(); ib.reqPositions(); } } catch (_) {}
+        try { if (!orderSnapshotSeen) { orderSnapshotSeen = new Set(); ib.reqAllOpenOrders(); } } catch (_) {}
         // Re-issue market-data subscriptions — they died with the socket.
         for (const symbol of mktSubs.keys()) issueMktSub(symbol);
         streamBroadcast({ type: 'status', connected: true });
@@ -263,7 +314,9 @@ function connect() {
     ib.on(EventName.orderStatus, (orderId, status, filled, remaining, avgFillPrice) => {
         const cached = openOrdersCache.get(orderId);
         if (cached) cached.status = status;
-        if (status === 'Filled' || status === 'Cancelled' || status === 'Inactive') openOrdersCache.delete(orderId);
+        // Inactive is NOT terminal — staged OCA legs/resting orders report it while still pending.
+        // Truly gone orders are removed by the snapshot diff on openOrderEnd instead.
+        if (status === 'Filled' || status === 'Cancelled' || status === 'ApiCancelled') openOrdersCache.delete(orderId);
         streamBroadcast({ type: 'order', orderId, status, filled, remaining, avgFillPrice });
 
         const pc = pendingCancel.get(orderId);
@@ -289,6 +342,7 @@ function connect() {
         // Cache BEFORE the pending early-return so manual TWS orders are tracked too.
         const shaped = shapeOpenOrder(orderId, contract, order, orderState);
         openOrdersCache.set(orderId, shaped);
+        if (orderSnapshotSeen) orderSnapshotSeen.add(orderId);
 
         const p = pending.get(orderId);
         if (!p) return;
@@ -304,6 +358,8 @@ function connect() {
             p.resolve({ orderId, status: status || 'PreSubmitted', filled: 0, remaining: (p.order && p.order.totalQuantity) || 0 });
         }
     });
+
+    ib.on(EventName.openOrderEnd, finishOrderSnapshot);
 
     ib.on(EventName.error, (err, code, reqId) => {
         const msg = err && err.message ? err.message : String(err);
@@ -423,7 +479,7 @@ function connect() {
     });
 
     // ---- account / positions / pnl ----
-    ib.on(EventName.updateAccountValue, (value, key, currency) => {
+    ib.on(EventName.updateAccountValue, (key, value, currency, accountName) => {
         const cur = currency || 'BASE';
         const prevCur = accountCurrency[key];
         if (cur === 'BASE' || prevCur === undefined || (prevCur !== 'BASE' && cur === 'USD')) {
@@ -447,7 +503,11 @@ function connect() {
         const k = `${acct}:${contract.conId}`;
         const prev = positionsCache.get(k) || {};
         positionsCache.set(k, { ...prev, symbol: contract.symbol, qty: pos, avgCost });
+        if (positionSnapshotSeen) positionSnapshotSeen.add(k);
+        streamBroadcast({ type: 'position', symbol: contract.symbol, qty: pos, avgCost, mktPrice: prev.mktPrice });
     });
+
+    ib.on(EventName.positionEnd, finishPositionSnapshot);
 
     ib.on(EventName.pnl, (reqId, dailyPnL, unrealizedPnL, realizedPnL) => {
         pnlCache.dailyPnL = dailyPnL; pnlCache.unrealizedPnL = unrealizedPnL; pnlCache.realizedPnL = realizedPnL;
@@ -507,9 +567,21 @@ function connect() {
         }
     });
 
+    function releaseSnapshots() {
+        // Disconnect mid-snapshot: don't prune on partial data — just release waiters.
+        orderSnapshotSeen = null; positionSnapshotSeen = null;
+        if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
+        if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
+        const ol = Array.from(openOrdersCache.values());
+        while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()(ol);
+        const pl = Array.from(positionsCache.values());
+        while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()(pl);
+    }
+
     ib.on(EventName.disconnected, () => {
         if (connected) console.warn('[bridge] Disconnected from TWS');
         connected = false;
+        releaseSnapshots();
         streamBroadcast({ type: 'status', connected: false });
         scheduleReconnect();
     });
@@ -517,6 +589,7 @@ function connect() {
     ib.on(EventName.connectionClosed, () => {
         if (connected) console.warn('[bridge] Connection closed');
         connected = false;
+        releaseSnapshots();
         streamBroadcast({ type: 'status', connected: false });
         scheduleReconnect();
     });
@@ -795,15 +868,15 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (url.pathname === '/positions') {
-            try { ib.reqPositions(); } catch (_) {}
+            const positions = await requestPositionsSnapshot();
             res.writeHead(200, corsHeaders);
-            return res.end(JSON.stringify({ ok: true, positions: Array.from(positionsCache.values()).filter(p => p.qty) }));
+            return res.end(JSON.stringify({ ok: true, positions: positions.filter(p => p.qty) }));
         }
 
         if (url.pathname === '/orders') {
-            try { ib.reqAllOpenOrders(); } catch (_) {}
+            const orders = await requestOrdersSnapshot();
             res.writeHead(200, corsHeaders);
-            return res.end(JSON.stringify({ ok: true, orders: Array.from(openOrdersCache.values()) }));
+            return res.end(JSON.stringify({ ok: true, orders }));
         }
 
         if (url.pathname === '/executions') {
@@ -1018,5 +1091,5 @@ if (require.main === module) main();
 module.exports = {
     toIbkSymbol, buildOrder, buildContract, isAllowedOrigin, isPscOrder, classifyMdError,
     TICK_PRICE_MAP, TICK_PRICE_DELAYED, DELAYED_NOTICE_CODES, SYMBOL_ERROR_CODES,
-    shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe,
+    shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe, pruneToSeen,
 };

@@ -235,11 +235,15 @@ function assertTrue(cond, label) {
   api.handleTwsExecution({ execId: 'e1', orderRef: 'PSC-AMPL-x', symbol: 'AMPL', side: 'BOT', shares: 100, price: 15.0 });
   assertEq(api.activeTradesLog.length, beforeLog + 1, 'duplicate execId deduped');
   api.handleTwsExecution({ execId: 'e2', orderRef: 'OTHER-1', symbol: 'AMPL', side: 'BOT', shares: 50, price: 15.0 });
-  assertEq(api.activeTradesLog.length, beforeLog + 1, 'non-PSC ref ignored');
-  api.handleTwsExecution({ execId: 'e3', orderRef: 'PSC-AMPL-y', symbol: 'AMPL', side: 'SLD', shares: 100, price: 15.5 });
-  assertEq(api.activeTradesLog[0].status, 'CLOSED', 'exit fill closes the journal row');
-  assertEq(api.activeTradesLog[0].exitPrice, 15.5, 'journal exit price from fill');
-  assertTrue(Math.abs(api.activeTradesLog[0].pnl - 50) < 0.001, 'realized P&L computed (100 sh × $0.50)');
+  assertEq(api.activeTradesLog.length, beforeLog + 1, 'non-PSC same-side fill merges into existing row');
+  assertEq(api.activeTradesLog[0].shares, 150, 'manual entry fill merges shares');
+  api.handleTwsExecution({ execId: 'e2b', orderRef: 'OTHER-2', symbol: 'NVDA', side: 'BOT', shares: 25, price: 100 });
+  assertEq(api.activeTradesLog[0].ticker, 'NVDA', 'non-PSC entry fill with no row creates one at fill price');
+  api.handleTwsExecution({ execId: 'e3', orderRef: 'PSC-AMPL-y', symbol: 'AMPL', side: 'SLD', shares: 150, price: 15.5 });
+  const amplRow = api.activeTradesLog.find(t => t.ticker === 'AMPL');
+  assertEq(amplRow.status, 'CLOSED', 'exit fill closes the journal row');
+  assertEq(amplRow.exitPrice, 15.5, 'journal exit price from fill');
+  assertTrue(Math.abs(amplRow.pnl - 75) < 0.001, 'realized P&L computed (150 sh × $0.50)');
 
   // Add-on fill merges (weighted-avg entry), partial exit shrinks and banks realized P&L.
   api.activeTradesLog.length = 0;
@@ -269,6 +273,40 @@ function assertTrue(cond, label) {
   api.syncJournalToPositions();
   assertEq(api.activeTradesLog[0].status, 'CLOSED', 'flat position closes the journal row');
   api.activeTradesLog.length = 0;
+
+  // ---- Position auto-import: held position with no journal row creates one ----
+  api.twsSeenExecs.clear();
+  api.upsertTwsPosition('HRMY', 219, 45.0, 50.0);
+  api.syncJournalToPositions();
+  const hRow = api.activeTradesLog.find(t => t.ticker === 'HRMY');
+  assertTrue(hRow && hRow.status === 'ACTIVE', 'held position auto-imports as journal row');
+  assertEq(hRow.shares, 219, 'imported shares = position qty');
+  assertEq(hRow.entryPrice, 45.0, 'imported entry = avgCost');
+
+  // Manual partial sell with no fill seen → estimated P&L banked
+  api.upsertTwsPosition('HRMY', 169, 45.0, 52.0);
+  api.syncJournalToPositions();
+  assertEq(hRow.shares, 169, 'manual partial sell shrinks row to broker qty');
+  assertTrue(Math.abs(hRow.realizedPnl - 350) < 0.001, 'estimate banked for unseen shrink (50 × $7)');
+
+  // Late real fill posts a correction, not a second leg
+  api.handleTwsExecution({ execId: 'm1', orderRef: 'manual', symbol: 'HRMY', side: 'SLD', shares: 50, price: 53.0 });
+  assertEq(hRow.shares, 169, 'fill already reflected in position — shares unchanged');
+  assertTrue(Math.abs(hRow.realizedPnl - 400) < 0.001, 'real fill corrects estimate (+50 × $1)');
+
+  // Full exit fill at real price closes the row
+  api.handleTwsExecution({ execId: 'm2', orderRef: 'manual', symbol: 'HRMY', side: 'SLD', shares: 169, price: 55.0 });
+  assertEq(hRow.status, 'CLOSED', 'full exit fill closes row');
+  assertEq(hRow.exitPrice, 55.0, 'closed at real fill price');
+  assertTrue(Math.abs(hRow.pnl - 2090) < 0.001, 'P&L = estimate + correction + final leg');
+
+  // Fresh close + lingering position snapshot must not resurrect the row
+  api.upsertTwsPosition('HRMY', 169, 55.0, 55.0);
+  api.syncJournalToPositions();
+  assertTrue(!api.activeTradesLog.find(t => t.ticker === 'HRMY' && t.status === 'ACTIVE'), 'stale position does not re-import right after close');
+
+  api.activeTradesLog.length = 0;
+  api.upsertTwsPosition('HRMY', 0, 0, 0);
 
   console.log('\nAll TWS tests passed');
   process.exit(0);

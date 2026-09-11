@@ -92,5 +92,13 @@ assertTrue(bridge.isAllowedOrigin('http://127.0.0.1:5500'), 'any 127.0.0.1 port 
 assertTrue(bridge.isAllowedOrigin('null'), 'null origin (file://) allowed');
 assertTrue(!bridge.isAllowedOrigin('https://evil.example.com'), 'foreign origin rejected');
 
+// ---- pruneToSeen (snapshot reconciliation) ----
+const cache = new Map([[1, 'a'], [2, 'b'], [3, 'c']]);
+bridge.pruneToSeen(cache, new Set([2, 3]));
+assertEq(cache.size, 2, 'pruneToSeen drops unseen');
+assertTrue(!cache.has(1) && cache.has(2), 'pruneToSeen keeps seen');
+bridge.pruneToSeen(cache, new Set());
+assertEq(cache.size, 0, 'pruneToSeen empty snapshot clears all');
+
 console.log('\nAll bridge tests passed');
 process.exit(0);
