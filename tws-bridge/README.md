@@ -86,6 +86,7 @@ Paper accounts: to share real-time data with a paper account, enable
 | `No security definition` (code 200) | Symbol not found — check the ticker (e.g. `BRK.B` becomes `BRK B` automatically). |
 | `Read-only API` (code 10268) | Uncheck "Read-Only API" in TWS API settings. |
 | Order rejected (code 201/202) | Check the message — market closed, insufficient margin, etc. |
+| `Failed to fetch` from the GitHub Pages site | Public HTTPS pages need the "Local network access" permission: padlock icon → **Site settings** → allow it for the site, then reload. Or use `http://localhost:8080` / `file://` — those origins aren't gated. |
 | TWS popup per order | Enable "Bypass Order Precautions for API Orders" in API → Precautions. |
 | Bridge not connecting | Confirm TWS is running and the socket port matches `TWS_PORT`. |
 | All quotes delayed | No market-data subscription — see above. |

@@ -514,6 +514,19 @@
                         <button onclick="testTwsConnection()" class="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded text-xs font-bold">TEST CONNECTION</button>
                         <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
                     </div>
+                    <div id="twsLnaHint" class="hidden text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1.5 space-y-1">
+                        <p>On the GitHub Pages (HTTPS) site, your browser may block the local bridge — or the bridge may simply be offline.</p>
+                        <details>
+                            <summary class="cursor-pointer text-amber-300 font-bold">How to fix</summary>
+                            <ol class="list-decimal pl-4 pt-1 space-y-0.5">
+                                <li>Confirm <code>tws-bridge</code> is running locally.</li>
+                                <li>Click the padlock / site-info icon → <b>Site settings</b>.</li>
+                                <li>Set <b>Local network access</b> (older versions: <b>Insecure content</b>) to <b>Allow</b>.</li>
+                                <li>Reload and test again.</li>
+                            </ol>
+                            <p class="pt-1">Or run the app from <code>http://localhost:8080</code> (<code>node _serve.js</code>) — that origin isn't gated.</p>
+                        </details>
+                    </div>
                     <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
                     <label class="flex items-center gap-2 text-xs" title="Sends a bracket order: the opening order plus the currently selected exit strategy.">
                         <input id="autoSendExitsOnOpenSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-send exit orders when opening a position
@@ -5698,6 +5711,31 @@
         function twsReady() {
             return twsEnabled && twsBridgeToken && twsBridgeUrl;
         }
+        // Loopback + RFC1918 + link-local — the addresses Chrome/Edge gate behind the
+        // "Local network access" permission when the page is served from a public HTTPS origin.
+        function isLocalNetworkHost(host) {
+            const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+            if (h === 'localhost' || h === '::1' || h.endsWith('.localhost')) return true;
+            if (h.endsWith('.local') || h.endsWith('.lan')) return true;
+            const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+            if (!m) return false;
+            const a = +m[1], b = +m[2];
+            return a === 127 || a === 10 || a === 0 || (a === 192 && b === 168)
+                || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+        }
+        function isHttpsPageToLocalBridge() {
+            const loc = (typeof location !== 'undefined' && location) || (typeof window !== 'undefined' && window.location) || null;
+            if (!loc || loc.protocol !== 'https:') return false;
+            if (isLocalNetworkHost(loc.hostname)) return false;
+            const m = String(twsBridgeUrl || '').match(/^https?:\/\/(\[[^\]]+\]|[^\/:?#]+)/);
+            return !!m && isLocalNetworkHost(m[1]);
+        }
+        // We cannot distinguish "browser blocked the local-network request" from "bridge
+        // offline" — both surface as a fetch TypeError — so the copy must cover both.
+        function bridgeNetError(e) {
+            const blocked = isHttpsPageToLocalBridge() && e instanceof TypeError;
+            return { ok: false, error: blocked ? 'Browser blocked local-network access' : (e.message || 'Network error'), blocked: blocked ? 'local-network' : undefined };
+        }
         async function bridgeRequest(path, body) {
             if (!twsReady()) return { ok: false, error: 'TWS bridge not configured' };
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
@@ -5707,7 +5745,7 @@
                 const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
                 return await res.json();
             } catch (e) {
-                return { ok: false, error: e.message || 'Network error' };
+                return bridgeNetError(e);
             }
         }
         async function bridgeGet(path, signal) {
@@ -5739,7 +5777,8 @@
                 return data;
             } catch (e) {
                 twsConnected = false;
-                return { ok: false, connected: false, error: e.message };
+                const err = bridgeNetError(e);
+                return { ...err, connected: false };
             }
         }
         function startTwsHealthPolling() {
@@ -5754,11 +5793,17 @@
         }
         function updateTwsStatusUI() {
             const el = document.getElementById('twsStatus');
+            const lnaHint = document.getElementById('twsLnaHint');
+            const lnaRisk = twsEnabled && !twsConnected && isHttpsPageToLocalBridge();
+            if (lnaHint) { if (lnaRisk) lnaHint.classList.remove('hidden'); else lnaHint.classList.add('hidden'); }
             if (el) {
                 if (!twsEnabled) { el.textContent = 'Not connected'; el.className = 'text-[10px] font-mono-num text-gray-400'; }
                 else if (twsConnected) {
                     el.textContent = 'Connected' + (twsAccount ? ' · ' + twsAccount : '');
                     el.className = 'text-[10px] font-mono-num text-emerald-400';
+                } else if (lnaRisk) {
+                    el.textContent = 'Blocked? (see below)';
+                    el.className = 'text-[10px] font-mono-num text-amber-400';
                 } else {
                     el.textContent = 'Not connected';
                     el.className = 'text-[10px] font-mono-num text-red-400';
@@ -5863,7 +5908,11 @@
             const data = await bridgeHealth();
             updateTwsStatusUI();
             if (!data || !data.connected) {
-                showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+                if (data && data.blocked === 'local-network') {
+                    showErrorToast('TWS bridge unreachable — bridge offline or browser blocked local-network access. Padlock → Site settings → "Local network access" → Allow, then reload.', 8000);
+                } else {
+                    showErrorToast('TWS bridge: ' + (data && data.error ? data.error : 'not reachable'), 6000);
+                }
                 return;
             }
             // POST ping validates token and CORS for the actual order endpoint.
