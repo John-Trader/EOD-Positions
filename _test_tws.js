@@ -82,7 +82,7 @@ function assertTrue(cond, label) {
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, twsOpenOrders, handleTwsExecution, twsSeenExecs, activeTradesLog, saveActiveTradesLog, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, get twsPositions() { return twsPositions; } };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, twsOpenOrders, handleTwsExecution, twsSeenExecs, activeTradesLog, saveActiveTradesLog, syncJournalToPositions, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; } };');
   const api = fn(...Object.values(sandbox));
 
   console.log('Script loaded successfully');
@@ -240,6 +240,34 @@ function assertTrue(cond, label) {
   assertEq(api.activeTradesLog[0].status, 'CLOSED', 'exit fill closes the journal row');
   assertEq(api.activeTradesLog[0].exitPrice, 15.5, 'journal exit price from fill');
   assertTrue(Math.abs(api.activeTradesLog[0].pnl - 50) < 0.001, 'realized P&L computed (100 sh × $0.50)');
+
+  // Add-on fill merges (weighted-avg entry), partial exit shrinks and banks realized P&L.
+  api.activeTradesLog.length = 0;
+  api.handleTwsExecution({ execId: 'a1', orderRef: 'PSC-X-1', symbol: 'X', side: 'BOT', shares: 100, price: 10.0, commission: 1 });
+  api.handleTwsExecution({ execId: 'a2', orderRef: 'PSC-X-2', symbol: 'X', side: 'BOT', shares: 100, price: 12.0, commission: 1 });
+  assertEq(api.activeTradesLog.length, 1, 'add-on fill merges into one row');
+  assertEq(api.activeTradesLog[0].shares, 200, 'merged shares = 200');
+  assertEq(api.activeTradesLog[0].entryPrice, 11.0, 'weighted-avg entry = 11.00');
+  api.handleTwsExecution({ execId: 'a3', orderRef: 'PSC-X-3', symbol: 'X', side: 'SLD', shares: 50, price: 13.0, commission: 1 });
+  assertEq(api.activeTradesLog[0].status, 'ACTIVE', 'partial exit stays open');
+  assertEq(api.activeTradesLog[0].shares, 150, 'partial exit shrinks to 150');
+  // leg: (13-11)*50 - 1(fee) - 2(entry commissions) = 97
+  assertTrue(Math.abs(api.activeTradesLog[0].realizedPnl - 97) < 0.001, 'partial leg banks realized P&L');
+  api.handleTwsExecution({ execId: 'a4', orderRef: 'PSC-X-4', symbol: 'X', side: 'SLD', shares: 150, price: 14.0, commission: 1 });
+  assertEq(api.activeTradesLog[0].status, 'CLOSED', 'final leg closes');
+  // final: 97 + (14-11)*150 - 1 = 546
+  assertTrue(Math.abs(api.activeTradesLog[0].pnl - 546) < 0.001, 'total P&L accumulates partial legs');
+
+  // Position sync: shares follow held qty; flat position closes the row (estimated exit).
+  api.activeTradesLog.length = 0;
+  api.handleTwsExecution({ execId: 'b1', orderRef: 'PSC-Z-1', symbol: 'Z', side: 'BOT', shares: 200, price: 20.0 });
+  api.upsertTwsPosition('Z', 120, 20.5, 21.0);
+  api.twsLastPositionsAt = Date.now();
+  api.syncJournalToPositions();
+  assertEq(api.activeTradesLog[0].shares, 120, 'journal shares sync to held qty');
+  api.upsertTwsPosition('Z', 0, 0, 0); // flat → deleted from map
+  api.syncJournalToPositions();
+  assertEq(api.activeTradesLog[0].status, 'CLOSED', 'flat position closes the journal row');
   api.activeTradesLog.length = 0;
 
   console.log('\nAll TWS tests passed');

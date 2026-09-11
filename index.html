@@ -251,7 +251,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v2.7.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.0.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -859,6 +859,7 @@
         let twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
         let twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
         let twsPositions = {};             // symbol -> {qty, avgCost, mktPrice}
+        let twsLastPositionsAt = 0;        // last successful /positions poll — gates "flat" journal closes
         let twsOpenOrders = [];            // shaped open orders incl. manual TWS orders
         let twsLastPnl = null;             // {dailyPnL, unrealizedPnL, realizedPnL}
         let twsSeenExecs = new Set();      // execId dedupe for fill→journal
@@ -3279,6 +3280,7 @@
                             applyTwsAccountValue(response.key, response.value);
                         } else if (response.type === 'position' && twsPositionsEnabled) {
                             upsertTwsPosition(response.symbol, response.qty, response.avgCost, response.mktPrice);
+                            syncJournalToPositions();
                         } else if (response.type === 'order' && twsOrdersEnabled) {
                             // openOrder cache keeps the canonical list; this just marks a quick change.
                             refreshTwsOrders();
@@ -3330,14 +3332,20 @@
                         connectSocket(provider, apiKey, riskVal, slippageVal, container, gen, isEnhanced);
                     }, backoff);
                 } else {
-                    // Retries exhausted off-market — demote for the session and cascade the
-                    // remaining providers up one rank (secondary becomes primary, etc.).
-                    if (demoteProvider(provider) && isEnhanced && realtimeTasks.length) {
-                        showErrorToast(`${API_CONFIGS[provider].name} offline — cascading to next provider`, 4000);
-                        restartStreamForFailover();
-                    } else {
-                        updateTopStatus('offline');
+                    // Retries exhausted — demote for the session and cascade the remaining
+                    // providers up one rank. Applies to single-provider mode too: rank 2
+                    // takes over when there's a fallback to take over with.
+                    if (demoteProvider(provider) && realtimeTasks.length) {
+                        const next = resolveProviders();
+                        const hasFallback = isEnhanced ? (next.primary || next.secondary) : next.primary;
+                        if (hasFallback && hasFallback !== provider) {
+                            showErrorToast(`${API_CONFIGS[provider].name} offline — cascading to next provider`, 4000);
+                            restartStreamForFailover();
+                            setCalcBtnStreaming(isAnySocketOpen());
+                            return;
+                        }
                     }
+                    updateTopStatus('offline');
                 }
                 setCalcBtnStreaming(isAnySocketOpen());
             };
@@ -5439,7 +5447,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "2.6.0",
+                version: "3.0.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -5467,7 +5475,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -5895,15 +5903,13 @@
             const key = twsSendKey(ticker, 'entry');
             if (twsSendState[key] === 'sending') return;
             if (!autoSendExitsOnOpen) { await sendTwsEntry(ticker); return; }
-            const pos = twsPositionFor(ticker);
-            const item0 = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
-            const f0 = item0 && getRealtimeFields(item0, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
-            if (pos && f0 && ((f0.isGreenDay && pos.qty > 0) || (!f0.isGreenDay && pos.qty < 0))) {
-                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another bracket anyway?`)) return;
-            }
             const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
             if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
             const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
+            const pos = twsPositionFor(ticker);
+            if (pos && ((f.isGreenDay && pos.qty > 0) || (!f.isGreenDay && pos.qty < 0))) {
+                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another bracket anyway?`)) return;
+            }
             if (!f.shares) { showErrorToast('No shares calculated'); return; }
             const strategyId = defaultStrategyId(f.isGreenDay);
             setTwsSendState(key, 'sending');
@@ -6052,7 +6058,9 @@
                     next[String(p.symbol).toUpperCase()] = { qty: Number(p.qty), avgCost: Number(p.avgCost), mktPrice: Number(p.mktPrice) };
                 }
                 twsPositions = next;
+                twsLastPositionsAt = Date.now();
                 refreshTwsBadges();
+                syncJournalToPositions();
             } catch (e) {}
         }
         // Position for a ticker; negative qty = short. Returns null when flat/unknown.
@@ -6113,38 +6121,80 @@
             const side = ex.side === 'BOT' ? 'BOT' : (ex.side === 'SLD' ? 'SLD' : (ex.side || '').toUpperCase());
             const qty = Number(ex.shares) || 0;
             const price = Number(ex.price) || 0;
+            const fees = Math.abs(Number(ex.commission)) || 0;
             if (!ticker || !qty || !price) return;
             showSuccessToast('Filled ' + qty + ' ' + ticker + ' @ ' + price.toFixed(2), 5000);
-            // Entry fills (BOT opening long / SLD opening short) open a journal row.
-            // Exit fills (SLD against a held long / BOT against a held short) close one.
             const open = activeTradesLog.find(t => t.ticker === ticker && t.status === 'ACTIVE');
-            const isEntry = !open && (side === 'BOT' || side === 'SLD');
-            if (isEntry) {
+            // Position-aware classification when positions are on: a fill moving
+            // against a held position is an exit even without a matching journal row.
+            const held = twsPositionsEnabled ? twsPositionFor(ticker) : null;
+            const heldLong = held && held.qty > 0, heldShort = held && held.qty < 0;
+            const dir = side === 'BOT' ? 'LONG' : 'SHORT';
+            const isExit = (open && ((open.side === 'LONG' && side === 'SLD') || (open.side === 'SHORT' && side === 'BOT')))
+                || (!open && held && ((heldLong && side === 'SLD') || (heldShort && side === 'BOT')));
+            // Same-side fill on an existing TWS row = add-on → merge (weighted-avg entry).
+            if (open && open.fillSource === 'tws' && open.side === dir) {
+                const tot = open.shares + qty;
+                open.entryPrice = (open.entryPrice * open.shares + price * qty) / tot;
+                open.shares = tot;
+                open.commission = (open.commission || 0) + fees;
+            } else if (!open && !isExit) {
                 activeTradesLog.unshift({
                     id: Date.now() + Math.random(),
-                    ticker, side: side === 'BOT' ? 'LONG' : 'SHORT',
+                    ticker, side: dir,
                     strategyId: 'tws', regime: 'TWS fill',
                     marketRegime: globalMarketRegime, holdLimit: maxHoldDays,
                     targets: [], tp1: null, tp2: null,
                     entryDate: nyDateStr(), entryPrice: price, shares: qty,
                     stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
-                    commission: Number(ex.commission) || 0
+                    commission: fees, realizedPnl: 0, entryCommissionCounted: false
                 });
-            } else if (open && ((open.side === 'LONG' && side === 'SLD') || (open.side === 'SHORT' && side === 'BOT'))) {
-                open.status = 'CLOSED';
-                open.exitPrice = price;
-                open.exitDate = nyDateStr();
-                open.exitCommission = Number(ex.commission) || 0;
-                open.pnl = (open.side === 'LONG' ? 1 : -1) * (price - open.entryPrice) * Math.min(qty, open.shares) - (open.commission || 0) - open.exitCommission;
-                if (qty < open.shares) { // partial exit — shrink remaining instead of closing fully
-                    open.shares = open.shares - qty;
-                    open.status = 'ACTIVE';
-                    delete open.exitPrice; delete open.exitDate;
+            } else if (isExit && open) {
+                const dir = open.side === 'LONG' ? 1 : -1;
+                const closeQty = Math.min(qty, open.shares);
+                // Entry commission counts once, on the first realized leg.
+                const entryFees = open.entryCommissionCounted ? 0 : (open.commission || 0);
+                open.entryCommissionCounted = true;
+                open.realizedPnl = (open.realizedPnl || 0) + dir * (price - open.entryPrice) * closeQty - fees - entryFees;
+                open.shares -= closeQty;
+                if (open.shares <= 0) {
+                    open.status = 'CLOSED';
+                    open.exitPrice = price;
+                    open.exitDate = nyDateStr();
+                    open.exitCommission = (open.exitCommission || 0) + fees;
+                    open.pnl = open.realizedPnl;
                 }
             }
+            // isExit without an open row = exit of an unjournaled position — skip.
             saveActiveTradesLog();
             updateActiveTradesCountBadge();
             renderActiveTradesPage();
+        }
+
+        // Reconcile TWS-fill journal rows with live positions: keeps shares aligned when
+        // the position changes outside PSC fills (manual TWS edits), and closes rows
+        // whose position went flat (exit fill missed or done manually in TWS).
+        function syncJournalToPositions() {
+            if (!twsPositionsEnabled || !twsFillsJournalEnabled || !activeTradesLog.length) return;
+            const posFresh = twsLastPositionsAt > 0; // only trust "flat" once a real poll landed
+            let changed = false;
+            for (const tr of activeTradesLog) {
+                if (tr.status !== 'ACTIVE' || tr.fillSource !== 'tws') continue;
+                const p = twsPositionFor(tr.ticker);
+                const sameDir = p && ((tr.side === 'LONG' && p.qty > 0) || (tr.side === 'SHORT' && p.qty < 0));
+                if (sameDir && Math.abs(p.qty) !== tr.shares) {
+                    tr.shares = Math.abs(p.qty);
+                    changed = true;
+                } else if (posFresh && (!p || !sameDir)) {
+                    tr.status = 'CLOSED';
+                    tr.exitDate = nyDateStr();
+                    tr.exitPrice = (p && Number.isFinite(p.mktPrice) && p.mktPrice > 0) ? p.mktPrice : tr.entryPrice;
+                    tr.pnl = (tr.realizedPnl || 0) + (tr.side === 'LONG' ? 1 : -1) * (tr.exitPrice - tr.entryPrice) * tr.shares - (tr.commission || 0);
+                    tr.note = (tr.note ? tr.note + ' ' : '') + 'Closed in TWS — exit fill not seen, exit price estimated.';
+                    changed = true;
+                }
+            }
+            if (changed) { saveActiveTradesLog(); updateActiveTradesCountBadge(); renderActiveTradesPage(); }
         }
         // --- P&L chip ---
         async function refreshTwsPnl() {

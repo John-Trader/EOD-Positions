@@ -147,6 +147,7 @@ const accountValues = {};              // tag -> value (BASE preferred, then USD
 const accountCurrency = {};            // tag -> currency currently stored
 let accountAsOf = 0;
 const pnlCache = { dailyPnL: undefined, unrealizedPnL: undefined, realizedPnL: undefined };
+let pnlReqId = null;
 let execPollTimer = null;
 
 // ---------- WS /stream clients ----------
@@ -216,7 +217,11 @@ function startAccountFeeds() {
     if (!connected || !ib || !account) return;
     try { ib.reqAccountUpdates(true, account); } catch (e) { console.error('[bridge] reqAccountUpdates', e.message); }
     try { ib.reqAutoOpenOrders(true); } catch (e) { console.error('[bridge] reqAutoOpenOrders', e.message); }
-    try { ib.reqPnL(nextReqId++, account, ''); } catch (e) { console.error('[bridge] reqPnL', e.message); }
+    try {
+        if (pnlReqId != null) { try { ib.cancelPnL(pnlReqId); } catch (_) {} }
+        pnlReqId = nextReqId++;
+        ib.reqPnL(pnlReqId, account, '');
+    } catch (e) { console.error('[bridge] reqPnL', e.message); }
     if (!execPollTimer) {
         execPollTimer = setInterval(() => {
             try { if (connected && ib) ib.reqExecutions(nextReqId++, {}); } catch (_) {}
@@ -265,7 +270,6 @@ function connect() {
         if (pc && status === 'Cancelled') {
             clearTimeout(pc.timer); pendingCancel.delete(orderId);
             pc.resolve({ orderId, status });
-            return;
         }
 
         const p = pending.get(orderId);
@@ -318,6 +322,37 @@ function connect() {
                 killMktSub(symbol);
             }
             return; // 'other' md errors: ignore
+        }
+        // Data-request errors — resolve the matching pending request fast instead of
+        // letting it hit its own timeout (e.g. code 162 history-farm violations).
+        if (reqId > 0) {
+            const snap = pendingSnapshot.get(reqId);
+            if (snap) {
+                pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId); clearTimeout(snap.timer);
+                snap.resolve(snap.quote.last != null ? shapeQuote(snap.quote, snap.delayed, snap.lastTradeTs) : { ok: false, error: `TWS error ${code}: ${msg}` });
+                return;
+            }
+            const pc2 = pendingContract.get(reqId);
+            if (pc2) {
+                pendingContract.delete(reqId); clearTimeout(pc2.timer);
+                pc2.resolve({ ok: false, contractMissing: code === 200, error: `TWS error ${code}: ${msg}` });
+                return;
+            }
+            const ph = pendingHistory.get(reqId);
+            if (ph) {
+                pendingHistory.delete(reqId); clearTimeout(ph.timer);
+                ph.resolve(ph.bars.length ? ph.bars : null);
+                return;
+            }
+            const pe = pendingExec.get(reqId);
+            if (pe) {
+                pendingExec.delete(reqId); clearTimeout(pe.timer);
+                pe.resolve(pe.execs.map(({ contract, exec }) => {
+                    const c = pe.commissions.get(exec.execId);
+                    return shapeExecution(contract, exec, c && c.commission, c && c.realizedPNL);
+                }));
+                return;
+            }
         }
         if (/already.*connect|clientId.*use|already connected/i.test(msg)) {
             clientIdConflict = true;
@@ -425,6 +460,10 @@ function connect() {
         if (pe) pe.execs.push({ contract, exec });
         const shaped = shapeExecution(contract, exec);
         execsCache.set(exec.execId, shaped);
+        if (execsCache.size > 500) {
+            // Drop the oldest entries — execIds are unique so FIFO eviction is safe.
+            for (const k of execsCache.keys()) { execsCache.delete(k); if (execsCache.size <= 400) break; }
+        }
         streamBroadcast({ type: 'exec', ...shaped });
     });
     ib.on(EventName.commissionReport, (report) => {
