@@ -1750,6 +1750,8 @@
             const raw = String(text || '').slice(0, 30000)
                 .replace(/\r\n/g, '\n')
                 .replace(/\r/g, '\n')
+                .replace(/^Stops[\s&,.]+(?:BE\s+alarms?[\s,]*)?TP[\s-]*orders?:?\s*$/gim, '')
+                .replace(/^[-=]{3,}\s*$/gim, '')
                 .replace(/^Stops,\s*BE alarms,?\s*TP orders:?\s*$/gim, '')
                 // Strip Discord/Markdown bold stars around tickers.
                 .replace(/\$\s*(\*+)\s*([A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?)\s*(\*+)/gi,
@@ -1812,8 +1814,9 @@
                 }
 
                 if (!legs.length) {
-                    warnings.push(`${ticker}: no LMT legs found.`);
-                    continue;
+                    // Stop-only paste: a single 100% stop leg with no profit target.
+                    const isShort = /short|buy\s+to\s+cover|buy\s+back/i.test(block);
+                    legs.push({ pct: 100, tp: 0, label: 'Stop only', action: isShort ? 'BUY' : 'SELL', stopOnly: true });
                 }
 
                 const explicitPcts = legs.map(l => l.pct);
@@ -3936,13 +3939,15 @@
             }
             const rps = allowNoEntry ? 0 : (isLong ? (entry - stop) : (stop - entry));
             const action = isLong ? 'SELL' : 'BUY';
+            const explicitLegsForStrat = explicit && explicit.length ? explicit : (explicit ? [{ pct: 100, tp: 0, label: 'Stop only', stopOnly: true }] : []);
             const strat = explicit ? {
                 id: 'pasted',
                 name: 'Pasted',
-                legs: explicit.map(l => ({
+                legs: explicitLegsForStrat.map(l => ({
                     pct: l.pct,
                     rr: (rps > 0 && l.tp > 0) ? Math.abs(l.tp - entry) / rps : ((allowNoEntry && l.tp > 0) ? 1 : 0),
-                    stopMode: 'fixed'
+                    stopMode: 'fixed',
+                    stopOnly: l.stopOnly === true || !(l.tp > 0)
                 }))
             } : getStrategyById(strategyId || defaultStrategyId(isLong));
             const legErr = strategyLegsError(strat);
@@ -5425,6 +5430,7 @@
                 if (!orderType) continue;
                 n++;
                 const order = {
+                    symbol: row[2],
                     action: row[0],
                     quantity: parseInt(row[1], 10) || 0,
                     orderType,
@@ -5482,6 +5488,7 @@
             const result = await bridgeRequest('/order', payload);
             if (result.ok) {
                 setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+                showSuccessToast('Opening order ' + (result.orderId || '') + ' sent to TWS');
             } else if (result.unknown) {
                 setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
                 showErrorToast('UNKNOWN — check TWS before retrying', 8000);
@@ -5504,10 +5511,10 @@
             const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
             if (!result) {
                 setTwsSendState(key, 'idle');
-            } else if (result.ok) {
+            } else if (result.ok && !result.unknown) {
                 setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
             } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
             } else {
                 setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
             }
@@ -5532,17 +5539,24 @@
                 if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
                 payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
                 payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
+                // Bracket: only the final child transmits, releasing the parent and all children together.
+                payload.orders.forEach((o, i) => { o.transmit = i === payload.orders.length - 1; });
             }
             setTwsSendState(key, 'sending');
             const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
-            if (result.ok) {
-                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Sent');
-            } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+            const firstFail = result.results ? result.results.find(r => !r.ok) : null;
+            const failMsg = firstFail ? (firstFail.error || firstFail.message) : null;
+            if (result.ok && !result.unknown) {
+                const sentCount = result.results ? result.results.length : 1;
+                setTwsSendState(key, 'sent', sentCount + ' orders sent');
+                const what = attachEntry ? 'Bracket' : (sentCount > 1 ? 'Exit orders' : 'Exit order');
+                showSuccessToast(what + ' sent to TWS');
+            } else if (result.unknown || (result.ok && result.results && result.results.some(r => r.unknown))) {
+                setTwsSendState(key, 'unknown', failMsg || result.message || result.error || 'No confirmation from TWS');
                 showErrorToast('UNKNOWN — check TWS before retrying', 8000);
             } else {
-                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
-                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+                setTwsSendState(key, 'error', failMsg || result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (failMsg || result.error || result.message || 'unknown'), 6000);
             }
             return result;
         }

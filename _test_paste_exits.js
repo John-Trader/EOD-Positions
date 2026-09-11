@@ -146,11 +146,24 @@ try {
   assert(r.trades.length === 0, 'skip missing stop');
   assert(r.warnings.some(w => w.includes('missing stop')), 'warn missing stop');
 
-  // Case 10: no legs
+  // Case 10: no target legs -> 100% stop-only leg
   const noLegs = `1) $AMPL - Stop: $13.15`;
   r = api.parseExitOrderText(noLegs);
-  assert(r.trades.length === 0, 'skip no legs');
-  assert(r.warnings.some(w => w.includes('no LMT legs')), 'warn no legs');
+  assert(r.trades.length === 1, 'stop-only should parse');
+  assert(r.trades[0].legs.length === 1, 'stop-only has one leg');
+  assert(r.trades[0].legs[0].pct === 100, 'stop-only is 100%');
+  assert(r.trades[0].legs[0].stopOnly === true, 'stop-only flag');
+  assert(r.warnings.length === 0, 'no warnings for stop-only');
+
+  // Case 10a: simple pasted stop order like "1) $BXMT - Stop (GTC): $13.90"
+  const simpleStop = `---------------------------------\nStops & TP orders:\n1) $BXMT - Stop (GTC): $13.90`;
+  r = api.parseExitOrderText(simpleStop);
+  assert(r.trades.length === 1, 'simple pasted stop should parse');
+  assert(r.trades[0].ticker === 'BXMT', 'ticker is BXMT');
+  assert(r.trades[0].stop === 13.9, 'stop is 13.90');
+  assert(r.trades[0].legs.length === 1, 'one stop-only leg');
+  assert(r.trades[0].legs[0].pct === 100, '100% stop');
+  assert(r.trades[0].legs[0].stopOnly === true, 'stopOnly flag set');
 
   // Case 11: 1:6 TP not 1% when paired with 40%
   const oneSix = `1) $AMPL - Stop: $13.15 - (40% Partial) Sell LMT: $15.34 - (1:6 TP) Sell LMT: $20.82`;

@@ -22,9 +22,13 @@ const ALLOWED_ORIGINS = new Set([
     'http://127.0.0.1:8080',
     'http://localhost',
     'http://127.0.0.1',
+    'null',                    // file:// pages and opaque origins
 ]);
 // Allow any localhost port (dev servers) — checked by pattern, not exact match.
 const LOCALHOST_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+function isAllowedOrigin(origin) {
+    return ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin);
+}
 
 // ---------- Bridge token ----------
 function loadOrCreateToken() {
@@ -201,6 +205,17 @@ function placeOrder(spec) {
         pending.set(orderId, { resolve, reject, timer });
         try {
             ib.placeOrder(orderId, contract, order);
+            if (order.transmit === false) {
+                // Pre-staged (non-transmitted) orders won't return an orderStatus until a transmitted order releases them.
+                // Resolve quickly if TWS does not immediately reject, so the batch can continue.
+                setTimeout(() => {
+                    if (pending.has(orderId)) {
+                        clearTimeout(timer);
+                        pending.delete(orderId);
+                        resolve({ orderId, status: 'PreSubmitted' });
+                    }
+                }, 300);
+            }
         } catch (e) {
             clearTimeout(timer);
             pending.delete(orderId);
@@ -232,7 +247,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://127.0.0.1:${BRIDGE_PORT}`);
 
     // CORS headers shared by all responses.
-    const corsOrigin = (ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin)) ? origin : 'null';
+    const corsOrigin = isAllowedOrigin(origin) ? origin : 'null';
     const corsHeaders = {
         'Access-Control-Allow-Origin': corsOrigin,
         'Content-Type': 'application/json',
@@ -257,10 +272,11 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(415, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Content-Type must be application/json' }));
         }
-        const allowed = ALLOWED_ORIGINS.has(origin) || LOCALHOST_ORIGIN_RE.test(origin);
+        const allowed = isAllowedOrigin(origin);
         if (!allowed) {
+            console.warn(`[bridge] Origin not allowed: ${origin} (method=${req.method}, url=${req.url})`);
             res.writeHead(403, corsHeaders);
-            return res.end(JSON.stringify({ ok: false, error: 'Origin not allowed' }));
+            return res.end(JSON.stringify({ ok: false, error: 'Origin not allowed: ' + origin }));
         }
         // Token check.
         const token = req.headers['x-bridge-token'] || '';
@@ -320,7 +336,13 @@ const server = http.createServer(async (req, res) => {
                 results.push({ ok: false, error: e.message || String(e) });
             }
         }
+        const firstFail = results.find(r => !r.ok);
+        const hasUnknown = results.some(r => r.unknown);
         const out = { ok: results.every(r => r.ok), results };
+        if (!out.ok) {
+            out.error = firstFail?.error || firstFail?.message || 'One or more orders rejected';
+        }
+        if (hasUnknown) out.unknown = true;
         recordDedupe(body.orderRef, out);
         return sendJson(res, 200, out, corsHeaders);
     }
