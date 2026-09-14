@@ -22,7 +22,7 @@
 
 ## Electron portable app
 
-- `build-exe.bat` (or `npm install` then `npm run dist`) produces `dist/PositionCalc-<version>-portable.exe` — a single-file Windows build that runs the bridge in-process and opens the app in its own window. `npm start` runs the dev variant (`electron .`).
+- `build-exe.bat` (or `npm install` then `npm run dist`) produces `dist/PositionCalc-<version>-portable.exe` — a single-file Windows build that runs the bridge in-process and opens the app in its own window. `npm start`/`npm run dev` runs the dev variant (`electron .`). User preference: do NOT rebuild the exe on code/version changes unless explicitly asked — dev iteration uses `npm start`.
 - Electron files: `electron/main.js` (boot/window/IPC), `electron/preload.js` (settings seeding), `electron-builder.yml`, `tools/make-icon.js`.
 - The bridge serves the app shell on loopback (`/`, `/index.html`, `/manifest.webmanifest`, `/sw.js`, `icon.svg`) and injects `<meta name="psc-bridge">` with the token → zero-config. `server.js` keeps standalone behavior via `require.main` — `start-bridge.bat` is unchanged.
 - Settings persist to `psc-settings.json` next to the exe (PORTABLE_EXECUTABLE_DIR; falls back to userData). The app syncs the full backup payload + `apiKeys` via `window.pscBridge` — inert when absent (Pages/file:///_serve.js).

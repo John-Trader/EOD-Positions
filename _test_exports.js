@@ -122,6 +122,11 @@ try {
   assert(api.csvCell('=1+1') === "'=1+1", 'journal formulas escaped');
   const restored = api.prepareBackup({ version: '1.1.0', liveUpdateEnabled: false, showRangePct: true, slippageValue: 0, scanner: { tickers: ['AMPL'], triggers: [13.96], visibleCount: 3, sides: { 0: 'LONG' } } });
   assert(restored.liveUpdateEnabled === 'false' && restored.showRangePct === 'true' && restored.slippageValue === '0' && restored.ticker_0 === 'AMPL', 'backup preserves false, zero, scanner');
+  const withRiskMode = api.prepareBackup({ version: '3.0.5', riskMode: 'percent' });
+  assert(withRiskMode.riskMode === 'percent', 'backup accepts riskMode fixed/percent');
+  let riskModeThrew = false;
+  try { api.prepareBackup({ version: '3.0.5', riskMode: 'bogus' }); } catch (e) { riskModeThrew = /Invalid risk mode/.test(e.message); }
+  assert(riskModeThrew, 'backup rejects unknown riskMode');
   api.navigateTo('settings');
   api.toggleSignalPaste(false);
   api.setTradesTab('history');

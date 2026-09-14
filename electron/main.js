@@ -3,7 +3,7 @@
 // into the page, so first run is zero-config.
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -93,14 +93,22 @@ function createWindow(port) {
             preload: path.join(__dirname, 'preload.js'),
         },
     });
+    const bridgeOrigin = `http://127.0.0.1:${port}`;
+    const isBridgeUrl = (u) => { try { return new URL(u).origin === bridgeOrigin; } catch (_) { return false; } };
+    const openExternalSafe = (u) => {
+        try {
+            const proto = new URL(u).protocol;
+            if (proto === 'https:' || proto === 'http:' || proto === 'mailto:') shell.openExternal(u);
+        } catch (_) {}
+    };
     win.webContents.setWindowOpenHandler(({ url }) => {
-        shell.openExternal(url);
+        openExternalSafe(url);
         return { action: 'deny' };
     });
     win.webContents.on('will-navigate', (e, url) => {
-        if (!url.startsWith(`http://127.0.0.1:${port}`)) {
+        if (!isBridgeUrl(url)) {
             e.preventDefault();
-            shell.openExternal(url);
+            openExternalSafe(url);
         }
     });
     win.loadURL(`http://127.0.0.1:${port}/`);
@@ -118,10 +126,16 @@ app.whenReady().then(async () => {
     // Distinct from the standalone bridge (default 7) so both can coexist.
     if (!process.env.IBKR_CLIENT_ID) process.env.IBKR_CLIENT_ID = '8';
 
-    bridge = require('../tws-bridge/server.js');
-    const { port } = await bridge.start({ port: 8787, webRoot: APP_DIR });
-    console.log(`[electron] bridge on 127.0.0.1:${port}`);
-    createWindow(port);
+    try {
+        bridge = require('../tws-bridge/server.js');
+        const { port } = await bridge.start({ port: 8787, webRoot: APP_DIR });
+        console.log(`[electron] bridge on 127.0.0.1:${port}`);
+        createWindow(port);
+    } catch (e) {
+        console.error('[electron] bridge failed to start:', e);
+        dialog.showErrorBox('Position Size Calculator', `Failed to start the local bridge.\n${e && e.message}`);
+        app.quit();
+    }
 });
 
 app.on('window-all-closed', () => app.quit());

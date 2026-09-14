@@ -6,6 +6,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "node tools/run-dev.js",
+    "dev": "node tools/run-dev.js",
     "icon": "node tools/make-icon.js",
     "dist": "npm run icon && electron-builder --win portable",
     "test": "node _run_tests.js"

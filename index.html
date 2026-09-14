@@ -848,6 +848,16 @@
                 try { pscBridgeApi.saveSettings(collectPortableState()); } catch (_) {}
             }, 500);
         }
+        // Flush a pending debounced save on teardown — otherwise edits made in the
+        // final <500ms before closing the window never reach psc-settings.json.
+        if (typeof window !== 'undefined' && window.addEventListener) {
+            window.addEventListener('pagehide', () => {
+                if (!pscBridgeApi || !_pscSaveTimer) return;
+                clearTimeout(_pscSaveTimer);
+                _pscSaveTimer = null;
+                try { pscBridgeApi.saveSettings(collectPortableState()); } catch (_) {}
+            });
+        }
         // Same payload as exportSettingsJson, plus apiKeys so the file is a complete
         // portable install (backup exports deliberately keep keys out).
         function collectPortableState() {
@@ -5663,7 +5673,8 @@
                 if (key === 'liqVolPeriod' && (!Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > 250)) throw new Error('Invalid liquidity period');
                 if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
                 if (key === 'twsBridgeUrl' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(value)) throw new Error('Invalid bridge URL');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
+                if (key === 'riskMode' && !['fixed', 'percent'].includes(value)) throw new Error('Invalid risk mode');
+                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod', 'riskMode'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
                 values[key] = value;
             });
             if (data.globalMarketRegime !== undefined) {
