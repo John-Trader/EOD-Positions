@@ -279,8 +279,11 @@ function pushTick(symbol) {
 
 function subscribeMktData(symbol) {
     let sub = mktSubs.get(symbol);
-    if (sub) { sub.refCount++; return; }
-    sub = { reqId: null, refCount: 1, quote: {}, delayed: false, lastTradeTs: 0 };
+    if (sub) {
+        if (sub.graceTimer) { clearTimeout(sub.graceTimer); sub.graceTimer = null; }
+        sub.refCount++; return;
+    }
+    sub = { reqId: null, refCount: 1, quote: {}, delayed: false, lastTradeTs: 0, graceTimer: null };
     mktSubs.set(symbol, sub);
     issueMktSub(symbol);
 }
@@ -296,20 +299,23 @@ function issueMktSub(symbol) {
     catch (e) { console.error('[bridge] reqMktData failed', symbol, e.message); }
 }
 
+// Tearing a sub down costs the next Calculate a cold contract-resolution round-trip
+// (~1-3s per symbol — the "more tickers, slower" cost). Keep the TWS line warm for a
+// short grace window so a recalc resubscribes instantly and /quote hits the live cache.
+const SUB_GRACE_MS = 15000;
+
 function unsubscribeMktData(symbol) {
     const sub = mktSubs.get(symbol);
     if (!sub) return;
     if (--sub.refCount > 0) return;
-    mktSubs.delete(symbol);
-    if (sub.reqId != null) {
-        reqIdToSymbol.delete(sub.reqId);
-        try { if (connected && ib) ib.cancelMktData(sub.reqId); } catch (_) {}
-    }
+    if (sub.graceTimer) clearTimeout(sub.graceTimer);
+    sub.graceTimer = setTimeout(() => killMktSub(symbol), SUB_GRACE_MS);
 }
 
-function killMktSub(symbol) {          // all refs at once (fatal symbol error)
+function killMktSub(symbol) {          // all refs at once (fatal symbol error / grace expiry)
     const sub = mktSubs.get(symbol);
     if (!sub) return;
+    if (sub.graceTimer) { clearTimeout(sub.graceTimer); sub.graceTimer = null; }
     mktSubs.delete(symbol);
     if (sub.reqId != null) {
         reqIdToSymbol.delete(sub.reqId);
@@ -437,7 +443,9 @@ function connect() {
         if (reqId > 0) {
             const snap = pendingSnapshot.get(reqId);
             if (snap) {
-                pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId); clearTimeout(snap.timer);
+                pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId);
+                clearTimeout(snap.timer); if (snap.earlyTimer) clearTimeout(snap.earlyTimer);
+                try { ib.cancelMktData(reqId); } catch (_) {}
                 snap.resolve(snap.quote.last != null ? shapeQuote(snap.quote, snap.delayed, snap.lastTradeTs) : { ok: false, error: `TWS error ${code}: ${msg}` });
                 return;
             }
@@ -499,7 +507,11 @@ function connect() {
         const sub = mktSubs.get(symbol);
         if (sub) { sub.quote[field] = price; pushTick(symbol); }
         const snap = pendingSnapshot.get(reqId);
-        if (snap) snap.quote[field] = price;
+        if (snap) {
+            snap.quote[field] = price;
+            const q = snap.quote;
+            if (q.last != null && q.high != null && q.low != null) resolveSnapshot(reqId);
+        }
     });
 
     ib.on(EventName.tickString, (reqId, tickType, value) => {
@@ -527,6 +539,7 @@ function connect() {
         if (!snap) return;
         pendingSnapshot.delete(reqId);
         clearTimeout(snap.timer);
+        if (snap.earlyTimer) clearTimeout(snap.earlyTimer);
         reqIdToSymbol.delete(reqId);
         snap.resolve(shapeQuote(snap.quote, snap.delayed, snap.lastTradeTs));
     });
@@ -616,7 +629,11 @@ function connect() {
             pendingHistory.delete(reqId); clearTimeout(p.timer);
             p.resolve(p.bars);
         } else {
-            p.bars.push({ h: high, l: low, c: close, v: Number(volume) });
+            // `time` for daily bars is 'YYYYMMDD' (or 'YYYYMMDD  HH:MM:SS'); normalize to 'YYYY-MM-DD'.
+            const ts = String(time || '');
+            const dm = /^(\d{4})(\d{2})(\d{2})/.exec(ts.replace(/-/g, ''));
+            const day = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : ts.slice(0, 10);
+            p.bars.push({ d: day, h: high, l: low, c: close, v: Number(volume) });
         }
     });
 
@@ -757,21 +774,46 @@ function cancelOrderById(orderId) {
 }
 
 // ---------- Data fetchers ----------
+// Quotes use a *streaming* reqMktData (not snapshot): TWS sends ticks as they arrive
+// instead of pacing a full snapshot set. We resolve the moment the sizing fields
+// exist (last+high+low ~300-500ms), or at an early deadline with just `last` —
+// the app falls back to pc/c for missing h/l. A hard timeout fails fast.
+const QUOTE_EARLY_MS = 1500;
+const QUOTE_TIMEOUT_MS = 5000;
+
+function resolveSnapshot(reqId) {
+    const snap = pendingSnapshot.get(reqId);
+    if (!snap) return;
+    pendingSnapshot.delete(reqId);
+    reqIdToSymbol.delete(reqId);
+    clearTimeout(snap.timer);
+    if (snap.earlyTimer) clearTimeout(snap.earlyTimer);
+    try { if (connected && ib) ib.cancelMktData(reqId); } catch (_) {}
+    snap.resolve(shapeQuote(snap.quote, snap.delayed, snap.lastTradeTs));
+}
+
 function fetchQuoteSnapshot(symbol) {
     return new Promise((resolve) => {
         if (!connected || !ib) return resolve({ ok: false, error: 'Not connected to TWS' });
         const reqId = nextReqId++;
         const timer = setTimeout(() => {
             const snap = pendingSnapshot.get(reqId);
+            if (snap && snap.quote.last != null) { resolveSnapshot(reqId); return; }
             pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId);
-            if (snap && snap.quote.last != null) resolve(shapeQuote(snap.quote, snap.delayed, snap.lastTradeTs));
-            else resolve({ ok: false, error: 'snapshot timeout' });
-        }, 8000);
-        pendingSnapshot.set(reqId, { resolve, timer, quote: {}, delayed: false, lastTradeTs: 0 });
+            try { ib.cancelMktData(reqId); } catch (_) {}
+            resolve({ ok: false, error: 'quote timeout' });
+        }, QUOTE_TIMEOUT_MS);
+        // A last price alone is enough to size (h/l/pc fall back app-side) — don't
+        // sit on the request waiting for straggler fields.
+        const earlyTimer = setTimeout(() => {
+            const snap = pendingSnapshot.get(reqId);
+            if (snap && snap.quote.last != null) resolveSnapshot(reqId);
+        }, QUOTE_EARLY_MS);
+        pendingSnapshot.set(reqId, { resolve, timer, earlyTimer, quote: {}, delayed: false, lastTradeTs: 0 });
         reqIdToSymbol.set(reqId, symbol);
-        try { ib.reqMktData(reqId, buildContract(symbol), '', true, false); }
+        try { ib.reqMktData(reqId, buildContract(symbol), '', false, false); }
         catch (e) {
-            pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId); clearTimeout(timer);
+            pendingSnapshot.delete(reqId); reqIdToSymbol.delete(reqId); clearTimeout(timer); clearTimeout(earlyTimer);
             resolve({ ok: false, error: e.message });
         }
     });
@@ -791,14 +833,16 @@ function fetchContract(symbol) {
     });
 }
 
-function fetchHistory(symbol) {
+function fetchHistory(symbol, duration) {
     return new Promise((resolve) => {
         if (!connected || !ib) return resolve(null);
+        // Duration whitelist: '<n> <unit>' e.g. '430 D', '1 M', '2 Y' (IB duration format).
+        const dur = /^\d{1,4}\s?[SDWMY]$/.test(String(duration || '')) ? String(duration).replace(/^(\d+)\s?/, '$1 ') : '1 M';
         const reqId = nextReqId++;
-        const timer = setTimeout(() => { pendingHistory.delete(reqId); resolve(null); }, 12000);
+        const timer = setTimeout(() => { pendingHistory.delete(reqId); resolve(null); }, 15000);
         pendingHistory.set(reqId, { resolve, timer, bars: [] });
         try {
-            ib.reqHistoricalData(reqId, buildContract(symbol), '', '1 M', '1 day', 'TRADES', 1, 1, false);
+            ib.reqHistoricalData(reqId, buildContract(symbol), '', dur, '1 day', 'TRADES', 1, 1, false);
         } catch (e) { pendingHistory.delete(reqId); clearTimeout(timer); resolve(null); }
     });
 }
@@ -963,7 +1007,7 @@ const server = http.createServer(async (req, res) => {
         if (url.pathname === '/history') {
             const symbol = (url.searchParams.get('symbol') || '').toUpperCase();
             if (!symbol) { res.writeHead(400, corsHeaders); return res.end(JSON.stringify({ ok: false, error: 'missing symbol' })); }
-            const bars = await fetchHistory(symbol);
+            const bars = await fetchHistory(symbol, url.searchParams.get('duration'));
             res.writeHead(bars && bars.length ? 200 : 502, corsHeaders);
             return res.end(JSON.stringify(bars && bars.length ? { ok: true, bars } : { ok: false, error: 'no history' }));
         }
@@ -1188,6 +1232,8 @@ async function stop() {
     if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
     while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()([]);
     while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()([]);
+    for (const sub of mktSubs.values()) { if (sub.graceTimer) { clearTimeout(sub.graceTimer); sub.graceTimer = null; } }
+    mktSubs.clear();
     for (const ws of streamClients) { try { ws.terminate(); } catch (_) {} }
     streamClients.clear();
     try { if (wss) wss.close(); } catch (_) {}

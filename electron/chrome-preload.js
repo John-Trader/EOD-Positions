@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('pscTerm', {
     toggle: () => ipcRenderer.invoke('psc:term-toggle'),
     getBuffer: () => ipcRenderer.invoke('psc:term-buffer'),
     onLog: (cb) => ipcRenderer.on('psc:log-line', (_e, line) => cb(line)),
+    resize: (w) => ipcRenderer.send('psc:term-resize', w),
 });

@@ -24,13 +24,18 @@
     flex: 1; margin: 0; padding: 8px 10px; overflow: auto; white-space: pre-wrap; word-break: break-all;
     color: #7dd3fc; font: 11px/1.5 Consolas, 'Courier New', monospace; user-select: text;
   }
+  #grip {
+    width: 6px; flex: 0 0 6px; cursor: col-resize; background: transparent;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  #grip:hover, #grip.dragging { background: rgba(34,211,238,.25); }
 </style>
 </head>
 <body>
   <div id="strip">
     <button id="termBtn" title="Toggle bridge log">&gt;_</button>
   </div>
-  <div id="panel"><pre id="log"></pre></div>
+  <div id="panel"><pre id="log"></pre><div id="grip" title="Drag to resize · double-click to reset"></div></div>
   <script>
     const logEl = document.getElementById('log');
     function scrollBottom() { logEl.scrollTop = logEl.scrollHeight; }
@@ -45,6 +50,23 @@
       logEl.textContent += (logEl.textContent ? '\n' : '') + line;
       if (atBottom) scrollBottom();
     });
+    // Drag-resize: pointer capture keeps events flowing to the grip even when the
+    // cursor leaves this view and crosses into the app view mid-drag.
+    const grip = document.getElementById('grip');
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      grip.classList.add('dragging');
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener('pointermove', (e) => {
+      if (!grip.hasPointerCapture(e.pointerId)) return;
+      window.pscTerm.resize(Math.round(e.clientX - 46));
+    });
+    grip.addEventListener('pointerup', (e) => {
+      grip.classList.remove('dragging');
+      try { grip.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    grip.addEventListener('dblclick', () => window.pscTerm.resize(420));
   </script>
 </body>
 </html>

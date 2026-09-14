@@ -97,21 +97,53 @@ ipcMain.handle('psc:settings-save', (e, obj) => {
 // (chrome.html — app-independent Electron UI) and the app itself served by the
 // bridge. The dock's >_ button slides out a live bridge-log terminal.
 const DOCK_W = 46;
-const TERM_W = 420;
+const TERM_MIN = 160;
+const TERM_DEFAULT = 420;
+const APP_MIN_W = 300;
+const STATE_FILE = path.join(USER_DATA, 'psc-window-state.json');
 let termOpen = false;
+let termW = TERM_DEFAULT;
 let appView = null;
 let chromeView = null;
+
+function loadWindowState() {
+    try {
+        const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+        if (typeof s.termW === 'number') termW = s.termW;
+    } catch (_) {}
+}
+let _stateSaveTimer = null;
+function saveWindowState() {
+    if (_stateSaveTimer) clearTimeout(_stateSaveTimer);
+    _stateSaveTimer = setTimeout(() => {
+        _stateSaveTimer = null;
+        try { fs.writeFileSync(STATE_FILE, JSON.stringify({ termW })); } catch (_) {}
+    }, 400);
+}
+
+function termMax() {
+    if (!win) return TERM_DEFAULT;
+    const [w] = win.getContentSize();
+    return Math.max(TERM_MIN, w - DOCK_W - APP_MIN_W);
+}
 
 function layoutViews() {
     if (!win || !appView || !chromeView) return;
     const [w, h] = win.getContentSize();
-    const dockW = DOCK_W + (termOpen ? TERM_W : 0);
+    const dockW = DOCK_W + (termOpen ? Math.min(termW, termMax()) : 0);
     chromeView.setBounds({ x: 0, y: 0, width: dockW, height: h });
     appView.setBounds({ x: dockW, y: 0, width: Math.max(0, w - dockW), height: h });
 }
 
 ipcMain.handle('psc:term-toggle', () => { termOpen = !termOpen; layoutViews(); return termOpen; });
 ipcMain.handle('psc:term-buffer', () => logBuffer.join('\n'));
+ipcMain.on('psc:term-resize', (e, w) => {
+    const n = Math.round(Number(w));
+    if (!Number.isFinite(n)) return;
+    termW = Math.max(TERM_MIN, Math.min(n, termMax()));
+    layoutViews();
+    saveWindowState();
+});
 
 function createWindow(port) {
     const iconPath = path.join(APP_DIR, 'build', 'icon.png');
@@ -177,6 +209,7 @@ let bridge = null;
 let quitting = false;
 
 app.whenReady().then(async () => {
+    loadWindowState();
     const token = loadOrCreateToken();
     process.env.BRIDGE_TOKEN = token;
     process.env.PSC_TOKEN_FILE = path.join(USER_DATA, 'bridge-token');
