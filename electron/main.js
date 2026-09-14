@@ -3,7 +3,7 @@
 // into the page, so first run is zero-config.
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -55,6 +55,23 @@ function writeSettingsFile(obj) {
     }
 }
 
+// ---------- bridge log tee ----------
+// Mirror every console.* line from the main process (bridge + electron) into a
+// ring buffer and push to the dock panel when it's live.
+const LOG_MAX = 2000;
+const logBuffer = [];
+let logSink = null;
+for (const level of ['log', 'warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+        orig(...args);
+        const line = args.map(a => typeof a === 'string' ? a : (a instanceof Error ? (a.stack || a.message) : JSON.stringify(a))).join(' ');
+        logBuffer.push(line);
+        if (logBuffer.length > LOG_MAX) logBuffer.shift();
+        if (logSink) { try { logSink.send('psc:log-line', line); } catch (_) {} }
+    };
+}
+
 // ---------- single instance ----------
 let win = null;
 if (!app.requestSingleInstanceLock()) {
@@ -76,6 +93,26 @@ ipcMain.handle('psc:settings-save', (e, obj) => {
 });
 
 // ---------- window ----------
+// The window hosts two WebContentsViews side by side: a narrow dock strip
+// (chrome.html — app-independent Electron UI) and the app itself served by the
+// bridge. The dock's >_ button slides out a live bridge-log terminal.
+const DOCK_W = 46;
+const TERM_W = 420;
+let termOpen = false;
+let appView = null;
+let chromeView = null;
+
+function layoutViews() {
+    if (!win || !appView || !chromeView) return;
+    const [w, h] = win.getContentSize();
+    const dockW = DOCK_W + (termOpen ? TERM_W : 0);
+    chromeView.setBounds({ x: 0, y: 0, width: dockW, height: h });
+    appView.setBounds({ x: dockW, y: 0, width: Math.max(0, w - dockW), height: h });
+}
+
+ipcMain.handle('psc:term-toggle', () => { termOpen = !termOpen; layoutViews(); return termOpen; });
+ipcMain.handle('psc:term-buffer', () => logBuffer.join('\n'));
+
 function createWindow(port) {
     const iconPath = path.join(APP_DIR, 'build', 'icon.png');
     win = new BrowserWindow({
@@ -84,8 +121,10 @@ function createWindow(port) {
         minWidth: 700,
         minHeight: 500,
         autoHideMenuBar: true,
-        backgroundColor: '#0f172a',
+        backgroundColor: '#0b1220',
         icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    });
+    appView = new WebContentsView({
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
@@ -93,6 +132,17 @@ function createWindow(port) {
             preload: path.join(__dirname, 'preload.js'),
         },
     });
+    chromeView = new WebContentsView({
+        webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            preload: path.join(__dirname, 'chrome-preload.js'),
+        },
+    });
+    win.contentView.addChildView(appView);
+    win.contentView.addChildView(chromeView);
+
     const bridgeOrigin = `http://127.0.0.1:${port}`;
     const isBridgeUrl = (u) => { try { return new URL(u).origin === bridgeOrigin; } catch (_) { return false; } };
     const openExternalSafe = (u) => {
@@ -101,17 +151,25 @@ function createWindow(port) {
             if (proto === 'https:' || proto === 'http:' || proto === 'mailto:') shell.openExternal(u);
         } catch (_) {}
     };
-    win.webContents.setWindowOpenHandler(({ url }) => {
+    appView.webContents.setWindowOpenHandler(({ url }) => {
         openExternalSafe(url);
         return { action: 'deny' };
     });
-    win.webContents.on('will-navigate', (e, url) => {
+    appView.webContents.on('will-navigate', (e, url) => {
         if (!isBridgeUrl(url)) {
             e.preventDefault();
             openExternalSafe(url);
         }
     });
-    win.loadURL(`http://127.0.0.1:${port}/`);
+    // The window no longer loads a document itself — mirror the app title.
+    appView.webContents.on('page-title-updated', (e, title) => { if (title) win.setTitle(title); });
+
+    chromeView.webContents.on('did-finish-load', () => { logSink = chromeView.webContents; });
+    chromeView.webContents.loadFile(path.join(__dirname, 'chrome.html'));
+    appView.webContents.loadURL(`http://127.0.0.1:${port}/`);
+
+    layoutViews();
+    win.on('resize', layoutViews);
 }
 
 // ---------- boot ----------

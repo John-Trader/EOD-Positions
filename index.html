@@ -199,6 +199,11 @@
             padding-top: 7vh;
             padding-bottom: 7vh;
         }
+        /* Collapsible settings sections */
+        .setsec > summary { list-style: none; cursor: pointer; }
+        .setsec > summary::-webkit-details-marker { display: none; }
+        .setsec .setsec-chev { transition: transform 0.15s ease; display: inline-block; }
+        .setsec[open] .setsec-chev { transform: rotate(90deg); }
     </style>
 </head>
 <body class="min-h-screen p-3 sm:p-4 text-gray-100 flex flex-col items-center">
@@ -400,53 +405,34 @@
                 </div>
                 <button onclick="navigateTo('scanner')" class="text-[10px] font-bold text-blue-300 uppercase">← Scanner</button>
             </div>
-            <div class="p-3 space-y-4 text-sm">
-                <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase">Provider Priority</label>
-                    <p class="text-[9px] text-gray-500">Top available = primary · next = secondary. Unavailable providers are skipped. Click a row to edit its API key.</p>
-                    <div id="providerPriorityList" class="space-y-1"></div>
-                    <!-- Legacy selects kept in DOM (hidden) — every existing code path reads .value from them. -->
-                    <select id="apiProvider" class="hidden" tabindex="-1" aria-hidden="true">
-                        <option value="finnhub">Finnhub</option>
-                        <option value="twelvedata">Twelve Data</option>
-                        <option value="stockdata">StockData.org</option>
-                        <option value="tiingo">Tiingo</option>
-                        <option value="tws">TWS</option>
-                    </select>
-                    <div class="flex gap-2">
-                        <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
-                        <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
-                        <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
-                    </div>
-                    <p id="providerKeyHint" class="text-[9px] text-gray-500 hidden">TWS uses the TWS Bridge token — no API key needed.</p>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
-                    <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
-                        <button id="regimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding (8&gt;20)</button>
-                        <button id="regimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining (8&lt;20)</button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 pt-1">
-                        <label class="text-[9px] text-gray-500 uppercase">Expanding uses
-                            <select id="regimeExpandingStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
-                        </label>
-                        <label class="text-[9px] text-gray-500 uppercase">Declining uses
-                            <select id="regimeDecliningStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
-                        </label>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label for="slippageValue" class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
-                        <input type="number" id="slippageValue" autocomplete="off" step="0.01" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
-                    </div>
-                    <div class="space-y-1.5 pt-1">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase block">Interface</label>
-                        <label id="liveUpdateContainer" class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
-                            <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
-                        </label>
-                        <div class="space-y-1">
+            <div class="p-2.5 space-y-2 text-sm">
+                <!-- Providers & live data -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="providers">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>Providers &amp; Live Data
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <p class="text-[9px] text-gray-500">Top available = primary · next = secondary. Unavailable providers are skipped. Click a row to edit its API key.</p>
+                        <div id="providerPriorityList" class="space-y-1"></div>
+                        <!-- Legacy selects kept in DOM (hidden) — every existing code path reads .value from them. -->
+                        <select id="apiProvider" class="hidden" tabindex="-1" aria-hidden="true">
+                            <option value="finnhub">Finnhub</option>
+                            <option value="twelvedata">Twelve Data</option>
+                            <option value="stockdata">StockData.org</option>
+                            <option value="tiingo">Tiingo</option>
+                            <option value="tws">TWS</option>
+                        </select>
+                        <div class="flex gap-2">
+                            <input type="password" id="apiKeyInput" aria-label="API Key" autocomplete="off" placeholder="Enter API Key" class="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm">
+                            <button id="showKeyBtn" onclick="toggleApiKeyVisibility()" aria-pressed="false" class="text-[10px] text-gray-300 px-1">SHOW</button>
+                            <button onclick="saveKey()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold whitespace-nowrap">SAVE KEY</button>
+                        </div>
+                        <p id="providerKeyHint" class="text-[9px] text-gray-500 hidden">TWS uses the TWS Bridge token — no API key needed.</p>
+                        <div class="border-t border-white/5 pt-2 space-y-1.5">
+                            <label id="liveUpdateContainer" class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="liveUpdateSetting" class="custom-checkbox" onchange="saveLiveUpdateSetting()">
+                                <span class="text-xs text-gray-300">Live Auto-Update (WebSocket)</span>
+                            </label>
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" id="enhancedLiveModeSetting" class="custom-checkbox" onchange="saveEnhancedLiveSetting()">
                                 <span class="text-xs text-gray-300">Enhanced Live Mode</span>
@@ -465,6 +451,146 @@
                             <p class="text-[10px] text-gray-400 pl-5">Streams primary + secondary providers concurrently and shows whichever ticks first. Both must be available (key saved / bridge connected).</p>
                             <p id="enhancedLiveModeError" class="text-[10px] text-red-400 pl-5 hidden"></p>
                         </div>
+                    </div>
+                </details>
+                <!-- Risk & regime -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="risk">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>Risk &amp; Regime
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase">Market Breadth Regime</label>
+                        <div class="inline-flex w-full rounded-lg bg-slate-950/80 p-1 border border-white/10">
+                            <button id="regimeExpandingBtn" onclick="setGlobalRegime('expanding')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Expanding (8&gt;20)</button>
+                            <button id="regimeDecliningBtn" onclick="setGlobalRegime('declining')" class="flex-1 px-2 py-1.5 rounded-md text-[11px] font-bold">Declining (8&lt;20)</button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-1">
+                            <label class="text-[9px] text-gray-500 uppercase">Expanding uses
+                                <select id="regimeExpandingStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                            </label>
+                            <label class="text-[9px] text-gray-500 uppercase">Declining uses
+                                <select id="regimeDecliningStrategy" onchange="saveRegimeStrategyMap()" class="w-full bg-slate-800 text-white text-xs font-bold rounded px-2 py-1.5 border border-slate-600 mt-0.5"></select>
+                            </label>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 border-t border-white/5 pt-2">
+                            <label class="flex items-center gap-2 cursor-pointer text-xs">
+                                <input type="radio" name="riskModeSetting" value="fixed" onchange="saveRiskSettings()" class="custom-checkbox">
+                                <span>Fixed dollar amount</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-xs">
+                                <input type="radio" name="riskModeSetting" value="percent" onchange="saveRiskSettings()" class="custom-checkbox">
+                                <span>Percent of account</span>
+                            </label>
+                        </div>
+                        <label class="text-[9px] text-gray-500 uppercase block">Account value ($)
+                            <input type="text" inputmode="numeric" pattern="[0-9,]*" id="accountValueSetting" autocomplete="off" class="w-full max-w-[200px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-bold font-mono-num" placeholder="0.00" oninput="saveRiskSettings()" onblur="formatAccountValueSetting()">
+                        </label>
+                        <span id="twsAccountTag" class="hidden text-[9px] font-black text-emerald-300 uppercase">TWS live</span>
+                        <p class="text-[10px] text-gray-400">In percent mode, the risk input on the scanner is treated as a percentage of account value.</p>
+                        <div class="border-t border-white/5 pt-2">
+                            <label for="slippageValue" class="text-[10px] font-bold text-gray-400 uppercase">Slippage Buffer ($)</label>
+                            <input type="number" id="slippageValue" autocomplete="off" step="0.01" class="w-full max-w-[200px] bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 text-sm font-bold" placeholder="0.00" oninput="saveInputs()">
+                        </div>
+                    </div>
+                </details>
+                <!-- TWS bridge -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="tws">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>TWS Bridge
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <label class="flex items-center gap-2 text-xs"><input id="twsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()">Enable TWS order sending</label>
+                        <label class="text-[9px] text-gray-500 uppercase block">Bridge URL
+                            <input id="twsBridgeUrlSetting" type="text" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="http://127.0.0.1:8787" onchange="saveTwsSettings()">
+                        </label>
+                        <label class="text-[9px] text-gray-500 uppercase block">Bridge token
+                            <input id="twsBridgeTokenSetting" type="password" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="from tws-bridge first run" onchange="saveTwsSettings()">
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <button onclick="testTwsConnection()" class="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded text-xs font-bold">TEST CONNECTION</button>
+                            <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
+                        </div>
+                        <div id="twsLnaHint" class="hidden text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1.5 space-y-1">
+                            <p>On the GitHub Pages (HTTPS) site, your browser may block the local bridge — or the bridge may simply be offline.</p>
+                            <details>
+                                <summary class="cursor-pointer text-amber-300 font-bold">How to fix</summary>
+                                <ol class="list-decimal pl-4 pt-1 space-y-0.5">
+                                    <li>Confirm <code>tws-bridge</code> is running locally.</li>
+                                    <li>Click the padlock / site-info icon → <b>Site settings</b>.</li>
+                                    <li>Set <b>Local network access</b> (older versions: <b>Insecure content</b>) to <b>Allow</b>.</li>
+                                    <li>Reload and test again.</li>
+                                </ol>
+                                <p class="pt-1">Or run the app from <code>http://localhost:8080</code> (<code>node _serve.js</code>) — that origin isn't gated.</p>
+                            </details>
+                        </div>
+                        <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
+                        <label class="flex items-center gap-2 text-xs" title="Sends a bracket order: the opening order plus the currently selected exit strategy.">
+                            <input id="autoSendExitsOnOpenSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-send exit orders when opening a position
+                        </label>
+                        <p class="text-[10px] text-gray-500">Default is off. When enabled, the Open Long/Short button sends the entry plus the active exit strategy as a TWS bracket.</p>
+                        <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
+                        <div class="border-t border-white/5 pt-2 space-y-1.5">
+                            <div class="text-[10px] font-bold text-gray-400 uppercase">TWS data (each optional)</div>
+                            <label class="flex items-center gap-2 text-xs" title="Adds TWS to the provider priority list — live quotes + daily-bar volatility fallback through the bridge.">
+                                <input id="twsQuotesEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> TWS as a quote provider (priority list)
+                            </label>
+                            <label class="flex items-center gap-2 text-xs" title="Polls NetLiquidation every 15s and fills the account-value input.">
+                                <input id="twsSyncAccountSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-update account value (NetLiquidation)
+                            </label>
+                            <label class="flex items-center gap-2 text-xs" title="HOLD badges on cards, position pre-fill in the exit modal, already-holding confirmation.">
+                                <input id="twsPositionsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Positions (HOLD badges + auto-fill)
+                            </label>
+                            <label class="flex items-center gap-2 text-xs" title="WORKING-order badges, orders drawer with per-order cancel and PSC cancel-all.">
+                                <input id="twsOrdersEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Open orders (badges + cancel)
+                            </label>
+                            <label class="flex items-center gap-2 text-xs" title="PSC-* fills toast + journal entries with real quantity/price/commission.">
+                                <input id="twsFillsJournalEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Fills → journal
+                            </label>
+                            <label class="flex items-center gap-2 text-xs" title="Daily P&L chip in the header.">
+                                <input id="twsPnlEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Daily P&L chip
+                            </label>
+                        </div>
+                    </div>
+                </details>
+                <!-- Scanner options -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="scanner">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>Scanner Options
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
+                        <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
+                        <label class="flex items-center gap-2 text-xs"><input id="stopVolWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when stop exceeds 2.5×/1.5× of 20-day ATR/ADR</label>
+                        <label class="flex items-center gap-2 text-xs"><input id="liqWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when shares exceed the liquidity cap</label>
+                        <div class="flex items-center gap-2 text-xs text-gray-300">
+                            <span>Max shares =</span>
+                            <input id="liqVolPctSetting" type="number" min="0.05" max="50" step="0.05" value="1" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
+                            <span>% of</span>
+                            <input id="liqVolPeriodSetting" type="number" min="1" max="250" step="1" value="20" onchange="saveFeatureSettings()" class="w-14 bg-slate-800 border border-slate-600 rounded p-1 text-center">
+                            <span>-day avg volume</span>
+                        </div>
+                        <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
+                        <div class="border-t border-white/5 pt-2 space-y-2">
+                            <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
+                                <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
+                            </label>
+                            <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV (experimental)</label>
+                            <label class="flex items-center justify-between text-xs">Exit time in New York
+                                <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 border border-slate-600 rounded p-1">
+                                    <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
+                                </select>
+                            </label>
+                            <p class="text-[10px] text-amber-300">Exits only, not entry orders. Review the date in each export. Advanced timed/adjustable baskets need validation in TWS paper first, including partial fills and OCA reduction. A CSV cannot read your remaining position or cancel unrelated broker orders. MOC scheduling is not offered until verified.</p>
+                            <label class="flex items-start gap-2 text-[11px] text-amber-200"><input id="advancedCsvAck" type="checkbox" class="custom-checkbox">I understand advanced CSVs are unverified and will validate them in TWS paper before live use.</label>
+                        </div>
+                    </div>
+                </details>
+                <!-- Interface -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="interface">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>Interface
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-1.5 border-t border-white/5">
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" id="showFocusSetting" class="custom-checkbox" onchange="updateUIControls()">
                             <span class="text-xs text-gray-300">Show Focus Button</span>
@@ -482,132 +608,38 @@
                             <span class="text-xs text-gray-300">Trigger alerts (browser/system notifications)</span>
                         </label>
                     </div>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">Risk sizing</div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <label class="flex items-center gap-2 cursor-pointer text-xs">
-                            <input type="radio" name="riskModeSetting" value="fixed" onchange="saveRiskSettings()" class="custom-checkbox">
-                            <span>Fixed dollar amount</span>
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer text-xs">
-                            <input type="radio" name="riskModeSetting" value="percent" onchange="saveRiskSettings()" class="custom-checkbox">
-                            <span>Percent of account</span>
-                        </label>
+                </details>
+                <!-- Custom exit strategies -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="strategies">
+                    <summary class="px-2.5 py-2 flex items-center justify-between gap-2 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="flex items-center gap-1.5"><span class="setsec-chev text-gray-500 text-[9px]">▸</span>Custom Exit Strategies</span>
+                        <button onclick="event.stopPropagation();event.preventDefault();addBlankStrategy()" class="text-[10px] font-bold text-blue-300 uppercase">+ New</button>
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <div id="strategyEditorList" class="space-y-2"></div>
                     </div>
-                    <label class="text-[9px] text-gray-500 uppercase block">Account value ($)
-                        <input type="text" inputmode="numeric" pattern="[0-9,]*" id="accountValueSetting" autocomplete="off" class="w-full max-w-[200px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-bold font-mono-num" placeholder="0.00" oninput="saveRiskSettings()" onblur="formatAccountValueSetting()">
-                    </label>
-                    <span id="twsAccountTag" class="hidden text-[9px] font-black text-emerald-300 uppercase">TWS live</span>
-                    <p class="text-[10px] text-gray-400">In percent mode, the risk input on the scanner is treated as a percentage of account value.</p>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">TWS Bridge</div>
-                    <label class="flex items-center gap-2 text-xs"><input id="twsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()">Enable TWS order sending</label>
-                    <label class="text-[9px] text-gray-500 uppercase block">Bridge URL
-                        <input id="twsBridgeUrlSetting" type="text" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="http://127.0.0.1:8787" onchange="saveTwsSettings()">
-                    </label>
-                    <label class="text-[9px] text-gray-500 uppercase block">Bridge token
-                        <input id="twsBridgeTokenSetting" type="password" autocomplete="off" class="w-full max-w-[280px] bg-slate-800 text-white border border-slate-600 rounded px-2 py-1.5 text-xs font-mono-num" placeholder="from tws-bridge first run" onchange="saveTwsSettings()">
-                    </label>
-                    <div class="flex items-center gap-2">
-                        <button onclick="testTwsConnection()" class="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded text-xs font-bold">TEST CONNECTION</button>
-                        <span id="twsStatus" class="text-[10px] font-mono-num text-gray-400">Not connected</span>
+                </details>
+                <!-- App & backup -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" open data-setsec="app">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>App &amp; Backup
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 space-y-2 border-t border-white/5">
+                        <div>
+                            <button id="installAppBtn" onclick="installApp()" class="hidden bg-slate-800 text-blue-300 rounded px-3 py-1.5 text-xs font-bold">INSTALL APP</button>
+                            <p id="installAppStatus" class="text-[10px] text-gray-400">For offline shell/install support, open the app over HTTPS or localhost. Quotes always require a connection.</p>
+                        </div>
+                        <div class="flex gap-2 border-t border-white/5 pt-2">
+                            <button onclick="exportSettingsJson()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                                <span>💾</span> Export Backup (.json)
+                            </button>
+                            <button onclick="document.getElementById('importBackupFileInput').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
+                                <span>📥</span> Import Backup (.json)
+                            </button>
+                            <input type="file" id="importBackupFileInput" accept=".json" class="hidden" onchange="importSettingsJson(event)">
+                        </div>
                     </div>
-                    <div id="twsLnaHint" class="hidden text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1.5 space-y-1">
-                        <p>On the GitHub Pages (HTTPS) site, your browser may block the local bridge — or the bridge may simply be offline.</p>
-                        <details>
-                            <summary class="cursor-pointer text-amber-300 font-bold">How to fix</summary>
-                            <ol class="list-decimal pl-4 pt-1 space-y-0.5">
-                                <li>Confirm <code>tws-bridge</code> is running locally.</li>
-                                <li>Click the padlock / site-info icon → <b>Site settings</b>.</li>
-                                <li>Set <b>Local network access</b> (older versions: <b>Insecure content</b>) to <b>Allow</b>.</li>
-                                <li>Reload and test again.</li>
-                            </ol>
-                            <p class="pt-1">Or run the app from <code>http://localhost:8080</code> (<code>node _serve.js</code>) — that origin isn't gated.</p>
-                        </details>
-                    </div>
-                    <p class="text-[10px] text-gray-500">Requires the local <code>tws-bridge</code> server running next to TWS. See <code>tws-bridge/README.md</code>.</p>
-                    <label class="flex items-center gap-2 text-xs" title="Sends a bracket order: the opening order plus the currently selected exit strategy.">
-                        <input id="autoSendExitsOnOpenSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-send exit orders when opening a position
-                    </label>
-                    <p class="text-[10px] text-gray-500">Default is off. When enabled, the Open Long/Short button sends the entry plus the active exit strategy as a TWS bracket.</p>
-                    <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
-                    <div class="border-t border-white/5 pt-2 space-y-1.5">
-                        <div class="text-[10px] font-bold text-gray-400 uppercase">TWS data (each optional)</div>
-                        <label class="flex items-center gap-2 text-xs" title="Adds TWS to the provider priority list — live quotes + daily-bar volatility fallback through the bridge.">
-                            <input id="twsQuotesEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> TWS as a quote provider (priority list)
-                        </label>
-                        <label class="flex items-center gap-2 text-xs" title="Polls NetLiquidation every 15s and fills the account-value input.">
-                            <input id="twsSyncAccountSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-update account value (NetLiquidation)
-                        </label>
-                        <label class="flex items-center gap-2 text-xs" title="HOLD badges on cards, position pre-fill in the exit modal, already-holding confirmation.">
-                            <input id="twsPositionsEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Positions (HOLD badges + auto-fill)
-                        </label>
-                        <label class="flex items-center gap-2 text-xs" title="WORKING-order badges, orders drawer with per-order cancel and PSC cancel-all.">
-                            <input id="twsOrdersEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Open orders (badges + cancel)
-                        </label>
-                        <label class="flex items-center gap-2 text-xs" title="PSC-* fills toast + journal entries with real quantity/price/commission.">
-                            <input id="twsFillsJournalEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Fills → journal
-                        </label>
-                        <label class="flex items-center gap-2 text-xs" title="Daily P&L chip in the header.">
-                            <input id="twsPnlEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Daily P&L chip
-                        </label>
-                    </div>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">Optional scanner details</div>
-                    <label class="flex items-center gap-2 text-xs"><input id="showRangePctSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Show range % and distance to trigger (no sorting)</label>
-                    <label class="flex items-center gap-2 text-xs"><input id="earningsWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn about earnings during the hold period</label>
-                    <label class="flex items-center gap-2 text-xs"><input id="stopVolWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when stop exceeds 2.5×/1.5× of 20-day ATR/ADR</label>
-                    <label class="flex items-center gap-2 text-xs"><input id="liqWarnSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Warn when shares exceed the liquidity cap</label>
-                    <div class="flex items-center gap-2 text-xs text-gray-300">
-                        <span>Max shares =</span>
-                        <input id="liqVolPctSetting" type="number" min="0.05" max="50" step="0.05" value="1" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
-                        <span>% of</span>
-                        <input id="liqVolPeriodSetting" type="number" min="1" max="250" step="1" value="20" onchange="saveFeatureSettings()" class="w-14 bg-slate-800 border border-slate-600 rounded p-1 text-center">
-                        <span>-day avg volume</span>
-                    </div>
-                    <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase">Holding period &amp; scheduled exit</div>
-                    <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
-                        <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 border border-slate-600 rounded p-1 text-center">
-                    </label>
-                    <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV (experimental)</label>
-                    <label class="flex items-center justify-between text-xs">Exit time in New York
-                        <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 border border-slate-600 rounded p-1">
-                            <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
-                        </select>
-                    </label>
-                    <p class="text-[10px] text-amber-300">Exits only, not entry orders. Review the date in each export. Advanced timed/adjustable baskets need validation in TWS paper first, including partial fills and OCA reduction. A CSV cannot read your remaining position or cancel unrelated broker orders. MOC scheduling is not offered until verified.</p>
-                    <label class="flex items-start gap-2 text-[11px] text-amber-200"><input id="advancedCsvAck" type="checkbox" class="custom-checkbox">I understand advanced CSVs are unverified and will validate them in TWS paper before live use.</label>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <button id="installAppBtn" onclick="installApp()" class="hidden bg-slate-800 text-blue-300 rounded px-3 py-1.5 text-xs font-bold">INSTALL APP</button>
-                    <p id="installAppStatus" class="text-[10px] text-gray-400">For offline shell/install support, open the app over HTTPS or localhost. Quotes always require a connection.</p>
-                </div>
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <div class="flex items-center justify-between">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase">Custom Exit Strategies</label>
-                        <button onclick="addBlankStrategy()" class="text-[10px] font-bold text-blue-300 uppercase">+ New</button>
-                    </div>
-                    <div id="strategyEditorList" class="space-y-2"></div>
-                </div>
-
-                <div class="border-t border-white/10 pt-3 space-y-2">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase block">Data Backup &amp; Transfer</label>
-                    <div class="flex gap-2">
-                        <button onclick="exportSettingsJson()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
-                            <span>💾</span> Export Backup (.json)
-                        </button>
-                        <button onclick="document.getElementById('importBackupFileInput').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5">
-                            <span>📥</span> Import Backup (.json)
-                        </button>
-                        <input type="file" id="importBackupFileInput" accept=".json" class="hidden" onchange="importSettingsJson(event)">
-                    </div>
-                </div>
+                </details>
             </div>
         </div>
     </div>
@@ -872,6 +904,24 @@
                 scanner: snapshotScannerInputs()
             };
         }
+        // Collapsible settings sections — expanded by default, collapse choices persisted.
+        function initSettingsSections() {
+            const list = (typeof document !== 'undefined' && document.querySelectorAll)
+                ? document.querySelectorAll('details.setsec[data-setsec]') : [];
+            if (!list || !list.length) return;
+            let collapsed = {};
+            try { collapsed = JSON.parse(safeStorageGet('settingsSectionsCollapsed') || '{}') || {}; } catch (_) {}
+            list.forEach(d => {
+                const key = d.getAttribute ? d.getAttribute('data-setsec') : null;
+                if (!key) return;
+                if (collapsed[key]) d.open = false;
+                d.addEventListener('toggle', () => {
+                    collapsed[key] = !d.open;
+                    safeStorageSet('settingsSectionsCollapsed', JSON.stringify(collapsed));
+                });
+            });
+        }
+
         // Object-typed fields (journal, strategies, scanner) aren't seeded by the
         // preload's scalar pass — apply them post-init through the same validated
         // path backups use.
@@ -1046,15 +1096,6 @@
             return true;
         }
 
-        function moveProvider(p, dir) {
-            const i = providerPriorityOrder.indexOf(p);
-            const j = i + dir;
-            if (i < 0 || j < 0 || j >= providerPriorityOrder.length) return;
-            [providerPriorityOrder[i], providerPriorityOrder[j]] = [providerPriorityOrder[j], providerPriorityOrder[i]];
-            saveProviderPriorityOrder();
-            if (realtimeTasks.length) restartStreamForFailover();
-        }
-
         function focusProviderKey(p) {
             providerKeyFocus = p;
             updateApiKeyInput();
@@ -1068,6 +1109,12 @@
             return 'bg-red-400';
         }
 
+        let _ppDragKey = null;         // provider key currently being dragged
+        function clearDropHints() {
+            document.querySelectorAll('#providerPriorityList [data-pp]').forEach(r => {
+                r.classList.remove('border-t-cyan-400', 'border-b-cyan-400');
+            });
+        }
         function renderProviderPriorityList() {
             const list = document.getElementById('providerPriorityList');
             if (!list) return;
@@ -1077,23 +1124,58 @@
                 const cfg = API_CONFIGS[p];
                 const row = document.createElement('div');
                 const focused = providerKeyFocus === p || (!providerKeyFocus && i === 0);
-                row.className = 'flex items-center gap-2 px-2 py-1.5 rounded border ' + (focused ? 'border-blue-500/50 bg-slate-800' : 'border-white/10 bg-slate-900/60');
+                row.className = 'flex items-center gap-2 px-2 py-1.5 rounded border cursor-grab active:cursor-grabbing ' + (focused ? 'border-blue-500/50 bg-slate-800' : 'border-white/10 bg-slate-900/60');
+                row.draggable = true;
+                if (row.setAttribute) row.setAttribute('data-pp', p);
                 const badge = p === primary ? '<span class="text-[8px] font-black text-cyan-300 uppercase">Primary</span>'
                             : p === secondary ? '<span class="text-[8px] font-black text-emerald-300 uppercase">Secondary</span>' : '';
                 const demoted = demotedProviders.has(p) ? ' <span class="text-[8px] text-amber-400">skipped</span>' : '';
                 row.innerHTML = `
+                    <span class="text-gray-500 text-xs leading-none select-none" aria-hidden="true">⠿</span>
                     <span class="inline-block w-2 h-2 rounded-full ${providerStatusDot(p)}"></span>
                     <span class="flex-1 text-xs font-bold text-gray-200">${cfg.name}${demoted}</span>
-                    ${badge}
-                    <button class="text-[10px] text-gray-400 hover:text-white px-1" data-move="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
-                    <button class="text-[10px] text-gray-400 hover:text-white px-1" data-move="1" ${i === providerPriorityOrder.length - 1 ? 'disabled' : ''}>▼</button>`;
-                row.addEventListener('click', (e) => {
-                    const mv = e.target.dataset && e.target.dataset.move;
-                    if (mv) { moveProvider(p, parseInt(mv, 10)); return; }
-                    focusProviderKey(p);
+                    ${badge}`;
+                row.addEventListener('click', () => focusProviderKey(p));
+                row.addEventListener('dragstart', (e) => {
+                    _ppDragKey = p;
+                    e.dataTransfer.effectAllowed = 'move';
+                    try { e.dataTransfer.setData('text/plain', p); } catch (_) {}
+                    row.classList.add('opacity-50');
+                });
+                row.addEventListener('dragend', () => {
+                    _ppDragKey = null;
+                    clearDropHints();
+                    row.classList.remove('opacity-50');
+                });
+                row.addEventListener('dragover', (e) => {
+                    if (!_ppDragKey || _ppDragKey === p) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    clearDropHints();
+                    const rect = row.getBoundingClientRect();
+                    row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'border-t-cyan-400' : 'border-b-cyan-400');
+                });
+                row.addEventListener('drop', (e) => {
+                    if (!_ppDragKey || _ppDragKey === p) return;
+                    e.preventDefault();
+                    const rect = row.getBoundingClientRect();
+                    const to = i + (e.clientY >= rect.top + rect.height / 2 ? 1 : 0);
+                    reorderProvider(_ppDragKey, to);
                 });
                 list.appendChild(row);
             });
+        }
+
+        // Move provider p to absolute index `to` (post-removal indexing — standard
+        // splice-out-then-insert semantics).
+        function reorderProvider(p, to) {
+            const from = providerPriorityOrder.indexOf(p);
+            if (from < 0) return;
+            providerPriorityOrder.splice(from, 1);
+            if (to > from) to--;
+            providerPriorityOrder.splice(Math.max(0, Math.min(providerPriorityOrder.length, to)), 0, p);
+            saveProviderPriorityOrder();
+            if (realtimeTasks.length) restartStreamForFailover();
         }
 
         // After a provider is demoted (or availability changes), restart the active stream
@@ -6758,6 +6840,7 @@
         }
 
         loadSettings();
+        initSettingsSections();
         applyPortableSettings();
         const clockInterval = setInterval(updateClock, 1000);
         updateClock();

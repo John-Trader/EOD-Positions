@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1220; overflow: hidden; }
+  body { display: flex; font-family: Consolas, 'Courier New', monospace; }
+  #strip {
+    width: 46px; flex: 0 0 46px; height: 100%;
+    background: #0b1220; border-right: 1px solid rgba(255,255,255,.08);
+    display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 8px;
+  }
+  #termBtn {
+    width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
+    background: #1e293b; color: #94a3b8; font: 700 13px/1 Consolas, monospace;
+    cursor: pointer;
+  }
+  #termBtn:hover { background: #334155; color: #e2e8f0; }
+  body.open #termBtn { border-color: #22d3ee; color: #22d3ee; }
+  #panel { display: none; flex: 1; min-width: 0; flex-direction: column; }
+  body.open #panel { display: flex; }
+  #log {
+    flex: 1; margin: 0; padding: 8px 10px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+    color: #7dd3fc; font: 11px/1.5 Consolas, 'Courier New', monospace; user-select: text;
+  }
+</style>
+</head>
+<body>
+  <div id="strip">
+    <button id="termBtn" title="Toggle bridge log">&gt;_</button>
+  </div>
+  <div id="panel"><pre id="log"></pre></div>
+  <script>
+    const logEl = document.getElementById('log');
+    function scrollBottom() { logEl.scrollTop = logEl.scrollHeight; }
+    document.getElementById('termBtn').addEventListener('click', async () => {
+      const open = await window.pscTerm.toggle();
+      document.body.classList.toggle('open', !!open);
+      if (open) { logEl.textContent = await window.pscTerm.getBuffer(); scrollBottom(); }
+    });
+    window.pscTerm.onLog((line) => {
+      if (!document.body.classList.contains('open')) return;
+      const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 30;
+      logEl.textContent += (logEl.textContent ? '\n' : '') + line;
+      if (atBottom) scrollBottom();
+    });
+  </script>
+</body>
+</html>
