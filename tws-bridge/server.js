@@ -861,7 +861,10 @@ const server = http.createServer(async (req, res) => {
         return serveStaticFile(req, res, webRoot);
     }
 
-    const allowed = isAllowedOrigin(origin);
+    // No Origin header = same-origin fetch or non-browser client — allow it (the
+    // bridge-served app's own GET/HEAD calls carry no Origin). The token check
+    // below still guards mutations and account data. Matches the WS gate below.
+    const allowed = !origin || isAllowedOrigin(origin);
     if (!allowed) {
         console.warn(`[bridge] Origin not allowed: ${origin} (method=${req.method}, url=${req.url})`);
         res.writeHead(403, corsHeaders);
