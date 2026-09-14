@@ -804,7 +804,7 @@
         // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
         const _storage = (typeof localStorage !== 'undefined' && localStorage) ? localStorage : { getItem: () => null, setItem: () => {}, removeItem: () => {} };
         function safeStorageSet(key, value) {
-            try { _storage.setItem(key, value); return true; } catch (e) {
+            try { _storage.setItem(key, value); pscScheduleSave(); return true; } catch (e) {
                 const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
                 console.warn('Storage save failed:', key, e);
                 if (quota) showErrorToast('Storage full: export a backup and free up space.');
@@ -815,7 +815,75 @@
             try { return _storage.getItem(key); } catch (e) { return null; }
         }
         function safeStorageRemove(key) {
-            try { _storage.removeItem(key); } catch (e) {}
+            try { _storage.removeItem(key); pscScheduleSave(); } catch (e) {}
+        }
+
+        // ---- Electron / portable bootstrap (inert outside the packaged app) ----
+        // The bridge injects <meta name="psc-bridge"> when it serves this page, and the
+        // Electron preload exposes window.pscBridge (settings-file IPC). Neither exists
+        // on GitHub Pages / file:// / _serve.js — everything below stays inert there.
+        const pscBridgeMeta = (typeof document !== 'undefined' && document.querySelector)
+            ? document.querySelector('meta[name="psc-bridge"]') : null;
+        const pscBridgeInfo = pscBridgeMeta ? { url: location.origin, token: pscBridgeMeta.content } : null;
+        const pscBridge = (typeof window !== 'undefined' && window.pscBridge) || null;
+        if (pscBridgeInfo) {
+            // The bridge serving this page is authoritative for its own url+token —
+            // always refresh them (a settings file copied from another machine holds
+            // that machine's token, which is invalid here).
+            safeStorageSet('twsBridgeUrl', pscBridgeInfo.url);
+            safeStorageSet('twsBridgeToken', pscBridgeInfo.token);
+            if (safeStorageGet('twsEnabled') === null) safeStorageSet('twsEnabled', 'true');
+            for (const k of ['twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled']) {
+                if (safeStorageGet(k) === null) safeStorageSet(k, 'true');
+            }
+        }
+        let _pscSaveTimer = null;
+        function pscScheduleSave() {
+            if (!pscBridge) return;
+            if (_pscSaveTimer) clearTimeout(_pscSaveTimer);
+            _pscSaveTimer = setTimeout(() => {
+                _pscSaveTimer = null;
+                try { pscBridge.saveSettings(collectPortableState()); } catch (_) {}
+            }, 500);
+        }
+        // Same payload as exportSettingsJson, plus apiKeys so the file is a complete
+        // portable install (backup exports deliberately keep keys out).
+        function collectPortableState() {
+            return {
+                version: "3.0.1",
+                customStrategies,
+                regimeStrategyMap,
+                activeTradesLog,
+                globalMarketRegime,
+                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
+                apiKeys: Object.fromEntries(Object.values(API_CONFIGS).map(c => c.storageKey).filter(Boolean).map(k => [k, safeStorageGet(k)])),
+                scanner: snapshotScannerInputs()
+            };
+        }
+        // Object-typed fields (journal, strategies, scanner) aren't seeded by the
+        // preload's scalar pass — apply them post-init through the same validated
+        // path backups use.
+        async function applyPortableSettings() {
+            if (!pscBridge) return;
+            let s;
+            try { s = await pscBridge.loadSettings(); } catch (_) { return; }
+            if (!s || typeof s !== 'object' || !Object.keys(s).length) return;
+            try {
+                const values = prepareBackup(s);
+                Object.entries(values).forEach(([k, v]) => safeStorageSet(k, v));
+                if (s.apiKeys && typeof s.apiKeys === 'object') {
+                    for (const [k, v] of Object.entries(s.apiKeys)) {
+                        if (typeof v === 'string' && v) safeStorageSet(k, v);
+                    }
+                }
+                customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
+                regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
+                activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
+                globalMarketRegime = safeStorageGet('globalMarketRegime') || globalMarketRegime;
+                loadSettings();
+                updateActiveTradesCountBadge();
+                renderActiveTradesPage();
+            } catch (e) { console.warn('portable settings apply failed:', e && e.message); }
         }
 
         let realtimeSocket = null;
@@ -6677,6 +6745,7 @@
         }
 
         loadSettings();
+        applyPortableSettings();
         const clockInterval = setInterval(updateClock, 1000);
         updateClock();
         initializeInstallSupport();

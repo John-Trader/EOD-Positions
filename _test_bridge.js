@@ -100,5 +100,50 @@ assertTrue(!cache.has(1) && cache.has(2), 'pruneToSeen keeps seen');
 bridge.pruneToSeen(cache, new Set());
 assertEq(cache.size, 0, 'pruneToSeen empty snapshot clears all');
 
-console.log('\nAll bridge tests passed');
-process.exit(0);
+// ---- static file helpers ----
+assertTrue(bridge.isAllowedStaticFile('index.html'), 'index.html is a static file');
+assertTrue(!bridge.isAllowedStaticFile('server.js'), 'server.js is not served');
+assertTrue(bridge.resolveWebFile(__dirname, '/index.html') !== null, 'index.html resolves in repo root');
+assertTrue(bridge.resolveWebFile(__dirname, '/') !== null, '/ maps to index.html');
+assertEq(bridge.resolveWebFile(__dirname, '/orders'), null, 'API path not a static file');
+assertEq(bridge.resolveWebFile(__dirname, '/../secret'), null, 'non-whitelisted path rejected');
+
+// ---- integration: real server on a random port, no TWS ----
+const http = require('http');
+function req(pathname, { method = 'GET', headers = {}, body } = {}, base) {
+  return new Promise((resolve, reject) => {
+    const r = http.request(base + pathname, { method, headers }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString('utf8') }));
+    });
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+}
+(async () => {
+  const { port } = await bridge.start({ port: 0, connectTws: false });
+  assertTrue(port > 0, 'start() resolves a real port');
+  const base = `http://127.0.0.1:${port}`;
+
+  const page = await req('/', {}, base);
+  assertEq(page.status, 200, 'GET / serves index.html');
+  assertTrue(page.text.includes('name="psc-bridge"'), 'served page carries injected bridge token meta');
+
+  const health = await req('/health', { headers: { Origin: base } }, base);
+  assertTrue(JSON.parse(health.text).twsPort !== undefined, 'GET /health responds with status json');
+
+  const denied = await req('/orders', { headers: { Origin: base } }, base);
+  assertEq(denied.status, 401, 'authed GET requires token');
+
+  const deniedPost = await req('/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: '{}' }, base);
+  assertEq(deniedPost.status, 401, 'unauthed POST rejected');
+
+  const badOrigin = await req('/health', { headers: { Origin: 'https://evil.example.com' } }, base);
+  assertEq(badOrigin.status, 403, 'foreign origin rejected');
+
+  await bridge.stop();
+  console.log('\nAll bridge tests passed');
+  // No process.exit — stop() clears all handles; the process exits on its own.
+})().catch(e => { console.error('FAIL integration:', e); process.exit(1); });

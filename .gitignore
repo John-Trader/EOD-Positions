@@ -1,2 +1,6 @@
 tws-bridge/node_modules/
 tws-bridge/.bridge-token
+node_modules/
+dist/
+build/
+psc-settings.json

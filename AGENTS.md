@@ -19,3 +19,13 @@
 - **TWS API checklist (required):** enable "ActiveX and Socket Clients", set socket port (7497 paper / 7496 live), allow localhost-only, uncheck "Read-Only API", and enable **"Bypass Order Precautions for API Orders"** in API → Precautions.
 - Timed/adjustable CSV orders are experimental and require paper validation; standard Option 1/2/Short fixed-stop exports must remain compatible.
 - Increment the worker cache version when changing offline assets. Never cache quotes, credentials, backups or API traffic.
+
+## Electron portable app
+
+- `build-exe.bat` (or `npm install` then `npm run dist`) produces `dist/PositionCalc-<version>-portable.exe` — a single-file Windows build that runs the bridge in-process and opens the app in its own window. `npm start` runs the dev variant (`electron .`).
+- Electron files: `electron/main.js` (boot/window/IPC), `electron/preload.js` (settings seeding), `electron-builder.yml`, `tools/make-icon.js`.
+- The bridge serves the app shell on loopback (`/`, `/index.html`, `/manifest.webmanifest`, `/sw.js`, `icon.svg`) and injects `<meta name="psc-bridge">` with the token → zero-config. `server.js` keeps standalone behavior via `require.main` — `start-bridge.bat` is unchanged.
+- Settings persist to `psc-settings.json` next to the exe (PORTABLE_EXECUTABLE_DIR; falls back to userData). The app syncs the full backup payload + `apiKeys` via `window.pscBridge` — inert when absent (Pages/file:///_serve.js).
+- Electron uses `IBKR_CLIENT_ID=8` so it can coexist with a standalone bridge (7).
+- Keep versions in sync: `index.html` badge, `package.json`, `sw.js` cache name, `manifest.webmanifest`, backup whitelist.
+- Future option (not built): Node SEA variant — the bridge's `start()`/static-serving/meta-inject work is the shared foundation; SEA would esbuild-bundle server.js + postject into node.exe and auto-open the default browser.

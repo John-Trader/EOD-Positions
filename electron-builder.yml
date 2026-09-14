@@ -1,0 +1,26 @@
+appId: com.levifasten.positioncalc
+productName: Position Size Calculator
+asar: true
+directories:
+  output: dist
+files:
+  - electron/**
+  - tws-bridge/server.js
+  - index.html
+  - manifest.webmanifest
+  - sw.js
+  - icon.svg
+  - build/icon.png
+  - package.json
+  - "!tws-bridge/node_modules/**"
+  - "!_test_*"
+  - "!_serve.js"
+  - "!_smoke_browser.js"
+  - "!_golden_fixtures.json"
+  - "!tools/**"
+  - "!.git/**"
+  - "!.devin/**"
+win:
+  target: portable
+  icon: build/icon.png
+  artifactName: "PositionCalc-${version}-portable.exe"

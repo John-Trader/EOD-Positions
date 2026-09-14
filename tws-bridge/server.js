@@ -22,7 +22,8 @@ const TWS_HOST = process.env.TWS_HOST || '127.0.0.1';
 const TWS_PORT = parseInt(process.env.TWS_PORT || '7496', 10);
 const CLIENT_ID = parseInt(process.env.IBKR_CLIENT_ID || '7', 10);
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '8787', 10);
-const TOKEN_FILE = path.join(__dirname, '.bridge-token');
+const TOKEN_FILE = process.env.PSC_TOKEN_FILE || path.join(__dirname, '.bridge-token');
+const WEB_ROOT = process.env.PSC_WEB_ROOT || path.join(__dirname, '..');
 const ALLOWED_ORIGINS = new Set([
     'https://levifasten.github.io',
     'http://localhost:8080',
@@ -51,6 +52,58 @@ function loadOrCreateToken() {
     return token;
 }
 const BRIDGE_TOKEN = loadOrCreateToken();
+let webRoot = WEB_ROOT;              // overridable via start({webRoot})
+let stopping = false;                // set by stop() — suppresses reconnects
+
+// ---------- Static app files (loopback UI) ----------
+// Whitelisted app shell — fixed map, no traversal surface. Served token-free so a
+// browser/Electron navigation can load the page; index.html gets the bridge token
+// injected as a meta tag so the app can auto-configure.
+const STATIC_FILES = {
+    '/': 'index.html',
+    '/index.html': 'index.html',
+    '/manifest.webmanifest': 'manifest.webmanifest',
+    '/sw.js': 'sw.js',
+    '/icon.svg': 'icon.svg',
+};
+const STATIC_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.webmanifest': 'application/manifest+json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.json': 'application/json; charset=utf-8',
+};
+function isAllowedStaticFile(name) { return Object.values(STATIC_FILES).includes(name); }
+function resolveWebFile(root, urlPath) {
+    const name = STATIC_FILES[urlPath];
+    if (!name) return null;
+    const file = path.resolve(root, name);
+    const rel = path.relative(path.resolve(root), file);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+    return file;
+}
+function serveStaticFile(req, res, webRoot) {
+    const urlPath = (req.url || '/').split('?')[0];
+    const file = resolveWebFile(webRoot, urlPath);
+    if (!file) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not Found'); }
+    fs.readFile(file, (err, data) => {
+        if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not Found'); }
+        let body = data;
+        if (urlPath === '/' || urlPath === '/index.html') {
+            // Inject the bridge token so the app can self-configure — same-origin only.
+            const meta = `<meta name="psc-bridge" content="${BRIDGE_TOKEN}">`;
+            body = Buffer.from(String(data).replace('<head>', `<head>\n    ${meta}`), 'utf8');
+        }
+        res.writeHead(200, {
+            'Content-Type': STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+            'Content-Length': body.length,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+        res.end(req.method === 'HEAD' ? undefined : body);
+    });
+}
 
 // ---------- Market-data tick maps ----------
 const TICK_PRICE_MAP = { 1: 'bid', 2: 'ask', 4: 'last', 6: 'high', 7: 'low', 9: 'close' };
@@ -602,7 +655,7 @@ function connect() {
 }
 
 function scheduleReconnect() {
-    if (reconnectTimer) return;
+    if (stopping || reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         connect();
@@ -800,6 +853,12 @@ const server = http.createServer(async (req, res) => {
             'Access-Control-Max-Age': '86400',
         });
         return res.end();
+    }
+
+    // Static app shell — before the origin gate: browser navigations send no Origin
+    // header on GET. Fixed whitelist, no account data.
+    if ((req.method === 'GET' || req.method === 'HEAD') && STATIC_FILES[url.pathname]) {
+        return serveStaticFile(req, res, webRoot);
     }
 
     const allowed = isAllowedOrigin(origin);
@@ -1068,28 +1127,77 @@ if (WebSocketServer) {
 }
 
 // ---------- Boot ----------
-function main() {
-    if (wss) {
-        setInterval(() => {
+let pingTimer = null;
+
+async function start(opts = {}) {
+    stopping = false;
+    if (opts.webRoot) webRoot = opts.webRoot;
+    const port = opts.port != null ? opts.port : BRIDGE_PORT;
+    if (wss && !pingTimer) {
+        pingTimer = setInterval(() => {
             for (const ws of streamClients) {
                 if (!ws.isAlive) { try { ws.terminate(); } catch (_) {} continue; }
                 ws.isAlive = false; try { ws.ping(); } catch (_) {}
             }
         }, 15000);
     }
-    server.listen(BRIDGE_PORT, '127.0.0.1', () => {
-        console.log(`[bridge] HTTP listening on http://127.0.0.1:${BRIDGE_PORT}`);
-        console.log(`[bridge] TWS target: ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
+    const actualPort = await new Promise((resolve, reject) => {
+        const onErr = (e) => {
+            if (e && e.code === 'EADDRINUSE' && port !== 0) {
+                server.listen(0, '127.0.0.1');   // fall back to a free port
+            } else {
+                server.removeListener('error', onErr);
+                reject(e);
+            }
+        };
+        server.on('error', onErr);
+        server.once('listening', () => {
+            server.removeListener('error', onErr);
+            server.on('error', (e) => console.error('[bridge] http error:', e && e.message));
+            resolve(server.address().port);
+        });
+        server.listen(port, '127.0.0.1');
+    });
+    console.log(`[bridge] HTTP listening on http://127.0.0.1:${actualPort}`);
+    console.log(`[bridge] TWS target: ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
+    if (opts.connectTws === false) console.log('[bridge] TWS connect skipped (connectTws:false)');
+    else connect();
+    if (require.main === module) {
         console.log(`[bridge] Token: ${BRIDGE_TOKEN}`);
         console.log(`[bridge] Paste this token into the app's Settings → TWS Bridge → Bridge token field.`);
-    });
-    connect();
+        console.log(`[bridge] Serving the app at http://127.0.0.1:${actualPort}/`);
+    }
+    return { port: actualPort };
 }
 
-if (require.main === module) main();
+async function stop() {
+    stopping = true;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (execPollTimer) { clearInterval(execPollTimer); execPollTimer = null; }
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    for (const m of [pending, pendingCancel, pendingSnapshot, pendingContract, pendingHistory, pendingExec]) {
+        for (const p of m.values()) clearTimeout(p.timer);
+        m.clear();
+    }
+    // Release snapshot waiters without pruning on partial data.
+    orderSnapshotSeen = null; positionSnapshotSeen = null;
+    if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
+    if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
+    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()([]);
+    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()([]);
+    for (const ws of streamClients) { try { ws.terminate(); } catch (_) {} }
+    streamClients.clear();
+    try { if (wss) wss.close(); } catch (_) {}
+    try { if (ib) ib.disconnect(); } catch (_) {}
+    try { if (server.closeAllConnections) server.closeAllConnections(); } catch (_) {}
+    await new Promise((resolve) => { try { server.close(() => resolve()); } catch (_) { resolve(); } });
+}
+
+if (require.main === module) start().catch(e => { console.error('[bridge] failed to start:', e); process.exit(1); });
 
 module.exports = {
     toIbkSymbol, buildOrder, buildContract, isAllowedOrigin, isPscOrder, classifyMdError,
     TICK_PRICE_MAP, TICK_PRICE_DELAYED, DELAYED_NOTICE_CODES, SYMBOL_ERROR_CODES,
     shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe, pruneToSeen,
+    isAllowedStaticFile, resolveWebFile, start, stop,
 };
