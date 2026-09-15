@@ -135,6 +135,14 @@ try {
   let riskModeThrew = false;
   try { api.prepareBackup({ version: '3.0.5', riskMode: 'bogus' }); } catch (e) { riskModeThrew = /Invalid risk mode/.test(e.message); }
   assert(riskModeThrew, 'backup rejects unknown riskMode');
+  // twsExitStrategy is a strategy id ('__auto'/built-in/custom) — not a boolean toggle.
+  const withExitStrat = api.prepareBackup({ version: '3.6.3', twsExitStrategy: '__auto' });
+  assert(withExitStrat.twsExitStrategy === '__auto', 'backup accepts twsExitStrategy __auto');
+  assert(api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'opt2' }).twsExitStrategy === 'opt2', 'backup accepts built-in exit strategy');
+  assert(api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'mycustom', customStrategies: [{ id: 'mycustom', name: 'Mine', legs: [{ pct: 100, rr: 2, stopMode: 'fixed' }] }] }).twsExitStrategy === 'mycustom', 'backup accepts exit strategy carried in same backup');
+  let exitStratThrew = false;
+  try { api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'nope' }); } catch (e) { exitStratThrew = /Unknown exit strategy/.test(e.message); }
+  assert(exitStratThrew, 'backup rejects unknown exit strategy id');
   api.navigateTo('settings');
   api.toggleSignalPaste(false);
   api.setTradesTab('history');

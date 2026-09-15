@@ -32,10 +32,12 @@ return {
   pineAtr, resampleDailyToWeekly, pullbackAtrs, pbTimedExitDate, isCurrentWeekForming,
   emaLast, weeksElapsedSince, getPbFields, buildExitLegs, twsSendKey,
   setPbSignals, loadPbSignals, mondayOf, lastTradingDayOfWeek, addCalendarDays,
-  nyDateStr, addTradingDays,
+  nyDateStr, addTradingDays, saveSleeveSettings,
   set accountValue(v) { accountValue = v; }, get accountValue() { return accountValue; },
   set maxHoldDays(v) { maxHoldDays = v; },
   set signalSyncMode(v) { signalSyncMode = v; },
+  set currentPage(v) { currentPage = v; },
+  get pbSignals() { return pbSignals; },
   volatilityCache,
   set timedExitEnabled(v) { timedExitEnabled = v; }, set timedExitTime(v) { timedExitTime = v; }
 };`);
@@ -182,6 +184,24 @@ $XLE - Daily
   // ---------- 12. Duplicate pb tickers deduped with warning ----------
   const dup = api.parseEodSignalText('LS Pullbacks\n1. $XLE - Daily\n2. $XLE - Weekly\n');
   assert(dup.pb.length === 1 && dup.warnings.some(w => /Duplicate XLE/.test(w)), 'duplicate pb ticker deduped + warned');
+
+  // ---------- 13. Sync-mode toggle reloads the page-scoped store ----------
+  // shared store has XLE; the pullback page's perPage store has SPY.
+  api.currentPage = 'pullback';
+  api.signalSyncMode = 'shared';
+  api.setPbSignals([{ ticker: 'XLE', tf: 'daily', cat: 'auto' }]);
+  localStorage.setItem('pg_pb_pbSignals', JSON.stringify([{ ticker: 'SPY', tf: 'weekly', cat: 'etf_w', atrOverride: null }]));
+  mockElement('signalSyncSetting').checked = false;  // unchecked => perPage
+  api.saveSleeveSettings();
+  assert(api.pbSignals.length === 1 && api.pbSignals[0].ticker === 'SPY' && api.pbSignals[0].cat === 'etf_w',
+    'sync-mode toggle reloads pbSignals from the page-scoped store');
+  // Switching back to shared restores the shared list, not the stale one.
+  mockElement('signalSyncSetting').checked = true;
+  api.saveSleeveSettings();
+  assert(api.pbSignals.length === 1 && api.pbSignals[0].ticker === 'XLE',
+    'toggle back to shared reloads the shared store');
+  api.currentPage = 'scanner';
+  api.signalSyncMode = 'shared';
 
   console.log('Pullback tests passed!');
 } catch (e) {

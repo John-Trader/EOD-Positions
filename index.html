@@ -260,7 +260,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.6.3</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.7.5</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -979,7 +979,7 @@
         // portable install (backup exports deliberately keep keys out).
         function collectPortableState() {
             return {
-                version: "3.6.3",
+                version: "3.7.5",
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
@@ -4305,7 +4305,7 @@
             if (newMode !== signalSyncMode) {
                 signalSyncMode = newMode;
                 safeStorageSet('signalSyncMode', signalSyncMode);
-                loadPbSignals(currentPage);      // reload the store under the new prefix
+                pbSignals = loadPbSignals(currentPage);   // reload the store under the new prefix
                 renderPbEditor();
             }
             const uEl = document.getElementById('pbEtfUniverseSetting');
@@ -7638,7 +7638,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "3.6.3",
+                version: "3.7.5",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -7667,7 +7667,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -7692,7 +7692,8 @@
                     if (!Array.isArray(arr) || !arr.length || arr.some(t => typeof t !== 'string' || !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t))) throw new Error('Invalid pullback ETF universe');
                 }
                 if ((key === 'qldTargetPct' || key === 'qldBandPct') && (!Number.isFinite(Number(value)) || Number(value) <= 0 || Number(value) > 100)) throw new Error('Invalid QLD setting');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod', 'riskMode', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
+                if (key === 'twsExitStrategy' && !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid exit strategy');
+                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod', 'riskMode', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
                 values[key] = value;
             });
             if (data.globalMarketRegime !== undefined) {
@@ -7707,6 +7708,8 @@
             });
             const ids = [...DEFAULT_STRATEGIES, ...strategies].map(s => s.id);
             if (new Set(ids).size !== ids.length) throw new Error('Duplicate strategy ID');
+            // twsExitStrategy may point at a custom strategy carried in this same backup.
+            if (values.twsExitStrategy && values.twsExitStrategy !== AUTO_STRATEGY && !ids.includes(values.twsExitStrategy)) throw new Error('Unknown exit strategy');
             if (data.customStrategies !== undefined) values.customStrategies = JSON.stringify(strategies);
             if (data.regimeStrategyMap !== undefined) {
                 const map = data.regimeStrategyMap;
@@ -7878,7 +7881,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '3.6.3';
+        const APP_VERSION = '3.7.5';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; return { ok: false, connected: false }; }
@@ -8009,6 +8012,20 @@
             refreshTwsBadges();
         }
         function loadTwsSettings() {
+            // Re-read storage so a restored backup takes effect in this session —
+            // the module-level vars were snapshotted once at script load.
+            twsEnabled = safeStorageGet('twsEnabled') === 'true';
+            twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
+            twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
+            autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
+            twsQuotesEnabled = safeStorageGet('twsQuotesEnabled') === 'true';
+            twsSyncAccount = safeStorageGet('twsSyncAccount') === 'true';
+            twsPositionsEnabled = safeStorageGet('twsPositionsEnabled') === 'true';
+            twsOrdersEnabled = safeStorageGet('twsOrdersEnabled') === 'true';
+            twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
+            twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
+            twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
+            twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
             const tokEl = document.getElementById('twsBridgeTokenSetting');
