@@ -79,6 +79,9 @@ assertEq(ex.commission, 1.25, 'exec commission attached');
 const oo = bridge.shapeOpenOrder(7, { symbol: 'AMPL' }, { action: 'SELL', totalQuantity: 50, orderType: 'STP', orderRef: 'PSC-1', parentId: 6 }, { status: 'Submitted' });
 assertEq(oo.orderRef, 'PSC-1', 'open order ref kept for PSC filtering');
 assertEq(oo.parentId, 6, 'parentId kept');
+assertEq(oo.outsideRth, false, 'missing outsideRth -> false');
+const ooExt = bridge.shapeOpenOrder(8, { symbol: 'QLD' }, { action: 'BUY', totalQuantity: 10, orderType: 'LMT', lmtPrice: 82, outsideRth: true }, { status: 'PreSubmitted' });
+assertEq(ooExt.outsideRth, true, 'outsideRth flag surfaced');
 
 // ---- dedupe ----
 assertEq(bridge.checkDedupe('PSC-t1'), null, 'dedupe miss');

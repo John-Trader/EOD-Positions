@@ -12,7 +12,7 @@ class FakeDate extends RealDate {
   static now() { return fakeNow; }
 }
 
-const storage = {};
+const storage = { twsBridgeToken: 'tok' };
 const elements = {};
 let createdCount = 0;
 function mockElement(id) {
@@ -81,6 +81,25 @@ globalThis.fetch = async (url) => {
       json: async () => { throw new Error('unexpected tiingo call in test'); }
     };
   }
+  if (url.includes('127.0.0.1:8787/quote')) {
+    const sym = (url.match(/symbol=([^&]+)/) || [])[1];
+    const quotes = {
+      IBIT: { ok: true, c: 44.38, h: 44.94, l: 44.04, bid: 44.37, ask: 44.40 }, // early snapshot: no close tick
+      AAPL: { ok: true, c: 44.38, h: 44.94, l: 44.04, pc: 43.70, bid: 44.37, ask: 44.40 },
+      MSFT: { ok: true, c: 10, h: 10.5, l: 9.5 },
+    };
+    return { status: 200, ok: true, json: async () => quotes[sym] || { ok: false, error: 'unknown' } };
+  }
+  if (url.includes('127.0.0.1:8787/history')) {
+    const sym = (url.match(/symbol=([^&]+)/) || [])[1];
+    const bars = {
+      // fakeNow = 2026-09-01 (Tue) 14:00 ET — today's forming bar must be skipped,
+      // prev close = Friday/Monday completed bar (2026-08-31 = 43.77).
+      IBIT: [{ d: '2026-08-28', c: 43.00 }, { d: '2026-08-31', c: 43.77 }, { d: '2026-09-01', c: 44.38 }],
+      MSFT: [],
+    };
+    return { status: 200, ok: true, json: async () => ({ ok: true, bars: bars[sym] || [] }) };
+  }
   return { status: 200, ok: true, json: async () => ({ data: [] }) };
 };
 
@@ -110,7 +129,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 (async () => {
   try {
     const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval, clearInterval, parseFloat, parseInt, Number, Array, Math, Date: FakeDate, String, Blob: class { constructor(p, o) { this.parts = p; this.opts = o || {}; } }, URL: { createObjectURL: () => 'blob:mock', revokeObjectURL: () => {} } };
-    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, updateTopStatus, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, get liveUpdateEnabled() { return liveUpdateEnabled; }, set liveUpdateEnabled(v) { liveUpdateEnabled = v; }, activeSockets, connectionTimeoutByProvider, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow, loadProviderPriorityOrder, providerUsable, resolveProviders, syncProviderSelects, demoteProvider, availableProviders, demotedProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; } };');
+    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { saveEnhancedLiveSetting, updateEnhancedUI, updateTopStatus, get enhancedLiveMode() { return enhancedLiveMode; }, set enhancedLiveMode(v) { enhancedLiveMode = v; }, get liveUpdateEnabled() { return liveUpdateEnabled; }, set liveUpdateEnabled(v) { liveUpdateEnabled = v; }, activeSockets, connectionTimeoutByProvider, reconnectTimeoutByProvider, reconnectAttemptsByProvider, disconnectWebSocket, resyncBaselines, realtimeQuotes, get realtimeTasks() { return realtimeTasks; }, set realtimeTasks(v) { realtimeTasks = v; }, get streamGeneration() { return streamGeneration; }, set streamGeneration(v) { streamGeneration = v; }, tradeTimestamps, applyLivePriceIfNewer, parseTiingoWsTimestamp, resolveRealtimeTicker, nyNow, loadProviderPriorityOrder, providerUsable, resolveProviders, syncProviderSelects, demoteProvider, availableProviders, demotedProviders, get providerPriorityOrder() { return providerPriorityOrder; }, set providerPriorityOrder(v) { providerPriorityOrder = v; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, fetchProviderQuote, fetchTwsPrevClose };');
     const api = fn(...Object.values(sandbox));
     const container = document.getElementById('resultsContainer');
 
@@ -252,6 +271,19 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     assert(statusEl.innerText.includes('TWS'), 'top status shows TWS when it is streaming');
     api.twsEnabled = false; api.twsQuotesEnabled = false; api.twsConnected = false;
     api.activeSockets.tws = null;
+
+    // 7. TWS quote prev-close: an early-resolved snapshot lacks the close tick —
+    // fabricating pc=c forced every card to SHORT/0.00% (first-calculate bug).
+    api.twsEnabled = true;
+    const ibit = await api.fetchProviderQuote('IBIT', 'tws', null);
+    assert(ibit.pc === 43.77, 'missing close tick falls back to last completed daily close, not pc=c');
+    assert(ibit.c === 44.38 && ibit.h === 44.94 && ibit.l === 44.04, 'other quote fields pass through');
+    const aapl = await api.fetchProviderQuote('AAPL', 'tws', null);
+    assert(aapl.pc === 43.70, 'close tick present during RTH is used directly');
+    let quoteThrew = false;
+    try { await api.fetchProviderQuote('MSFT', 'tws', null); } catch (e) { quoteThrew = /previous close/i.test(e.message); }
+    assert(quoteThrew, 'missing pc + empty history fails the quote (provider fallback) instead of pc=c');
+    api.twsEnabled = false;
 
     console.log('Enhanced Live Mode tests passed!');
     process.exit(0);

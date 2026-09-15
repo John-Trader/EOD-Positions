@@ -22,6 +22,7 @@ function mockElement(id) {
       },
       style: {},
       children: [],
+      dataset: {},
       querySelectorAll: () => [],
       querySelector: () => null,
       appendChild: (ch) => { if (ch) elements[id].children.push(ch); },

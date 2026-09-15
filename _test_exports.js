@@ -65,6 +65,14 @@ try {
   const moc = api.buildExitLegs('PLTR', true, 100, 100, 95, 'opt1', undefined, { timedExit: { enabled: true, date: exitDate, time: 'MOC' } });
   assert(!moc.ok, 'unverified MOC scheduling is not offered');
 
+  // Early close (1 PM ET): the order still builds — GAT moves to 12:50 that day.
+  const ec = api.buildExitLegs('PLTR', true, 100, 100, 95, 'opt2', undefined, { timedExit: { enabled: true, date: '2030-11-29', time: '15:45' } });
+  assert(ec.ok, 'early-close date still builds: ' + (ec.error || ''));
+  const ecMkt = ec.rows.filter(r => r[7] === 'MKT');
+  assert(ecMkt.length === 2 && ecMkt.every(r => r[12] === '20301129 12:50:00 US/Eastern'), 'early-close GAT = 12:50: ' + ecMkt.map(r => r[12]).join(','));
+  assert(ec.timedExit && ec.timedExit.time === '12:50', 'timedExit.time reports 12:50');
+  assert(ec.notes.some(n => n.includes('Early close')), 'early-close note present');
+
   // Custom BE strategy -> adjustable stop columns on leg 2 STP only
   api.customStrategies.push({ id: 'be', name: 'BE test', legs: [{ pct: 50, rr: 1, stopMode: 'fixed' }, { pct: 50, rr: 4, stopMode: 'breakeven' }] });
   const be = api.buildExitLegs('PLTR', true, 100, 100, 95, 'be');

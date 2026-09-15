@@ -238,8 +238,9 @@
         </div>
     </aside>
 
-    <!-- TWS Open Orders drawer -->
-    <div id="twsOrdersDrawer" class="hidden fixed inset-x-0 bottom-0 z-[65] glass-modal border-t border-white/10 shadow-2xl flex-col max-h-[50vh]">
+    <!-- TWS Open Orders — right side panel -->
+    <div id="twsOrdersBackdrop" class="hidden fixed inset-0 z-[64] bg-black/50" onclick="closeTwsOrdersDrawer()"></div>
+    <div id="twsOrdersDrawer" class="fixed top-0 right-0 bottom-0 z-[65] w-[25rem] max-w-[95vw] glass-modal border-l border-white/10 shadow-2xl flex flex-col translate-x-full transition-transform duration-200">
         <div class="px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2">
             <span class="text-xs font-black uppercase tracking-tight text-white">TWS Working Orders</span>
             <div class="flex items-center gap-2">
@@ -247,7 +248,7 @@
                 <button onclick="closeTwsOrdersDrawer()" class="text-gray-400 hover:text-white text-lg leading-none font-bold">&times;</button>
             </div>
         </div>
-        <div id="twsOrdersList" class="overflow-y-auto flex-1"></div>
+        <div id="twsOrdersList" class="overflow-y-auto flex-1 min-h-0"></div>
     </div>
 
     <!-- PAGE 1: SCANNER -->
@@ -259,7 +260,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.5.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.6.3</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -433,7 +434,7 @@
                 <div id="qldSignalCard" class="bg-slate-900/40 rounded-xl border border-white/5 p-2.5 space-y-1.5"></div>
                 <div id="qldSleeveCard" class="bg-slate-900/40 rounded-xl border border-white/5 p-2.5 space-y-2"></div>
                 <div id="qldActionsCard" class="bg-slate-900/40 rounded-xl border border-white/5 p-2.5 space-y-2"></div>
-                <p class="text-[9px] text-gray-500 leading-snug">Signal: QQQ weekly EMA(12) vs EMA(26), confirmed at the completed weekly close (check Friday after close → act at Monday's open). Sleeve target 35% of account, monthly rebalance band 30–40%. This sleeve is separate from the 210% LS v3 + Pullback cap.</p>
+                <p class="text-[9px] text-gray-500 leading-snug">Signal: QQQ weekly EMA(12) vs EMA(26), confirmed at the completed weekly close (check Friday after close → act at Monday's open). Sleeve target 35% of account — cross-checked against the TWS position + NetLiquidation when sync is on — with a month-end-only 30–40% band check. A timing switch carries the sleeve's value; it does not reset to 35%. This sleeve is separate from the 210% LS v3 + Pullback cap.</p>
             </div>
         </div>
     </div>
@@ -576,6 +577,7 @@
                                 </label>
                                 <p class="text-[10px] text-gray-500">Default off — the Open Long/Short button then sends entry + active exit strategy as a TWS bracket.</p>
                                 <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
+                                <select id="twsExitStrategySetting" onchange="saveTwsSettings()" title="Long-side exit strategy for auto-send brackets. 'Auto' follows the market regime; a regime change resets a manual pick back to Auto." class="w-full bg-slate-950 border border-white/10 rounded px-2 py-1 text-[10px] text-white"></select>
                                 <div class="border-t border-white/5 pt-1.5 space-y-1">
                                     <div class="text-[10px] font-bold text-gray-400 uppercase">TWS data (each optional)</div>
                                     <div class="grid grid-cols-2 gap-x-2 gap-y-1">
@@ -596,6 +598,9 @@
                                         </label>
                                         <label class="flex items-start gap-1.5 text-xs" title="Daily P&L chip in the header.">
                                             <input id="twsPnlEnabledSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Daily P&L chip
+                                        </label>
+                                        <label class="flex items-start gap-1.5 text-xs" title="When on, opening orders sent outside regular hours go out as LMT at the last price so they can actually fill pre-market/after-hours (IB won't fill MKT outside RTH). During RTH entries stay MKT Adaptive.">
+                                            <input id="twsEntryOutsideRthSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Entries outside RTH
                                         </label>
                                     </div>
                                 </div>
@@ -974,7 +979,7 @@
         // portable install (backup exports deliberately keep keys out).
         function collectPortableState() {
             return {
-                version: "3.5.0",
+                version: "3.6.3",
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
@@ -1080,6 +1085,9 @@
         let twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
         let twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
         let autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
+        // '__auto' = AUTO_STRATEGY (follow regime) — declared before that const exists.
+        let twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
+        let twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
         let twsConnected = false;
         let twsAccount = '';
         let twsHealthTimer = null;
@@ -1094,7 +1102,7 @@
         let twsLastPositionsAt = 0;        // last successful /positions poll — gates "flat" journal closes
         let twsOpenOrders = [];            // shaped open orders incl. manual TWS orders
         let twsLastPnl = null;             // {dailyPnL, unrealizedPnL, realizedPnL}
-        let twsSeenExecs = new Set();      // execId dedupe for fill→journal
+        let twsSeenExecs = loadTwsSeenExecs(); // execId dedupe for fill→journal — persisted so a reload can't replay fills
         let twsValidatedContracts = new Set(); // symbol -> contract preflight passed this session
         let twsAuxPollCount = 0;           // staggers positions/orders/fills polls across health ticks
         let twsLastAccountValue = null;    // last good NetLiquidation from TWS (never zeroed)
@@ -1414,6 +1422,13 @@
             if (!isLong) return 'short16';
             return globalMarketRegime === 'declining' ? (regimeStrategyMap.declining || 'opt2') : (regimeStrategyMap.expanding || 'opt1');
         }
+        // Exit strategy for auto-send brackets: manual pick wins for longs, 'auto'
+        // follows the regime map; shorts are always the short playbook.
+        function twsAutoSendStrategyId(isLong) {
+            if (!isLong) return 'short16';
+            if (twsExitStrategy && twsExitStrategy !== AUTO_STRATEGY && allStrategies().some(s => s.id === twsExitStrategy && !s.short)) return twsExitStrategy;
+            return defaultStrategyId(true);
+        }
 
         let isFocusMode = false;
         let isVoiceEnabled = false;
@@ -1720,20 +1735,15 @@
             return { daily: pineAtr(bars, 5), weekly: pineAtr(weekly, 5), weeklyBars: weekly, dailyBars: bars, barsUsed: bars.length };
         }
         // The pullback timed-exit date: day signals -> 5th trading day (entry = day 0);
-        // weekly -> last full session of week 5 (entry week = week 0). Early-close days
-        // are skipped so a 15:5x GoodAfterTime order remains schedulable.
+        // weekly -> last session of week 5 (entry week = week 0). A landing on a 1 PM
+        // early close stays put — buildExitLegs schedules the GAT order at 12:50.
         function pbTimedExitDate(catId, fromDate) {
             const cat = PB_CATS[catId];
             const from = fromDate || nyDateStr();
             if (!cat || !from) return null;
-            if (cat.unit === 'day') {
-                let n = cat.holdN;
-                let d = addTradingDays(from, n);
-                while (d && NYSE_EARLY_CLOSE.has(d) && n > 1) { n--; d = addTradingDays(from, n); }
-                return d;
-            }
+            if (cat.unit === 'day') return addTradingDays(from, cat.holdN);
             const wk5mon = addCalendarDays(mondayOf(from), 7 * cat.holdN);
-            return lastTradingDayOfWeek(wk5mon, false);
+            return lastTradingDayOfWeek(wk5mon, true);
         }
 
         // Batch review custom TP overrides (ticker -> number[])
@@ -2111,6 +2121,14 @@
             if (save) safeStorageSet('globalMarketRegime', regime);
             styleRegimePair(document.getElementById('regimeExpandingBtn'), document.getElementById('regimeDecliningBtn'), regime);
             styleRegimePair(document.getElementById('menuRegimeExpandingBtn'), document.getElementById('menuRegimeDecliningBtn'), regime);
+            // A regime change re-derives the auto-send exit strategy — a manual pick
+            // only lives until the next regime flip.
+            if (twsExitStrategy !== AUTO_STRATEGY) {
+                twsExitStrategy = AUTO_STRATEGY;
+                safeStorageSet('twsExitStrategy', twsExitStrategy);
+                const sel = document.getElementById('twsExitStrategySetting');
+                if (sel) sel.value = AUTO_STRATEGY;
+            }
             updateTwsActiveStrategyDisplay();
         }
 
@@ -2147,7 +2165,7 @@
                 if (realtimeTasks.length > 0) renderRealtimeSnapshot(activeResultsContainer());
                 updateExposureChips();
             }
-            if (page === 'qld') refreshQldPage(false);
+            if (page === 'qld') { refreshQldPage(false); startQldLive(); } else stopQldLive();
             if (page === 'active-trades') renderActiveTradesPage();
             if (page === 'manual-builder') {
                 timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
@@ -2550,6 +2568,19 @@
             }
             toast.innerText = typeof message === 'string' ? message : 'Success';
             toast.className = 'fixed bottom-4 right-4 z-[130] bg-emerald-950/90 border border-emerald-500/40 text-emerald-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
+            toast.style.display = 'block';
+            if (toast._hideTimer) clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
+        }
+        function showInfoToast(message, ms = 4000) {
+            let toast = document.getElementById('errorToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'errorToast';
+                document.body.appendChild(toast);
+            }
+            toast.innerText = typeof message === 'string' ? message : 'Info';
+            toast.className = 'fixed bottom-4 right-4 z-[130] bg-slate-800/95 border border-cyan-500/40 text-cyan-100 text-[11px] font-bold px-3 py-2 rounded-xl shadow-2xl max-w-[260px] leading-tight';
             toast.style.display = 'block';
             if (toast._hideTimer) clearTimeout(toast._hideTimer);
             toast._hideTimer = setTimeout(() => { toast.style.display = 'none'; }, ms);
@@ -3159,6 +3190,7 @@
                 try {
                     const data = await fetchProviderQuote(ticker, p, key, signal);
                     if (!['c', 'h', 'l', 'pc'].every(k => Number.isFinite(data[k]) && data[k] > 0) || data.h < data.l) throw new Error('Incomplete quote: cannot safely calculate size.');
+                    data._provider = p;
                     return data;
                 } catch (e) {
                     if (e && e.name === 'AbortError') throw e;
@@ -3243,14 +3275,27 @@
             } else if (provider === 'tws') {
                 const q = await bridgeGet(`/quote?symbol=${encodeURIComponent(ticker)}`, signal);
                 if (!q || !q.ok) throw new Error((q && q.error) || `Invalid Ticker: ${ticker}`);
-                const c = Number(q.c), h = Number(q.h), l = Number(q.l), pc = Number(q.pc);
+                const c = Number(q.c), h = Number(q.h), l = Number(q.l);
+                let pc = Number(q.pc);
                 if (!Number.isFinite(c) || c <= 0) throw new Error(`Invalid Ticker: ${ticker}`);
+                if (!Number.isFinite(pc) || pc <= 0) pc = null;
+                // The bridge resolves a snapshot as soon as `last` arrives, so `pc`
+                // (tick 9 close) is often missing on the first fetch — and outside RTH
+                // it may already hold the just-closed session's price. The strategy's
+                // previous close is the last completed session's daily close, which we
+                // can always derive from /history. Fabricating pc=c would silently
+                // flip every card to SHORT, so fail the quote if neither source yields it.
+                if (pc === null || !nyNow().isRTH) {
+                    const histPc = await fetchTwsPrevClose(ticker, signal);
+                    if (Number.isFinite(histPc) && histPc > 0) pc = histPc;
+                }
+                if (pc === null) throw new Error(`Incomplete quote: no previous close for ${ticker}`);
                 // h/l may be missing pre-market — fall back to pc/c rather than failing.
                 return {
                     c,
-                    h: (Number.isFinite(h) && h > 0) ? h : Math.max(c, pc || c),
-                    l: (Number.isFinite(l) && l > 0) ? l : Math.min(c, pc || c),
-                    pc: (Number.isFinite(pc) && pc > 0) ? pc : c,
+                    h: (Number.isFinite(h) && h > 0) ? h : Math.max(c, pc),
+                    l: (Number.isFinite(l) && l > 0) ? l : Math.min(c, pc),
+                    pc,
                     bid: (Number.isFinite(q.bid) && q.bid > 0) ? Number(q.bid) : null,
                     ask: (Number.isFinite(q.ask) && q.ask > 0) ? Number(q.ask) : null,
                 };
@@ -3437,6 +3482,25 @@
             const atrPct = computeAtrPct(bars, close);
             const adrPct = computeAdrPct(bars, close);
             return { atrPct, adrPct, latestClose: close, avgVol: computeAvgVol(bars), bars: normalizeBars(sorted.map(v => ({ d: v.date, o: v.open, h: v.high ?? v.day_high, l: v.low ?? v.day_low, c: v.close ?? v.price, v: v.volume }))) };
+        }
+
+        // Last completed session's close from TWS daily history — the reliable source
+        // for "previous close" when the quote's close tick is absent (early-resolved
+        // snapshots) or has already rolled to the just-closed session (outside RTH).
+        async function fetchTwsPrevClose(ticker, signal) {
+            try {
+                const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}&duration=${encodeURIComponent('10 D')}`, signal);
+                if (!d || !d.ok || !Array.isArray(d.bars)) return null;
+                const today = nyNow().date;
+                for (let i = d.bars.length - 1; i >= 0; i--) {
+                    const day = barDateStr(d.bars[i]);
+                    const close = Number(d.bars[i].c);
+                    if (day && day < today && Number.isFinite(close) && close > 0) return close;
+                }
+            } catch (e) {
+                if (e && e.name === 'AbortError') throw e;
+            }
+            return null;
         }
 
         async function fetchTwsVolatility(ticker, signal) {
@@ -3649,8 +3713,19 @@
                 if (data) return { ...task, data, success: true };
                 const err = realtimeQuoteErrors[task.ticker];
                 if (err) return { ...task, error: err, success: false };
-                return { ...task, error: 'Waiting for live quote...', success: false };
+                return { ...task, error: 'Waiting for live quote...', success: false, pending: true };
             });
+        }
+
+        // Progressive render: repaint the board with whatever baseline quotes have
+        // landed so far (pending tickers show a neutral placeholder) and update the
+        // "Fetching n of m" status. Called as each per-ticker fetch completes.
+        function renderScanProgress(riskVal, slippageVal, fetchedCount, totalCount) {
+            const live = activeResultsContainer();
+            if (!live) return;
+            const msg = live.querySelector('#scanFetchingMsg');
+            if (msg) msg.textContent = `Fetching ${fetchedCount} of ${totalCount}…`;
+            renderRealtimeSnapshot(live, riskVal, slippageVal);
         }
 
         // Merge a live print into the stored quote. HOD/LOD only move during regular hours.
@@ -3784,6 +3859,22 @@
 
         // LS v3 Breakout cards/rows — identical markup/behavior to the legacy scanner.
         function renderV3Section(results, risk, slippage, container) {
+            // Section header above the v3 cards/table — mirrors the LS Pullback header.
+            let hdr = Array.from(container.children).find(el => typeof el.className === 'string' && el.className.includes('v3-hdr'));
+            if (!results.length) {
+                if (hdr && hdr.remove) hdr.remove();
+            } else {
+                if (!hdr) {
+                    hdr = document.createElement('div');
+                    hdr.className = 'v3-hdr flex items-center gap-2 pt-1';
+                }
+                hdr.innerHTML = `<span class="text-[10px] font-black uppercase tracking-widest text-blue-300">LS v3 Breakout</span><span class="text-[9px] font-mono-num text-gray-500">${results.length} signal${results.length === 1 ? '' : 's'} · entry on trigger cross</span>`;
+                const first = container.children[0] || null;
+                if (first !== hdr) {
+                    if (container.insertBefore) container.insertBefore(hdr, first);
+                    else if (!Array.from(container.children).includes(hdr)) container.appendChild(hdr);
+                }
+            }
             if (currentViewMode === 'table') {
                 renderTableContainer(results, risk, slippage, container);
             } else {
@@ -3794,14 +3885,15 @@
                     if (res.success) {
                         seen.add(res.ticker);
                         const card = container.querySelector(`#card-${res.ticker}`);
-                        if (card) updateCard(card, res, risk, slippage);
+                        if (card && card.dataset.shell) { card.remove(); renderCard(res, risk, slippage, container); }
+                        else if (card) updateCard(card, res, risk, slippage);
                         else renderCard(res, risk, slippage, container);
                     } else {
                         seen.add('error-' + res.ticker);
                         const id = `card-${res.ticker}`;
                         const existing = container.querySelector(`#${id}`);
                         if (existing && typeof existing.remove === 'function') existing.remove();
-                        renderError(res, container);
+                        if (res.pending) renderPending(res, container); else renderError(res, container);
                     }
                 });
                 // Remove stale cards (ticker removed or error resolved)
@@ -3811,6 +3903,10 @@
                     if (!seen.has(t) && !seen.has('error-' + t)) el.remove();
                 });
             }
+            // v3 nodes append at the container end — keep the LS Pullback section
+            // pinned below them so late renders can't land under the pb heading.
+            const pbSec = container.querySelector('[data-role="pbSection"]');
+            if (pbSec) container.appendChild(pbSec);
         }
 
         // ---------- LS Pullback rendering ----------
@@ -3960,12 +4056,23 @@
             setTextIfChanged(q('riskDollars'), `Risk $${f.riskDollars ? f.riskDollars.toFixed(0) : '--'}${f.cat ? ' (' + f.cat.riskPct + '%)' : ''}`);
         }
 
+        // Section order: weekly first, then daily; within each timeframe ETF before NAS;
+        // uncategorized/unclassified signals last. Stable — paste order kept within a rank.
+        function pbSortRank(item) {
+            const catId = pbCatOf(item);
+            const tf = catId ? PB_CATS[catId].tf : (item && item.tf) || null;
+            const tfRank = tf === 'weekly' ? 0 : tf === 'daily' ? 1 : 2;
+            const grp = catId && catId.startsWith('etf') ? 0 : catId ? 1 : 2;
+            return tfRank * 10 + grp;
+        }
+
         function renderPbSection(results, slippage, container) {
             let sec = container.querySelector('[data-role="pbSection"]');
             if (!results.length || currentPage === 'lsv3') {
                 if (sec) sec.remove();
                 return;
             }
+            const sorted = [...results].sort((a, b) => pbSortRank(a) - pbSortRank(b));
             if (!sec) {
                 sec = document.createElement('div');
                 sec.setAttribute('data-role', 'pbSection');
@@ -3978,28 +4085,30 @@
                 hdr.className = 'pb-hdr flex items-center gap-2 pt-1';
                 sec.appendChild(hdr);
             }
-            hdr.innerHTML = `<span class="text-[10px] font-black uppercase tracking-widest text-teal-300">LS Pullback</span><span class="text-[9px] font-mono-num text-gray-500">${results.length} signal${results.length === 1 ? '' : 's'} · EOD entries ~10–15m before close</span>`;
+            hdr.innerHTML = `<span class="text-[10px] font-black uppercase tracking-widest text-teal-300">LS Pullback</span><span class="text-[9px] font-mono-num text-gray-500">${sorted.length} signal${sorted.length === 1 ? '' : 's'} · EOD entries ~10–15m before close</span>`;
             let wrap = sec.querySelector('.pb-wrap');
             if (!wrap) {
                 wrap = document.createElement('div');
                 wrap.className = 'pb-wrap space-y-2';
                 sec.appendChild(wrap);
             }
-            if (currentViewMode === 'table') { renderPbTable(results, slippage, wrap); return; }
+            if (currentViewMode === 'table') { renderPbTable(sorted, slippage, wrap); return; }
             const tw = wrap.querySelector('#pbTableWrap');
             if (tw && tw.remove) tw.remove();
             const seen = new Set();
-            results.forEach(res => {
+            sorted.forEach(res => {
                 if (res.success) {
                     seen.add(res.ticker);
                     const card = wrap.querySelector(`#pbcard-${res.ticker}`);
-                    if (card) updatePbCard(card, res, slippage);
+                    // appendChild re-orders existing cards to match the sorted list.
+                    if (card && card.dataset.shell) { card.remove(); renderPbCard(res, slippage, wrap); }
+                    else if (card) { updatePbCard(card, res, slippage); wrap.appendChild(card); }
                     else renderPbCard(res, slippage, wrap);
                 } else {
                     seen.add('error-' + res.ticker);
                     const ex = wrap.querySelector(`#pbcard-${res.ticker}`);
                     if (ex && ex.remove) ex.remove();
-                    renderError(res, wrap);
+                    if (res.pending) renderPending(res, wrap); else renderError(res, wrap);
                 }
             });
             Array.from(wrap.children).forEach(el => {
@@ -4034,24 +4143,27 @@
                 wrap.appendChild(tw);
             }
             Array.from(wrap.children).forEach(el => { if (el.id && el.id.startsWith('pbcard-')) el.remove(); });
+            Array.from(tw.children).forEach(el => { if (el.id && el.id.startsWith('pbcard-')) el.remove(); });
             const seen = new Set();
             results.forEach(res => {
                 seen.add(res.ticker);
                 if (!res.success) {
-                    const ex = tw.querySelector(`#pbrow-${res.ticker}`);
+                    const ex = tw.querySelector(`#pbrow-${res.ticker}`) || tw.querySelector(`#pbcard-${res.ticker}`);
                     if (ex && ex.remove) ex.remove();
-                    renderError(res, tw);
+                    if (res.pending) renderPending(res, tw); else renderError(res, tw);
                     return;
                 }
                 const f = getPbFields(res, slippage);
+                const staleCard = tw.querySelector(`#pbcard-${res.ticker}`);
+                if (staleCard && staleCard.remove) staleCard.remove();
                 let row = tw.querySelector(`#pbrow-${res.ticker}`);
                 if (!row) {
                     row = document.createElement('div');
                     row.id = `pbrow-${res.ticker}`;
                     row.className = 'result-row rounded-lg px-2.5 py-2 glass-card';
-                    tw.appendChild(row);
                 }
                 row.innerHTML = pbRowInnerHtml(f);
+                tw.appendChild(row);   // keeps DOM order = sorted order on re-renders
             });
             Array.from(tw.children).forEach(el => {
                 if (!el.id) return;
@@ -4166,7 +4278,15 @@
             } catch (e) {}
             try {
                 const qs = JSON.parse(safeStorageGet('qldSleeve') || 'null');
-                if (qs && typeof qs === 'object') qldSleeve = { inPos: !!qs.inPos, shares: Math.max(0, parseInt(qs.shares, 10) || 0), entryPrice: parseFloat(qs.entryPrice) || 0, entryDate: qs.entryDate || null };
+                if (qs && typeof qs === 'object') qldSleeve = {
+                    inPos: !!qs.inPos,
+                    shares: Math.max(0, parseInt(qs.shares, 10) || 0),
+                    entryPrice: parseFloat(qs.entryPrice) || 0,
+                    entryDate: qs.entryDate || null,
+                    cashValue: Math.max(0, parseFloat(qs.cashValue) || 0),
+                    pending: qs.pending && typeof qs.pending === 'object' ? qs.pending : null,
+                    signalWeek: qs.signalWeek || null
+                };
             } catch (e) {}
             qldTargetPct = Math.min(100, Math.max(1, parseFloat(safeStorageGet('qldTargetPct')) || 35));
             qldBandPct = Math.min(25, Math.max(1, parseFloat(safeStorageGet('qldBandPct')) || 5));
@@ -4203,12 +4323,22 @@
 
         // ---------- QLD Trend Following tracker ----------
         // Signal: QQQ weekly EMA(12) vs EMA(26) at the last *completed* weekly close.
-        // Sleeve target = qldTargetPct% of account; monthly rebalance band ±qldBandPct.
+        // Sleeve target = qldTargetPct% of account; month-end-only band check of
+        // ±qldBandPct. A timing switch carries the sleeve's value between QLD and
+        // cash — it does NOT reset the weight to 35%.
         let qldTargetPct = 35, qldBandPct = 5;
-        let qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null };
+        let qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null, cashValue: 0, pending: null, signalWeek: null };
         try {
             const qs = JSON.parse(safeStorageGet('qldSleeve') || 'null');
-            if (qs && typeof qs === 'object') qldSleeve = { inPos: !!qs.inPos, shares: Math.max(0, parseInt(qs.shares, 10) || 0), entryPrice: parseFloat(qs.entryPrice) || 0, entryDate: qs.entryDate || null };
+            if (qs && typeof qs === 'object') qldSleeve = {
+                inPos: !!qs.inPos,
+                shares: Math.max(0, parseInt(qs.shares, 10) || 0),
+                entryPrice: parseFloat(qs.entryPrice) || 0,
+                entryDate: qs.entryDate || null,
+                cashValue: Math.max(0, parseFloat(qs.cashValue) || 0),
+                pending: qs.pending && typeof qs.pending === 'object' ? qs.pending : null,
+                signalWeek: qs.signalWeek || null
+            };
         } catch (e) {}
         function qldSaveSleeve() { safeStorageSet('qldSleeve', JSON.stringify(qldSleeve)); }
 
@@ -4226,8 +4356,195 @@
             }
             return ema;
         }
+        // Same seed/iteration as emaLast but returns the full series (for chart lines).
+        function emaSeries(values, len) {
+            if (!Array.isArray(values) || !values.length) return [];
+            const k = 2 / (len + 1);
+            const out = new Array(values.length).fill(null);
+            let ema = Number(values[0]);
+            if (!Number.isFinite(ema)) return out;
+            out[0] = ema;
+            for (let i = 1; i < values.length; i++) {
+                const v = Number(values[i]);
+                if (!Number.isFinite(v)) return out;
+                ema = v * k + ema * (1 - k);
+                out[i] = ema;
+            }
+            return out;
+        }
 
-        let qldView = { loading: false, error: null, signal: null, ema12: null, ema26: null, formEma12: null, formEma26: null, qldPrice: null, weeklyN: 0, fetchedAt: 0 };
+        // ---------- Deep QQQ history (~3y daily -> ~150 weekly bars) ----------
+        // EMA(26) seeded on ~60 weekly bars carries visible seed error; a deeper window
+        // converges to TradingView's values. Separate cache — never touches the scanner's
+        // volatilityCache TTL loop.
+        let qldHist = { bars: null, provider: null, at: 0 };
+        async function fetchQldHistory(signal) {
+            if (qldHist.bars && (Date.now() - qldHist.at) < 1800000) return qldHist;
+            const deepStart = addCalendarDays(nyDateStr(), -1100);
+            const tryOne = async (p) => {
+                const cfg = API_CONFIGS[p];
+                if (!cfg) return null;
+                if (cfg.needsKey && !safeStorageGet(cfg.storageKey)) return null;
+                if (p === 'tws' && !providerUsable('tws')) return null;
+                const key = cfg.storageKey ? safeStorageGet(cfg.storageKey) : null;
+                let bars = null;
+                if (p === 'tws') {
+                    const d = await bridgeGet(`/history?symbol=QQQ&duration=${encodeURIComponent('3 Y')}`, signal);
+                    if (d && d.ok && Array.isArray(d.bars)) bars = normalizeBars(d.bars);
+                } else if (p === 'tiingo') {
+                    const r = await fetchWithTimeout(`https://api.tiingo.com/tiingo/daily/QQQ/prices?startDate=${encodeURIComponent(deepStart)}`, { headers: { 'Authorization': 'Token ' + key, 'Accept': 'application/json' } }, 15000, signal);
+                    if (r.ok) { const j = await r.json(); if (Array.isArray(j)) bars = normalizeBars(j); }
+                } else if (p === 'finnhub') {
+                    const to = Math.floor(Date.now() / 1000), from = to - 1100 * 86400;
+                    const r = await fetchWithTimeout(`https://finnhub.io/api/v1/stock/candle?symbol=QQQ&resolution=D&from=${from}&to=${to}&token=${encodeURIComponent(key)}`, null, 15000, signal);
+                    if (r.ok) {
+                        const j = await r.json();
+                        if (j.s === 'ok' && Array.isArray(j.c)) bars = normalizeBars(j.c.map((c, i) => ({ t: j.t[i], o: j.o[i], h: j.h[i], l: j.l[i], c, v: j.v && j.v[i] })));
+                    }
+                } else if (p === 'twelvedata') {
+                    const r = await fetchWithTimeout(`https://api.twelvedata.com/time_series?symbol=QQQ&interval=1day&outputsize=800&apikey=${encodeURIComponent(key)}`, null, 15000, signal);
+                    if (r.ok) { const j = await r.json(); if (j.status !== 'error' && Array.isArray(j.values)) bars = normalizeBars(j.values); }
+                } else if (p === 'stockdata') {
+                    const r = await fetchWithTimeout(`https://api.stockdata.org/v1/data/eod?symbols=QQQ&date_from=${encodeURIComponent(deepStart)}&api_token=${encodeURIComponent(key)}`, null, 15000, signal);
+                    if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.data)) bars = normalizeBars(j.data); }
+                }
+                return bars && bars.length >= 150 ? { bars, provider: p } : null;
+            };
+            for (const p of providerPriorityOrder) {
+                try { const r = await tryOne(p); if (r) { qldHist = { bars: r.bars, provider: r.provider, at: Date.now() }; return qldHist; } }
+                catch (e) { if (e && e.name === 'AbortError') throw e; console.warn(`QLD history ${p} failed:`, e.message); }
+            }
+            // Fallback: the scanner's ~14-month volatility series still gives ~60 weekly bars.
+            try {
+                const v = await fetchVolatilityData('QQQ', signal);
+                if (v && Array.isArray(v.bars) && v.bars.length >= 150) {
+                    qldHist = { bars: v.bars, provider: 'scan-cache', at: Date.now() };
+                    return qldHist;
+                }
+            } catch (e) { }
+            return qldHist;
+        }
+
+        // ---------- Broker-verified sleeve ----------
+        // Equity prefers live TWS NetLiquidation; the QLD share count prefers the real
+        // broker position once a /positions poll has landed. cashValue is the sleeve's
+        // cash component — the reserve while flat, trim proceeds while long.
+        function qldReality() {
+            const equity = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? twsLastAccountValue : accountValue;
+            const equitySrc = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? 'TWS' : 'manual';
+            // Broker count only counts while the bridge is live — a dropped connection
+            // leaves stale positions that must not size orders.
+            const brokerKnown = !!(twsPositionsEnabled && twsConnected && twsLastPositionsAt > 0);
+            const pos = brokerKnown ? twsPositions['QLD'] : undefined;
+            const brokerShares = brokerKnown ? Math.abs(pos ? pos.qty : 0) : null;
+            const avgCost = (pos && Number.isFinite(pos.avgCost) && pos.avgCost > 0) ? pos.avgCost : null;
+            const px = (pos && Number.isFinite(pos.mktPrice) && pos.mktPrice > 0) ? pos.mktPrice
+                : (qldView.qldPrice || qldSleeve.entryPrice || 0);
+            const shares = brokerShares !== null ? brokerShares : qldSleeve.shares;
+            const posValue = shares * (px || 0);
+            const cash = qldSleeve.cashValue || 0;
+            return {
+                equity, equitySrc, brokerKnown, brokerShares, avgCost, px, shares,
+                posValue, cash,
+                sleeveValue: posValue + cash,
+                mismatch: brokerShares !== null && brokerShares !== qldSleeve.shares,
+                inPos: shares > 0
+            };
+        }
+
+        let qldView = { loading: false, error: null, signal: null, ema12: null, ema26: null, formEma12: null, formEma26: null, qldPrice: null, liveQqq: null, weeklyN: 0, fetchedAt: 0, liveAt: 0, weekly: [], e12s: [], e26s: [], lastWeekT: null, histProvider: null, quoteProvider: null };
+
+        // ---------- Pending-action queue (persisted — weekend review, Monday order) ----------
+        // pending = {type:'ENTER'|'EXIT'|'ADD'|'TRIM'|'CASH', reason:'WEEKLY'|'MONTH_END',
+        //            month?, queuedAt}. Shares are computed at execution ("values at that open").
+        function qldEvaluatePending() {
+            if (!qldView.signal || !qldView.lastWeekT) return;
+            const r = qldReality();
+            const inPos = r.shares > 0;
+            let dirty = false;
+            // Weekly switch eval — runs once per newly completed week.
+            if (qldSleeve.signalWeek !== qldView.lastWeekT) {
+                qldSleeve.signalWeek = qldView.lastWeekT;
+                dirty = true;
+                if (qldView.signal === 'LONG' && !inPos) qldSleeve.pending = { type: 'ENTER', reason: 'WEEKLY', queuedAt: nyDateStr() };
+                else if (qldView.signal === 'FLAT' && inPos) qldSleeve.pending = { type: 'EXIT', reason: 'WEEKLY', queuedAt: nyDateStr() };
+                else if (qldSleeve.pending && qldSleeve.pending.reason === 'WEEKLY') qldSleeve.pending = null; // signal reverted before execution
+            }
+            // Drop a queued weekly switch whose premise is already satisfied — e.g. the
+            // position was opened/closed manually or imported from TWS before the queued
+            // order ran. Without this, a stale ENTER would double-buy on top.
+            if (qldSleeve.pending && qldSleeve.pending.reason === 'WEEKLY'
+                && ((qldSleeve.pending.type === 'ENTER' && inPos) || (qldSleeve.pending.type === 'EXIT' && !inPos))) {
+                qldSleeve.pending = null; dirty = true;
+            }
+            // A queued weekly switch resolves first — the month-end band check waits.
+            if (qldSleeve.pending && qldSleeve.pending.reason === 'WEEKLY') { if (dirty) qldSaveSleeve(); return; }
+            const monthKey = nyDateStr().slice(0, 7);
+            const monthEnd = isLastTradingDayOfMonth(nyDateStr());
+            const staleMonthPending = qldSleeve.pending && qldSleeve.pending.reason === 'MONTH_END';
+            if (!monthEnd && !staleMonthPending) { if (dirty) qldSaveSleeve(); return; }
+            if (monthEnd && staleMonthPending && qldSleeve.pending.month === monthKey) { if (dirty) qldSaveSleeve(); return; }
+            const band = r.equity > 0 ? r.sleeveValue / r.equity * 100 : null;
+            if (band === null) { if (dirty) qldSaveSleeve(); return; }
+            const lo = qldTargetPct - qldBandPct, hi = qldTargetPct + qldBandPct;
+            if (band < lo || band > hi) {
+                const type = inPos ? (band < lo ? 'ADD' : 'TRIM') : 'CASH';
+                if (!staleMonthPending || qldSleeve.pending.month !== monthKey || qldSleeve.pending.type !== type) {
+                    qldSleeve.pending = { type, reason: 'MONTH_END', month: monthKey, queuedAt: nyDateStr() };
+                    dirty = true;
+                }
+            } else if (staleMonthPending) { qldSleeve.pending = null; dirty = true; } // drifted back inside band
+            if (dirty) qldSaveSleeve();
+        }
+        function qldPendingAction() { return qldSleeve.pending ? qldSleeve.pending.type : null; }
+
+        // Resolve a pending action into concrete shares/notional at the current price.
+        function qldPendingSpec(p, r, px) {
+            const target = r.equity * qldTargetPct / 100;
+            if (p.type === 'ENTER') {
+                const cash = r.cash > 0 ? r.cash : target;
+                const sh = px > 0 ? Math.floor(cash / px) : 0;
+                return { side: 'BUY', shares: sh, notional: sh * px };
+            }
+            if (p.type === 'EXIT') return { side: 'SELL', shares: r.shares, notional: r.shares * px };
+            if (p.type === 'ADD') {
+                const sh = px > 0 ? Math.max(0, Math.floor((target - r.sleeveValue) / px)) : 0;
+                return { side: 'BUY', shares: sh, notional: sh * px };
+            }
+            if (p.type === 'TRIM') {
+                const sh = px > 0 ? Math.min(r.shares, Math.max(0, Math.round((r.sleeveValue - target) / px))) : 0;
+                return { side: 'SELL', shares: sh, notional: sh * px };
+            }
+            if (p.type === 'CASH') return { side: null, shares: 0, notional: target - r.cash };
+            return null;
+        }
+
+        // ---------- Live poll (RTH only; provider-safe cadence) ----------
+        let qldLiveTimer = null;
+        function qldLiveIntervalMs() {
+            const p = resolveProviders().primary;
+            // 2 symbols per tick — 20s keeps free-tier ~8 req/min providers under the cap.
+            return (p === 'twelvedata' || p === 'stockdata') ? 20000 : 5000;
+        }
+        async function qldLiveTick() {
+            if (currentPage !== 'qld' || !nyNow().isRTH) return;
+            const r = resolveProviders();
+            if (!r.primary) return;
+            try {
+                const q = await fetchTickerData('QQQ', r.primary, providerStreamKey(r.primary), null);
+                if (q && Number.isFinite(q.c) && q.c > 0) { qldView.liveQqq = q.c; qldView.quoteProvider = q._provider || r.primary; qldView.liveAt = Date.now(); }
+            } catch (e) { }
+            try {
+                const q2 = await fetchTickerData('QLD', r.primary, providerStreamKey(r.primary), null);
+                if (q2 && Number.isFinite(q2.c) && q2.c > 0) { qldView.qldPrice = q2.c; qldView.liveAt = Date.now(); }
+            } catch (e) { }
+            if (currentPage === 'qld') renderQldPage();
+        }
+        function startQldLive() {
+            stopQldLive();
+            qldLiveTimer = setInterval(qldLiveTick, qldLiveIntervalMs());
+        }
+        function stopQldLive() { if (qldLiveTimer) { clearInterval(qldLiveTimer); qldLiveTimer = null; } }
 
         async function refreshQldPage(force) {
             if (currentPage === 'qld') renderQldPage();
@@ -4236,31 +4553,42 @@
             qldView.loading = true;
             if (currentPage === 'qld') renderQldPage();
             try {
-                const v = await fetchVolatilityData('QQQ', null);
-                const bars = v && Array.isArray(v.bars) ? v.bars : [];
+                // Fresh broker reads first so band math uses real equity + real position.
+                if (twsSyncAccount) await pollTwsAccount();
+                if (twsPositionsEnabled) await refreshTwsPositions();
+                const h = await fetchQldHistory(null);
+                const bars = h.bars || [];
                 const weekly = resampleDailyToWeekly(bars);
                 const forming = weekly.length && isCurrentWeekForming(nyDateStr()) ? weekly[weekly.length - 1] : null;
                 const completed = forming ? weekly.slice(0, -1) : weekly;
                 const closes = completed.map(w => w.c);
-                const ema12 = emaLast(closes, 12);
-                const ema26 = emaLast(closes, 26);
-                const allCloses = weekly.map(w => w.c);
-                let qldPrice = null;
-                try {
-                    const r = resolveProviders();
-                    if (r.primary) {
+                const e12s = emaSeries(closes, 12);
+                const e26s = emaSeries(closes, 26);
+                const ema12 = e12s.length ? e12s[e12s.length - 1] : null;
+                const ema26 = e26s.length ? e26s[e26s.length - 1] : null;
+                const r = resolveProviders();
+                let qldPrice = null, liveQqq = null, quoteProvider = r.primary;
+                if (r.primary) {
+                    try {
                         const q = await fetchTickerData('QLD', r.primary, providerStreamKey(r.primary), null);
-                        if (q && Number.isFinite(q.c) && q.c > 0) qldPrice = q.c;
-                    }
-                } catch (e) { /* sleeve card shows '--' for price */ }
+                        if (q && Number.isFinite(q.c) && q.c > 0) { qldPrice = q.c; quoteProvider = q._provider || r.primary; }
+                    } catch (e) { }
+                    try {
+                        const q2 = await fetchTickerData('QQQ', r.primary, providerStreamKey(r.primary), null);
+                        if (q2 && Number.isFinite(q2.c) && q2.c > 0) liveQqq = q2.c;
+                    } catch (e) { }
+                }
                 qldView = {
                     loading: false, error: null,
                     signal: (ema12 !== null && ema26 !== null) ? (ema12 > ema26 ? 'LONG' : 'FLAT') : null,
                     ema12, ema26,
-                    formEma12: forming ? emaLast(allCloses, 12) : null,
-                    formEma26: forming ? emaLast(allCloses, 26) : null,
-                    qldPrice, weeklyN: closes.length, fetchedAt: Date.now()
+                    formEma12: forming ? emaLast(weekly.map(w => w.c), 12) : null,
+                    formEma26: forming ? emaLast(weekly.map(w => w.c), 26) : null,
+                    qldPrice, liveQqq, weeklyN: closes.length, fetchedAt: Date.now(), liveAt: Date.now(),
+                    weekly, e12s, e26s, lastWeekT: completed.length ? completed[completed.length - 1].t : null,
+                    histProvider: h.provider, quoteProvider
                 };
+                qldEvaluatePending();
             } catch (e) {
                 qldView.loading = false;
                 qldView.error = (e && e.message) ? e.message : 'fetch failed';
@@ -4268,18 +4596,73 @@
             if (currentPage === 'qld') renderQldPage();
         }
 
-        function qldPendingAction() {
-            // What the strategy wants next, given the completed-week signal + sleeve state.
-            if (!qldView.signal) return null;
-            if (qldView.signal === 'LONG' && !qldSleeve.inPos) return 'ENTER';
-            if (qldView.signal === 'FLAT' && qldSleeve.inPos) return 'EXIT';
-            if (qldView.signal === 'LONG' && qldSleeve.inPos && qldView.qldPrice > 0 && accountValue > 0) {
-                const target = accountValue * qldTargetPct / 100;
-                const current = qldSleeve.shares * qldView.qldPrice;
-                const band = accountValue * qldBandPct / 100;
-                if (Math.abs(current - target) > band) return current < target ? 'ADD' : 'TRIM';
+        // ---------- Weekly candle chart (inline SVG, no library) ----------
+        function qldChartSvg() {
+            const wk = qldView.weekly || [];
+            if (wk.length < 10) return '';
+            const N = Math.min(30, wk.length);
+            const bars = wk.slice(-N).map(b => ({ ...b }));
+            // Fold the live QQQ quote into the forming week so the chart is real-time.
+            const live = qldView.liveQqq;
+            const formingLive = bars.length && isCurrentWeekForming(nyDateStr()) ? bars[bars.length - 1] : null;
+            if (formingLive && Number.isFinite(live) && live > 0) {
+                formingLive.c = live;
+                formingLive.h = Math.max(formingLive.h, live);
+                formingLive.l = Math.min(formingLive.l, live);
             }
-            return null;
+            const closes = bars.map(b => b.c);
+            const e12 = emaSeries(closes, 12);
+            const e26 = emaSeries(closes, 26);
+            const W = 620, H = 168, padL = 6, padR = 56, padT = 16, padB = 14;
+            const plotW = W - padL - padR, plotH = H - padT - padB;
+            let lo = Infinity, hi = -Infinity;
+            bars.forEach(b => { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; });
+            [e12, e26].forEach(s => s.forEach(v => { if (v !== null) { if (v < lo) lo = v; if (v > hi) hi = v; } }));
+            if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return '';
+            const span = hi - lo; lo -= span * 0.04; hi += span * 0.04;
+            const cw = plotW / bars.length;
+            const bodyW = Math.max(2, cw * 0.55);
+            const y = v => padT + (hi - v) / (hi - lo) * plotH;
+            const x = i => padL + i * cw + cw / 2;
+            let parts = '';
+            // gridlines at 25/50/75%
+            [0.25, 0.5, 0.75].forEach(f => {
+                const gy = padT + plotH * f;
+                parts += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${W - padR}" y2="${gy.toFixed(1)}" stroke="#1f2937" stroke-width="1"/>`;
+            });
+            bars.forEach((b, i) => {
+                const up = b.c >= b.o;
+                const col = up ? '#34d399' : '#f87171';
+                const isForming = i === bars.length - 1 && formingLive;
+                const dash = isForming ? ' stroke-dasharray="2,2" opacity="0.75"' : '';
+                parts += `<line x1="${x(i).toFixed(1)}" y1="${y(b.h).toFixed(1)}" x2="${x(i).toFixed(1)}" y2="${y(b.l).toFixed(1)}" stroke="${col}" stroke-width="1"${dash}/>`;
+                const top = y(Math.max(b.o, b.c)), bot = y(Math.min(b.o, b.c));
+                parts += `<rect x="${(x(i) - bodyW / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bodyW.toFixed(1)}" height="${Math.max(1, bot - top).toFixed(1)}" fill="${col}"${isForming ? ' opacity="0.6"' : ''}/>`;
+            });
+            const line = (s, col) => {
+                let d = '', started = false;
+                s.forEach((v, i) => {
+                    if (v === null) return;
+                    d += (started ? ' L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1);
+                    started = true;
+                });
+                return started ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="1.4"/>` : '';
+            };
+            parts += line(e12, '#e5e7eb');
+            parts += line(e26, '#f59e0b');
+            // LIVE WEEK tag over the forming candle
+            if (formingLive) {
+                const lx = x(bars.length - 1);
+                parts += `<text x="${lx.toFixed(1)}" y="${(padT - 4)}" fill="#f59e0b" font-size="9" font-weight="700" text-anchor="middle">LIVE WEEK</text>`;
+            }
+            // right price labels
+            [hi, lo + (hi - lo) / 2, lo].forEach(v => {
+                parts += `<text x="${W - padR + 4}" y="${(y(v) + 3).toFixed(1)}" fill="#4b5563" font-size="9" font-family="monospace">${Math.round(v)}</text>`;
+            });
+            // x labels: first + last dates
+            parts += `<text x="${padL}" y="${H - 3}" fill="#4b5563" font-size="9" font-family="monospace">${escapeHtml(bars[0].t)}</text>`;
+            parts += `<text x="${W - padR}" y="${H - 3}" fill="#4b5563" font-size="9" font-family="monospace" text-anchor="end">${escapeHtml(bars[bars.length - 1].t)}</text>`;
+            return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto block" preserveAspectRatio="none">${parts}</svg>`;
         }
 
         function renderQldPage() {
@@ -4296,75 +4679,104 @@
                 sig.innerHTML = '<div class="text-[11px] text-gray-400 font-bold py-2 text-center">No data yet — hit REFRESH.</div>';
             } else {
                 const long = v.signal === 'LONG';
-                const sigBadge = v.signal === null
-                    ? '<span class="text-gray-400">—</span>'
-                    : `<span class="font-black ${long ? 'text-emerald-300' : 'text-gray-300'}">${v.signal}</span>`;
-                const form = (v.formEma12 !== null && v.formEma26 !== null)
-                    ? `<div class="text-[9px] text-gray-500">forming wk: EMA12 ${v.formEma12.toFixed(2)} / EMA26 ${v.formEma26.toFixed(2)} → <span class="${v.formEma12 > v.formEma26 ? 'text-emerald-400' : 'text-gray-400'}">${v.formEma12 > v.formEma26 ? 'LONG' : 'FLAT'}</span> (unconfirmed)</div>`
+                const rth = nyNow().isRTH;
+                const emaLine = v.signal === null ? ''
+                    : long ? 'EMA 12 &gt; EMA 26' : 'EMA 12 &le; EMA 26';
+                // Fold the live QQQ quote into the forming week so live-EMAs update each tick.
+                let fE12 = v.formEma12, fE26 = v.formEma26;
+                if (Number.isFinite(v.liveQqq) && v.liveQqq > 0 && v.weekly.length && isCurrentWeekForming(nyDateStr())) {
+                    const cs = v.weekly.map(w => w.c);
+                    cs[cs.length - 1] = v.liveQqq;
+                    const l12 = emaLast(cs, 12), l26 = emaLast(cs, 26);
+                    if (l12 !== null) fE12 = l12;
+                    if (l26 !== null) fE26 = l26;
+                }
+                const form = (Number.isFinite(fE12) && Number.isFinite(fE26))
+                    ? `<div class="text-[9px] text-gray-500">live wk: EMA12 ${fE12.toFixed(2)} / EMA26 ${fE26.toFixed(2)} → <span class="${fE12 > fE26 ? 'text-emerald-400' : 'text-gray-400'}">${fE12 > fE26 ? 'LONG' : 'FLAT'}</span> (unconfirmed)</div>`
                     : '';
+                const asOf = v.liveAt ? new Date(v.liveAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false }) : '--';
                 sig.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="text-[10px] font-black uppercase text-gray-400">QQQ weekly signal</div>
-                        <div class="text-sm">${sigBadge}</div>
+                    <div class="flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-gray-500">
+                        <span>QLD sleeve timing</span>
+                        <span class="flex items-center gap-2">
+                            <span class="${rth ? 'text-emerald-400' : 'text-gray-500'}">${rth ? '● real-time' : '○ eod'}</span>
+                            <span>QQQ · weekly</span>
+                            <span><span class="text-gray-200">— 12</span> <span class="text-amber-400">— 26</span></span>
+                        </span>
                     </div>
-                    <div class="text-[10px] font-mono-num text-gray-400">EMA12 <span class="text-white font-bold">${v.ema12 !== null ? v.ema12.toFixed(2) : '--'}</span> · EMA26 <span class="text-white font-bold">${v.ema26 !== null ? v.ema26.toFixed(2) : '--'}</span> · ${v.weeklyN} completed wks</div>
+                    <div class="flex items-end justify-between">
+                        <div>
+                            <div class="text-3xl font-black ${v.signal === null ? 'text-gray-400' : long ? 'text-emerald-400' : 'text-gray-300'}">${v.signal || '—'}</div>
+                            <div class="text-[10px] font-mono-num text-gray-400">${emaLine}</div>
+                        </div>
+                        <div class="text-right text-[9px] text-gray-500 font-mono-num">EMA12 ${v.ema12 !== null ? v.ema12.toFixed(1) : '--'} · EMA26 ${v.ema26 !== null ? v.ema26.toFixed(1) : '--'}</div>
+                    </div>
+                    ${qldChartSvg()}
                     ${form}
-                    <div class="text-[9px] text-gray-500">Confirm at Friday's close; act at the next session open.</div>`;
+                    <div class="flex items-center justify-between text-[8px] text-gray-600 font-mono-num">
+                        <span>As of ${asOf} ET · ${Math.round(qldLiveIntervalMs() / 1000)}s refresh · can change during the week</span>
+                        <span>data · ${escapeHtml(v.histProvider || v.quoteProvider || '--')}</span>
+                    </div>`;
             }
 
-            const target = accountValue > 0 ? accountValue * qldTargetPct / 100 : 0;
+            const r = qldReality();
             const px = v.qldPrice;
-            const curNotional = qldSleeve.inPos ? qldSleeve.shares * (px || qldSleeve.entryPrice) : 0;
-            const curPct = accountValue > 0 ? curNotional / accountValue * 100 : 0;
+            const target = r.equity > 0 ? r.equity * qldTargetPct / 100 : 0;
+            const curPct = r.equity > 0 ? r.sleeveValue / r.equity * 100 : 0;
             const targetShares = (px && target > 0) ? Math.floor(target / px) : 0;
             const bandLo = qldTargetPct - qldBandPct, bandHi = qldTargetPct + qldBandPct;
+            const inBand = curPct >= bandLo && curPct <= bandHi;
+            const posLabel = r.inPos
+                ? `${r.shares.toLocaleString()} sh${qldSleeve.entryPrice ? ' @ $' + qldSleeve.entryPrice.toFixed(2) : ''}`
+                : `FLAT · reserve $${Math.round(r.cash).toLocaleString()}`;
+            const mismatch = r.mismatch
+                ? `<div class="text-[9px] font-bold text-amber-300">BROKER ${r.brokerShares.toLocaleString()} sh ≠ LEDGER ${qldSleeve.shares.toLocaleString()} sh — <button onclick="qldSyncLedger()" class="underline">sync ledger</button></div>`
+                : '';
             sleeve.innerHTML = `
                 <div class="flex items-center justify-between">
                     <div class="text-[10px] font-black uppercase text-gray-400">QLD sleeve</div>
-                    <div class="text-[10px] font-mono-num ${qldSleeve.inPos ? 'text-emerald-300' : 'text-gray-500'} font-bold">${qldSleeve.inPos ? `${qldSleeve.shares} sh @ $${qldSleeve.entryPrice.toFixed(2)}` : 'FLAT'}</div>
+                    <div class="text-[10px] font-mono-num ${r.inPos ? 'text-emerald-300' : 'text-gray-500'} font-bold">${posLabel}</div>
                 </div>
-                <div class="grid grid-cols-3 gap-1.5 text-center">
+                <div class="grid grid-cols-4 gap-1.5 text-center">
                     <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Price</div><div class="text-xs font-mono-num font-black text-white">${px ? '$' + px.toFixed(2) : '--'}</div></div>
-                    <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Current</div><div class="text-xs font-mono-num font-black ${curPct >= bandLo && curPct <= bandHi ? 'text-emerald-300' : 'text-amber-300'}">${qldSleeve.inPos ? curPct.toFixed(1) + '%' : '0%'}</div></div>
+                    <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Sleeve</div><div class="text-xs font-mono-num font-black text-white">$${Math.round(r.sleeveValue).toLocaleString()}</div></div>
+                    <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Weight</div><div class="text-xs font-mono-num font-black ${inBand ? 'text-emerald-300' : 'text-amber-300'}">${r.equity > 0 ? curPct.toFixed(1) + '%' : '--'}</div></div>
                     <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Target ${qldTargetPct}%</div><div class="text-xs font-mono-num font-black text-teal-300">${targetShares ? targetShares.toLocaleString() + ' sh' : '--'}</div></div>
                 </div>
-                <div class="text-[9px] text-gray-500">Band ${bandLo.toFixed(0)}–${bandHi.toFixed(0)}% of account${accountValue > 0 ? ' ($' + Math.round(target).toLocaleString() + ')' : ' — set account value in Settings'}.</div>`;
+                ${mismatch}
+                <div class="text-[9px] text-gray-500">Band ${bandLo.toFixed(0)}–${bandHi.toFixed(0)}% · equity $${Math.round(r.equity).toLocaleString()} (${r.equitySrc})${r.cash > 0 ? ' · cash $' + Math.round(r.cash).toLocaleString() : ''} · band checked at month-end only.</div>`;
 
-            const action = qldPendingAction();
-            const diffShares = (px && qldSleeve.inPos) ? Math.abs(targetShares - qldSleeve.shares) : targetShares;
+            const pend = qldSleeve.pending;
+            const spec = pend ? qldPendingSpec(pend, r, px || r.px) : null;
             let actHtml = '';
-            if (action === 'ENTER') actHtml = `<div class="text-[11px] font-bold text-emerald-300">Signal flipped LONG — buy ~${targetShares.toLocaleString()} QLD at the next open.</div>`;
-            else if (action === 'EXIT') actHtml = `<div class="text-[11px] font-bold text-rose-300">Signal flipped FLAT — sell all ${qldSleeve.shares.toLocaleString()} QLD at the next open.</div>`;
-            else if (action === 'ADD') actHtml = `<div class="text-[11px] font-bold text-amber-300">Below band — add ~${diffShares.toLocaleString()} QLD to reach ${qldTargetPct}%.</div>`;
-            else if (action === 'TRIM') actHtml = `<div class="text-[11px] font-bold text-amber-300">Above band — trim ~${diffShares.toLocaleString()} QLD back to ${qldTargetPct}%.</div>`;
-            else actHtml = `<div class="text-[11px] font-bold text-gray-400">No pending action — sleeve ${v.signal === 'LONG' ? 'in position, within band' : 'flat, signal flat'}.</div>`;
+            if (pend && spec) {
+                const reason = pend.reason === 'WEEKLY' ? 'weekly signal' : 'month-end band';
+                if (pend.type === 'ENTER') actHtml = `<div class="text-[11px] font-bold text-emerald-300">Signal flipped LONG — buy ~${spec.shares.toLocaleString()} QLD ($${Math.round(spec.notional).toLocaleString()}) at the next open.</div>`;
+                else if (pend.type === 'EXIT') actHtml = `<div class="text-[11px] font-bold text-rose-300">Signal flipped FLAT — sell all ${spec.shares.toLocaleString()} QLD at the next open.</div>`;
+                else if (pend.type === 'ADD') actHtml = `<div class="text-[11px] font-bold text-amber-300">Below band — add ~${spec.shares.toLocaleString()} QLD to reach ${qldTargetPct}%.</div>`;
+                else if (pend.type === 'TRIM') actHtml = `<div class="text-[11px] font-bold text-amber-300">Above band — trim ~${spec.shares.toLocaleString()} QLD back to ${qldTargetPct}%.</div>`;
+                else if (pend.type === 'CASH') actHtml = `<div class="text-[11px] font-bold text-amber-300">Flat sleeve out of band — set the cash reserve to $${Math.round(target).toLocaleString()} (${qldTargetPct}%).</div>`;
+                actHtml += `<div class="text-[9px] text-gray-500">Queued ${escapeHtml(pend.queuedAt || '')} · ${reason} · executes at the next session's open.</div>`;
+            } else {
+                actHtml = `<div class="text-[11px] font-bold text-gray-400">No pending action — sleeve ${r.inPos ? (inBand ? 'in position, within band' : 'in position — drifted, next check at month-end') : 'flat' + (v.signal === 'LONG' ? ', signal long' : ', signal flat')}.</div>`;
+            }
+            const canSend = pend && spec && spec.side && spec.shares > 0;
             acts.innerHTML = `
                 <div class="text-[10px] font-black uppercase text-gray-400">Pending action</div>
                 ${actHtml}
                 <div class="flex flex-wrap gap-1.5 pt-1">
-                    ${action && px ? `<button onclick="qldExecute('${action}', ${action === 'EXIT' ? qldSleeve.shares : diffShares}, ${px})" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg ${action === 'EXIT' || action === 'TRIM' ? 'bg-rose-700/80 border-rose-500/40' : 'bg-emerald-700/80 border-emerald-500/40'} text-white border">Log ${action === 'EXIT' ? 'Exit' : action === 'TRIM' ? 'Trim' : 'Buy'} ${action === 'EXIT' ? qldSleeve.shares.toLocaleString() : diffShares.toLocaleString()}</button>` : ''}
-                    <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${qldSleeve.inPos ? 'Edit sleeve' : 'Set sleeve'}</button>
+                    ${canSend && twsEnabled ? `<button data-action="qld-tws-send" data-tws-key="QLD:qld" data-tws-default-label="SEND TO TWS" onclick="qldSendTws()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg bg-blue-700/80 border border-blue-500/40 text-white"><span class="tws-send-label">SEND TO TWS</span></button>` : ''}
+                    ${pend ? `<button onclick="qldExecutePending()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg ${pend.type === 'EXIT' || pend.type === 'TRIM' ? 'bg-rose-700/80 border-rose-500/40' : 'bg-emerald-700/80 border-emerald-500/40'} text-white border">Log ${pend.type === 'CASH' ? 'reserve adj' : pend.type.toLowerCase()}</button>
+                    <button onclick="qldDismissPending()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Dismiss</button>` : ''}
+                    <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${r.inPos ? 'Edit sleeve' : 'Set sleeve'}</button>
                 </div>`;
         }
 
-        function qldExecute(action, shares, price) {
-            shares = Math.max(0, parseInt(shares, 10) || 0);
-            if (!shares && action !== 'EXIT') return;
-            if (action === 'EXIT' || action === 'TRIM') {
-                const sell = action === 'EXIT' ? qldSleeve.shares : Math.min(shares, qldSleeve.shares);
-                qldSleeve.shares -= sell;
-                if (action === 'EXIT' || qldSleeve.shares <= 0) qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null };
-            } else {
-                // VWAP-ish average for adds
-                const prevNotional = qldSleeve.shares * qldSleeve.entryPrice;
-                qldSleeve.shares += shares;
-                qldSleeve.entryPrice = qldSleeve.shares ? (prevNotional + shares * price) / qldSleeve.shares : 0;
-                qldSleeve.inPos = true;
-                if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr();
-            }
-            qldSaveSleeve();
+        // Shared journal upsert — the record shape drives the slim amber TREND SLEEVE
+        // card on Active Trades (and the TWS-import migration produces the same shape).
+        function qldJournalUpsert() {
             activeTradesLog = activeTradesLog.filter(t => !(t.sleeve === 'QLD' && t.status === 'ACTIVE'));
-            if (qldSleeve.inPos) {
+            if (qldSleeve.inPos && qldSleeve.shares > 0) {
                 activeTradesLog.unshift({
                     id: Date.now() + Math.random(), ticker: 'QLD', side: 'LONG', sleeve: 'QLD',
                     strategyId: 'qld', marketRegime: globalMarketRegime,
@@ -4375,37 +4787,140 @@
                 });
             }
             saveActiveTradesLog(); updateActiveTradesCountBadge(); renderActiveTradesPage();
+        }
+
+        function qldExecute(action, shares, price, via) {
+            shares = Math.max(0, Math.round(parseInt(shares, 10) || 0));
+            const r = qldReality();
+            price = Number(price) || r.px || 0;
+            const curShares = r.shares; // broker count when known — ledger follows it
+            if (action === 'EXIT' || action === 'TRIM') {
+                const sell = action === 'EXIT' ? curShares : Math.min(shares, curShares);
+                if (action === 'EXIT') qldSleeve.cashValue = (qldSleeve.cashValue || 0) + sell * price;   // sleeve back to cash — keep any reserve leftover
+                // TRIM proceeds leave the sleeve (that's what reduces the weight).
+                qldSleeve.shares = Math.max(0, curShares - sell);
+                if (action === 'EXIT' || qldSleeve.shares <= 0) {
+                    qldSleeve.inPos = false;
+                    if (qldSleeve.shares <= 0) { qldSleeve.shares = 0; qldSleeve.entryPrice = 0; qldSleeve.entryDate = null; }
+                }
+            } else if (action === 'CASH') {
+                qldSleeve.cashValue = r.equity * qldTargetPct / 100;
+            } else {
+                // ENTER | ADD — VWAP-average the entry price; when the broker position is
+                // truth, average against its share count + avgCost, not the stale ledger.
+                const prevNotional = (r.brokerKnown && r.avgCost)
+                    ? r.brokerShares * r.avgCost
+                    : qldSleeve.shares * qldSleeve.entryPrice;
+                qldSleeve.shares = curShares + shares;
+                qldSleeve.entryPrice = qldSleeve.shares ? (prevNotional + shares * price) / qldSleeve.shares : 0;
+                qldSleeve.inPos = true;
+                if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr();
+                if (action === 'ENTER') qldSleeve.cashValue = Math.max(0, (qldSleeve.cashValue || 0) - shares * price);
+            }
+            qldSleeve.pending = null;
+            qldSaveSleeve();
+            qldJournalUpsert();
             updateExposureChips();
-            showSuccessToast(`QLD sleeve ${action.toLowerCase()} logged — ${qldSleeve.inPos ? qldSleeve.shares + ' sh held' : 'flat'}.`);
+            showSuccessToast(`QLD sleeve ${action.toLowerCase()} ${via === 'tws' ? 'sent + logged' : 'logged'} — ${qldSleeve.inPos ? qldSleeve.shares + ' sh held' : 'flat, reserve $' + Math.round(qldSleeve.cashValue || 0).toLocaleString()}.`);
             renderQldPage();
         }
 
+        // Execute the queued pending action at the current price.
+        function qldExecutePending() {
+            const pend = qldSleeve.pending;
+            if (!pend) return;
+            const spec = qldPendingSpec(pend, qldReality(), qldView.qldPrice || qldReality().px);
+            if (!spec) return;
+            if (pend.type === 'CASH' || !spec.side) { qldExecute('CASH', 0, 0, 'app'); return; }
+            if (!spec.shares) { showErrorToast('Computed 0 shares — check price/equity inputs.'); return; }
+            qldExecute(pend.type, spec.shares, qldView.qldPrice || qldReality().px, 'app');
+        }
+        function qldDismissPending() {
+            qldSleeve.pending = null;
+            qldSaveSleeve();
+            renderQldPage();
+        }
+        // Broker count is truth — copy it into the ledger + journal record.
+        function qldSyncLedger() {
+            const r = qldReality();
+            if (r.brokerShares === null) return;
+            qldSleeve.shares = r.brokerShares;
+            qldSleeve.inPos = r.brokerShares > 0;
+            if (!qldSleeve.inPos) { qldSleeve.entryPrice = 0; qldSleeve.entryDate = null; }
+            qldSaveSleeve();
+            qldJournalUpsert();
+            updateExposureChips();
+            renderQldPage();
+        }
+
+        async function qldSendTws() {
+            const pend = qldSleeve.pending;
+            if (!pend) return;
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            const r = qldReality();
+            const px = qldView.qldPrice || r.px;
+            const spec = qldPendingSpec(pend, r, px);
+            if (!spec) return;
+            if (!spec.side || !spec.shares) { showErrorToast('Nothing to send (cash adjust or 0 shares).'); return; }
+            const key = 'QLD:qld';
+            if (twsSendState[key] === 'sending') return;
+            const pf = await preflightContract('QLD');
+            if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
+            if (twsOrdersEnabled) {
+                const dup = findDuplicatePscOrders('QLD', spec.side);
+                if (dup.length && !confirm(`${dup.length} working PSC ${spec.side} order(s) already exist for QLD — send another?`)) return;
+            }
+            setTwsSendState(key, 'sending');
+            const result = await bridgeRequest('/order', {
+                symbol: 'QLD', action: spec.side, quantity: spec.shares,
+                ...twsEntryOrderSpec(px, nyNow().isRTH),
+                adaptive: true, adaptivePriority: 'Normal',
+                tif: 'DAY',
+                orderRef: 'PSC-QLD-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36))
+            });
+            if (result.ok) {
+                setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+                qldExecute(pend.type, spec.shares, px, 'tws');
+            } else if (result.unknown) {
+                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+            } else {
+                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            }
+        }
+
         function qldManualSet() {
-            const cur = qldSleeve.inPos ? `${qldSleeve.shares} @ ${qldSleeve.entryPrice.toFixed(2)}` : 'flat';
-            const input = prompt(`QLD sleeve (currently ${cur}). Enter "shares @ price", or "flat":`, cur);
+            const cur = qldSleeve.inPos ? `${qldSleeve.shares} @ ${qldSleeve.entryPrice.toFixed(2)}` : `flat · cash $${Math.round(qldSleeve.cashValue || 0).toLocaleString()}`;
+            const input = prompt(`QLD sleeve (currently ${cur}). Enter "shares @ price", "cash 20000", or "flat":`, cur);
             if (input === null) return;
             const t = input.trim().toLowerCase();
-            if (t === 'flat' || t === '0') { qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null }; }
-            else {
+            if (t === 'flat' || t === '0' || t === 'flat 0') {
+                // "flat" moves the position's value into the cash reserve (sleeve → cash);
+                // "flat 0"/"0" wipes the reserve too (leave nothing earmarked).
+                if (qldSleeve.shares > 0) {
+                    const px = qldView.qldPrice || qldSleeve.entryPrice || 0;
+                    qldSleeve.cashValue = (qldSleeve.cashValue || 0) + qldSleeve.shares * px;
+                }
+                qldSleeve.inPos = false; qldSleeve.shares = 0; qldSleeve.entryPrice = 0; qldSleeve.entryDate = null;
+                if (t === '0' || t === 'flat 0') qldSleeve.cashValue = 0;
+            } else if (t.startsWith('cash')) {
+                const m = t.match(/cash\s+\$?([\d,]+(?:\.\d+)?)/);
+                if (!m) { showErrorToast('Could not parse — use "cash 20000".'); return; }
+                qldSleeve.cashValue = parseFloat(m[1].replace(/,/g, ''));
+                qldSleeve.inPos = false; qldSleeve.shares = 0; qldSleeve.entryPrice = 0; qldSleeve.entryDate = null;
+            } else {
                 const m = t.replace(/,/g, '').match(/(\d+)\s*(?:@\s*\$?(\d+(?:\.\d+)?))?/);
                 const sh = m ? parseInt(m[1], 10) : 0;
                 const pr = m && m[2] ? parseFloat(m[2]) : (qldView.qldPrice || 0);
-                if (!sh) { showErrorToast('Could not parse — use "300 @ 82.50" or "flat".'); return; }
-                qldSleeve = { inPos: true, shares: sh, entryPrice: pr, entryDate: qldSleeve.entryDate || nyDateStr() };
+                if (!sh) { showErrorToast('Could not parse — use "300 @ 82.50", "cash 20000", or "flat".'); return; }
+                qldSleeve.inPos = true; qldSleeve.shares = sh; qldSleeve.entryPrice = pr;
+                if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr();
             }
+            qldSleeve.pending = null;
             qldSaveSleeve();
-            activeTradesLog = activeTradesLog.filter(t => !(t.sleeve === 'QLD' && t.status === 'ACTIVE'));
-            if (qldSleeve.inPos) {
-                activeTradesLog.unshift({
-                    id: Date.now() + Math.random(), ticker: 'QLD', side: 'LONG', sleeve: 'QLD',
-                    strategyId: 'qld', marketRegime: globalMarketRegime,
-                    holdLimit: null, holdUnit: 'week', targets: [],
-                    entryDate: qldSleeve.entryDate, entryPrice: qldSleeve.entryPrice,
-                    shares: qldSleeve.shares, stopPrice: null, regime: 'QLD Trend',
-                    tp1: null, tp2: null, status: 'ACTIVE'
-                });
-                saveActiveTradesLog(); updateActiveTradesCountBadge(); renderActiveTradesPage();
-            } else { saveActiveTradesLog(); updateActiveTradesCountBadge(); renderActiveTradesPage(); }
+            qldJournalUpsert();
+            updateExposureChips();
             renderQldPage();
         }
 
@@ -4428,9 +4943,9 @@
             let anySuccess = false;
             const seenFetch = new Set();
             try {
-                const fetchPromises = realtimeTasks
-                    .filter(t => !seenFetch.has(t.ticker) && seenFetch.add(t.ticker))
-                    .map(async (t) => {
+                const uniqueTasks = realtimeTasks.filter(t => !seenFetch.has(t.ticker) && seenFetch.add(t.ticker));
+                let fetchDone = 0;
+                const fetchPromises = uniqueTasks.map(async (t) => {
                     try {
                         const data = await fetchTickerData(t.ticker, provider, apiKey, controller.signal);
                         if (gen !== streamGeneration) return;
@@ -4441,6 +4956,8 @@
                         console.warn(`Baseline REST fetch failed for ${t.ticker}:`, e);
                         realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
                     }
+                    fetchDone++;
+                    renderScanProgress(riskVal, slippageVal, fetchDone, uniqueTasks.length);
                 });
                 await Promise.all(fetchPromises);
             } finally {
@@ -4480,9 +4997,9 @@
             let anySuccess = false;
             const seenFetch = new Set();
             try {
-                const fetchPromises = realtimeTasks
-                    .filter(t => !seenFetch.has(t.ticker) && seenFetch.add(t.ticker))
-                    .map(async (t) => {
+                const uniqueTasks = realtimeTasks.filter(t => !seenFetch.has(t.ticker) && seenFetch.add(t.ticker));
+                let fetchDone = 0;
+                const fetchPromises = uniqueTasks.map(async (t) => {
                     try {
                         const data = await fetchTickerData(t.ticker, mainProvider, mainKey, controller.signal);
                         if (gen !== streamGeneration) return;
@@ -4493,6 +5010,8 @@
                         console.warn(`Enhanced baseline fetch failed for ${t.ticker}:`, e);
                         realtimeQuoteErrors[t.ticker] = e.message || 'Fetch failed';
                     }
+                    fetchDone++;
+                    renderScanProgress(riskVal, slippageVal, fetchDone, uniqueTasks.length);
                 });
                 await Promise.all(fetchPromises);
             } finally {
@@ -4684,7 +5203,9 @@
                         } else if (response.type === 'error' && response.s) {
                             realtimeQuoteErrors[String(response.s).toUpperCase()] = response.error || 'TWS error';
                         } else if (response.type === 'status') {
+                            const wasConn = twsConnected;
                             twsConnected = !!response.connected;
+                            if (twsConnected && !wasConn && twsOrdersEnabled) refreshTwsOrders();
                             renderProviderPriorityList();
                         } else if (response.type === 'account' && twsSyncAccount) {
                             applyTwsAccountValue(response.key, response.value);
@@ -4911,12 +5432,29 @@
                 const controller = new AbortController();
                 activeFetchSession = controller;
 
+                realtimeTasks = tasks;
+                Object.keys(realtimeQuotes).forEach(k => delete realtimeQuotes[k]);
+                Object.keys(realtimeQuoteErrors).forEach(k => delete realtimeQuoteErrors[k]);
+                triggerActiveState = {};
+
                 try {
+                    let fetchDone = 0;
                     const promises = tasks.map(async (task) => {
                         try {
                             const data = await fetchTickerData(task.ticker, provider, apiKey, controller.signal);
+                            realtimeQuotes[task.ticker] = data;
+                            delete realtimeQuoteErrors[task.ticker];
+                            if (gen === streamGeneration) {
+                                fetchDone++;
+                                renderScanProgress(riskVal, slippageVal, fetchDone, tasks.length);
+                            }
                             return { ...task, data, success: true };
                         } catch (e) {
+                            realtimeQuoteErrors[task.ticker] = e.message;
+                            if (gen === streamGeneration) {
+                                fetchDone++;
+                                renderScanProgress(riskVal, slippageVal, fetchDone, tasks.length);
+                            }
                             return { ...task, error: e.message, success: false };
                         }
                     });
@@ -5216,6 +5754,8 @@
 
             validResults.forEach(item => {
                 seen.add(item.ticker);
+                const stale = container.querySelector(`#card-${item.ticker}`);
+                if (stale && typeof stale.remove === 'function') stale.remove();
                 const row = wrap.querySelector(`#table-row-${item.ticker}`);
                 if (row) updateTableRow(row, item, risk, slippage);
                 else wrap.appendChild(createTableRow(item, risk, slippage));
@@ -5231,7 +5771,7 @@
                 const id = `card-${res.ticker}`;
                 const existing = container.querySelector(`#${id}`);
                 if (existing && typeof existing.remove === 'function') existing.remove();
-                renderError(res, container);
+                if (res.pending) renderPending(res, container); else renderError(res, container);
             });
 
             // Remove stale error cards when a ticker recovers or is removed.
@@ -5363,6 +5903,7 @@
             const { ticker, trigger, error } = item;
             const div = document.createElement('div');
             div.id = (item.kind === 'pb' ? 'pbcard-' : 'card-') + (ticker || 'error');
+            div.dataset.shell = 'err';
             div.className = "result-card glass-card rounded-xl px-3 py-2 border-rose-500/40 bg-rose-950/30";
             div.innerHTML = `
                 <div class="flex items-start justify-between gap-2 mb-1.5">
@@ -5381,6 +5922,30 @@
                         : ''}
                     <div class="self-center text-right max-w-[140px]">
                         <div class="text-[10px] font-bold text-rose-200 leading-tight">${escapeHtml(error)}</div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        // Neutral placeholder while a ticker's baseline fetch is still in flight —
+        // same card id so the real card replaces it in place once the quote lands.
+        function renderPending(item, container) {
+            const div = document.createElement('div');
+            div.id = (item.kind === 'pb' ? 'pbcard-' : 'card-') + (item.ticker || 'pending');
+            div.dataset.shell = 'pending';
+            div.className = "result-card glass-card rounded-xl px-3 py-2 border-white/10 bg-slate-900/40";
+            div.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                    <div class="flex items-start gap-2 min-w-0">
+                        <div class="w-5 h-5 rounded-full bg-slate-700/50 flex items-center justify-center text-gray-400 text-xs font-black shrink-0">…</div>
+                        <div>
+                            <h2 class="text-xl font-black text-gray-300 tracking-tight leading-none">${escapeHtml(item.ticker)}</h2>
+                            <div class="text-[10px] font-black text-gray-500 mt-1 leading-none uppercase">FETCHING</div>
+                        </div>
+                    </div>
+                    <div class="self-center text-right max-w-[140px]">
+                        <div class="text-[10px] font-bold text-gray-500 leading-tight">${escapeHtml(item.error || 'Waiting for live quote...')}</div>
                     </div>
                 </div>
             `;
@@ -5496,7 +6061,7 @@
             document.querySelectorAll('.timed-exit-box').forEach(box => {
                 toggleCls(box, 'hidden', !timedExitEnabled);
                 const d = box.querySelector('.timed-exit-days'); if (d) d.textContent = maxHoldDays;
-                const t = box.querySelector('.timed-exit-time'); if (t) t.textContent = timedExitTime === 'MOC' ? 'MOC' : timedExitTime;
+                const t = box.querySelector('.timed-exit-time'); if (t) t.textContent = timedExitDate && NYSE_EARLY_CLOSE.has(timedExitDate) ? '12:50 (early close)' : (timedExitTime === 'MOC' ? 'MOC' : timedExitTime);
                 const inp = box.querySelector('.timed-exit-date'); if (inp && timedExitDate && inp.value !== timedExitDate) inp.value = timedExitDate;
             });
         }
@@ -5747,18 +6312,19 @@
             const suffix = opts.ocaSuffix !== undefined ? opts.ocaSuffix : ocaSuffix();
             const timed = timedExitConfig(opts.timedExit);
             const timedEnabled = !!(timed && timed.enabled);
+            // A 1 PM early close can't host a 15:xx market exit — the GAT moves to 12:50 ET.
+            const timedEarly = timedEnabled && NYSE_EARLY_CLOSE.has(timed.date);
+            const timedTime = timedEnabled ? (timedEarly ? '12:50' : timed.time) : null;
             if (timedEnabled && (!isNYSEMarketOpenDay(timed.date) || !TIMED_EXIT_TIMES.includes(timed.time) || Number(String(timed.date).slice(0, 4)) > 2030)) {
                 return { ok: false, error: 'Choose a valid trading date through 2030 and a scheduled market-exit time.', rows: [], preview: [] };
             }
-            if (timedEnabled && (timed.date < nyDateStr() || (timed.date === nyDateStr() && timed.time <= `${String(nyNow().h).padStart(2, '0')}:${String(nyNow().m).padStart(2, '0')}`))) {
+            if (timedEnabled && (timed.date < nyDateStr() || (timed.date === nyDateStr() && timedTime <= `${String(nyNow().h).padStart(2, '0')}:${String(nyNow().m).padStart(2, '0')}`))) {
                 return { ok: false, error: 'Scheduled exit must be in the future.', rows: [], preview: [] };
-            }
-            if (timedEnabled && NYSE_EARLY_CLOSE.has(timed.date)) {
-                return { ok: false, error: 'The selected date closes at 1 PM ET. Choose another date; late-afternoon scheduling is unavailable that day.', rows: [], preview: [] };
             }
             const rows = [];
             const preview = [];
             const notes = [];
+            if (timedEarly) notes.push(`Early close (1 PM ET) on ${timed.date} — scheduled exit moved to 12:50.`);
             strat.legs.forEach((leg, i) => {
                 const qty = qtys[i];
                 if (!qty) return;
@@ -5799,7 +6365,7 @@
                 if (timedEnabled) {
                     const isMoc = timed.time === 'MOC';
                     const exitRow = [action, qty, ticker, "STK", "SMART", "USD", isMoc ? "DAY" : "GTC", isMoc ? "MOC" : "MKT", '', '', ticker, oca];
-                    exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timed.time);
+                    exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timedTime);
                     rows.push(exitRow);
                 }
                 preview.push({ ticker, action, qty, stop: stp, tp: stopOnly ? 0 : tp, rr: stopOnly ? 0 : rr, trueRr: stopOnly ? 0 : trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null, stopOnly });
@@ -5810,7 +6376,7 @@
                 notes.push('EXPERIMENTAL: validate all fields and proportional OCA reduction in TWS paper, including partial fills. These orders do not read account positions or cancel unrelated orders.');
             }
             if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
-            return { ok: true, error: null, rows, preview, strategy: strat, rps, notes, timedExit: timedEnabled ? { date: timed.date, time: timed.time } : null };
+            return { ok: true, error: null, rows, preview, strategy: strat, rps, notes, timedExit: timedEnabled ? { date: timed.date, time: timedTime } : null };
         }
 
         // Header is the classic 12 columns unless a row actually uses an extra TWS field.
@@ -6492,6 +7058,7 @@
         function refreshStrategySelects() {
             fillStrategySelect(document.getElementById('regimeExpandingStrategy'), regimeStrategyMap.expanding, true);
             fillStrategySelect(document.getElementById('regimeDecliningStrategy'), regimeStrategyMap.declining, true);
+            fillStrategySelect(document.getElementById('twsExitStrategySetting'), twsExitStrategy, true, true);
         }
 
         function saveRegimeStrategyMap() {
@@ -6712,6 +7279,8 @@
             const cached = activeTradesPriceCache[ticker];
             const live = realtimeQuotes[ticker];
             if (live?.c > 0 && (!cached || (lastTradeAt[ticker] || 0) > cached.at)) return live.c;
+            // QLD isn't a scan ticker — fall back to the sleeve page's polled quote.
+            if (ticker === 'QLD' && Number.isFinite(qldView.qldPrice) && qldView.qldPrice > 0) return qldView.qldPrice;
             return cached?.price || live?.c || null;
         }
 
@@ -6973,6 +7542,7 @@
         function tradeCardHtml(trade) {
             const dayCount = calculateMarketDaysElapsed(trade.entryDate);
             const isLong = trade.side === 'LONG';
+            const isQld = trade.sleeve === 'QLD';
             // Weekly holds (pullback week / QLD) count calendar weeks since the entry
             // week; daily holds keep the existing trading-day counter.
             const isWeekly = trade.holdUnit === 'week';
@@ -6980,18 +7550,32 @@
             const hasLimit = Number.isFinite(Number(trade.holdLimit)) && Number(trade.holdLimit) > 0;
             const holdLimit = hasLimit ? Number(trade.holdLimit) : (isWeekly ? null : boundedHoldDays(trade.holdLimit || maxHoldDays));
             const isDue = isWeekly ? (holdLimit !== null && weekCount >= holdLimit) : dayCount >= holdLimit;
-            const holdBadge = isWeekly
-                ? `Week ${weekCount}${holdLimit !== null ? ' of ' + holdLimit : ''} ${isDue ? '· EXIT DUE' : ''}`
-                : `Day ${dayCount} of ${holdLimit} ${isDue ? (dayCount > holdLimit ? '· EXIT OVERDUE' : '· EXIT DUE') : ''}`;
+            const holdBadge = isQld
+                ? 'TREND SLEEVE'
+                : isWeekly
+                    ? `Week ${weekCount}${holdLimit !== null ? ' of ' + holdLimit : ''} ${isDue ? '· EXIT DUE' : ''}`
+                    : `Day ${dayCount} of ${holdLimit} ${isDue ? (dayCount > holdLimit ? '· EXIT OVERDUE' : '· EXIT DUE') : ''}`;
             const sleeveBadge = trade.sleeve && trade.sleeve !== 'LS v3'
                 ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${trade.sleeve === 'QLD' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-teal-500/15 text-teal-300 border border-teal-500/30'}">${escapeHtml(trade.sleeve)}</span>`
                 : '';
             const targets = [...new Set((Array.isArray(trade.targets) ? trade.targets : [trade.tp1, trade.tp2]).filter(p => Number.isFinite(Number(p)) && Number(p) > 0).map(p => Number(p).toFixed(2)))];
             const pnlHtml = getPnlBadgeHtml(trade);
-            const progressHtml = getTradeProgressBarHtml(trade);
+            const progressHtml = isQld ? '' : getTradeProgressBarHtml(trade);
+            // QLD is a trend sleeve — no stop/target/day-limit; render it slim.
+            const detailGrid = isQld
+                ? `<div class="grid grid-cols-2 gap-2 text-xs">
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
+                   </div>`
+                : `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">${Number.isFinite(Number(trade.stopPrice)) && Number(trade.stopPrice) > 0 ? '$' + Number(trade.stopPrice).toFixed(2) : '--'}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
+                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
+                   </div>`;
 
             return `
-                <div class="bg-slate-900/60 p-3 rounded-xl border border-white/10 space-y-2 font-mono-num">
+                <div class="${isQld ? 'bg-amber-950/20 border-amber-500/40' : 'bg-slate-900/60 border-white/10'} p-3 rounded-xl border space-y-2 font-mono-num">
                     <div class="flex justify-between items-start gap-2">
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="text-lg font-black text-white">${escapeHtml(trade.ticker)}</span>
@@ -6999,16 +7583,11 @@
                             ${sleeveBadge}
                             <span class="text-[10px] text-gray-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(trade.regime)}</span>
                         </div>
-                        <span class="text-[11px] font-bold ${isDue ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
+                        <span class="text-[11px] font-bold ${isQld ? 'bg-amber-950 text-amber-300 border border-amber-500/50' : isDue ? 'bg-red-950 text-red-300 border border-red-500/50' : 'bg-blue-950 text-blue-300 border border-blue-500/30'} px-2 py-0.5 rounded-full whitespace-nowrap">
                             ${holdBadge}
                         </span>
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry</span><span class="text-white font-bold">${trade.shares.toLocaleString()} @ $${Number(trade.entryPrice).toFixed(2)}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Stop</span><span class="text-red-400 font-bold">${Number.isFinite(Number(trade.stopPrice)) && Number(trade.stopPrice) > 0 ? '$' + Number(trade.stopPrice).toFixed(2) : '--'}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Target</span><span class="text-emerald-400 font-bold">${targets.length ? targets.map(p => '$' + p).join(' / ') : '--'}</span></div>
-                        <div><span class="text-[9px] text-gray-500 uppercase font-bold block">Entry Date</span><span class="text-gray-300">${escapeHtml(trade.entryDate)}</span></div>
-                    </div>
+                    ${detailGrid}
                     <div data-trade-progress="${trade.id}">${progressHtml}</div>
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
@@ -7035,6 +7614,7 @@
                 return;
             }
             const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            activeTrades.sort((a, b) => ((b.sleeve === 'QLD') ? 1 : 0) - ((a.sleeve === 'QLD') ? 1 : 0)); // QLD sleeve pins on top
             if (!activeTrades.length) {
                 container.innerHTML = `<div class="p-8 text-center text-gray-400 space-y-2">
                     <div class="font-bold text-white">No active logged trades</div>
@@ -7058,7 +7638,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "3.5.0",
+                version: "3.6.3",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -7084,10 +7664,10 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct'];
+        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -7149,7 +7729,10 @@
             if (data.qldSleeve !== undefined) {
                 const s = data.qldSleeve;
                 if (!s || typeof s !== 'object' || !Number.isSafeInteger(Number(s.shares)) || Number(s.shares) < 0 || (Number(s.shares) > 0 && (!Number.isFinite(Number(s.entryPrice)) || Number(s.entryPrice) <= 0))) throw new Error('Invalid QLD sleeve');
-                values.qldSleeve = JSON.stringify({ inPos: !!s.inPos && Number(s.shares) > 0, shares: Math.max(0, Number(s.shares) || 0), entryPrice: Number(s.entryPrice) || 0, entryDate: typeof s.entryDate === 'string' ? s.entryDate : null });
+                const pend = s.pending && typeof s.pending === 'object' && ['ENTER', 'EXIT', 'ADD', 'TRIM', 'CASH'].includes(s.pending.type) && ['WEEKLY', 'MONTH_END'].includes(s.pending.reason)
+                    ? { type: s.pending.type, reason: s.pending.reason, month: typeof s.pending.month === 'string' ? s.pending.month : undefined, queuedAt: typeof s.pending.queuedAt === 'string' ? s.pending.queuedAt : undefined }
+                    : null;
+                values.qldSleeve = JSON.stringify({ inPos: !!s.inPos && Number(s.shares) > 0, shares: Math.max(0, Number(s.shares) || 0), entryPrice: Number(s.entryPrice) || 0, entryDate: typeof s.entryDate === 'string' ? s.entryDate : null, cashValue: Math.max(0, Number(s.cashValue) || 0), pending: pend, signalWeek: typeof s.signalWeek === 'string' ? s.signalWeek : null });
             }
             if (data.scanner !== undefined) {
                 const scan = data.scanner;
@@ -7295,13 +7878,23 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
+        const APP_VERSION = '3.6.3';
+        let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; return { ok: false, connected: false }; }
             try {
                 const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET' }, 4000);
                 const data = await res.json();
+                const wasConnected = twsConnected;
                 twsConnected = !!(data && data.connected);
+                if (twsConnected && !wasConnected && twsOrdersEnabled) refreshTwsOrders();
                 if (data && data.account) twsAccount = data.account;
+                if (data && data.version && data.version !== APP_VERSION && !_bridgeVersionWarned) {
+                    // Another (older/newer) bridge instance is on this port — e.g. a stale
+                    // standalone server.js still running. The app would hit its old API.
+                    _bridgeVersionWarned = true;
+                    showErrorToast(`Bridge is v${data.version} but app is v${APP_VERSION} — close stray bridge processes and restart`, 10000);
+                }
                 return data;
             } catch (e) {
                 twsConnected = false;
@@ -7311,13 +7904,15 @@
         }
         function startTwsHealthPolling() {
             if (twsHealthTimer) return;
-            twsHealthTimer = setInterval(() => {
-                if (!document.hidden) bridgeHealth().then(updateTwsStatusUI).then(pollTwsAux);
-            }, 15000);
-            bridgeHealth().then(updateTwsStatusUI).then(pollTwsAux);
+            const loop = async () => {
+                if (!document.hidden) await bridgeHealth().then(updateTwsStatusUI).then(pollTwsAux);
+                // 3s cadence while disconnected so a TWS connect is picked up fast; 15s once up.
+                if (twsHealthTimer) twsHealthTimer = setTimeout(loop, twsConnected ? 15000 : 3000);
+            };
+            twsHealthTimer = setTimeout(loop, 0);
         }
         function stopTwsHealthPolling() {
-            if (twsHealthTimer) { clearInterval(twsHealthTimer); twsHealthTimer = null; }
+            if (twsHealthTimer) { clearTimeout(twsHealthTimer); twsHealthTimer = null; }
         }
         function updateTwsStatusUI() {
             const el = document.getElementById('twsStatus');
@@ -7350,10 +7945,11 @@
         function updateTwsActiveStrategyDisplay() {
             const el = document.getElementById('twsActiveStrategyDisplay');
             if (!el) return;
-            const longStrat = getStrategyById(defaultStrategyId(true));
+            const over = twsExitStrategy && twsExitStrategy !== AUTO_STRATEGY;
+            const longStrat = getStrategyById(over ? twsExitStrategy : defaultStrategyId(true));
             const shortStrat = getStrategyById(defaultStrategyId(false));
             const regime = globalMarketRegime === 'declining' ? 'Declining' : 'Expanding';
-            el.innerHTML = `Exit strategy — Regime: ${regime} · Long: ${escapeHtml(longStrat.name)} · Short: ${escapeHtml(shortStrat.name)}`;
+            el.innerHTML = `Exit strategy — ${over ? 'Manual override' : 'Regime: ' + regime} · Long: ${escapeHtml(longStrat.name)} · Short: ${escapeHtml(shortStrat.name)}`;
         }
         function saveTwsSettings() {
             const en = document.getElementById('twsEnabledSetting');
@@ -7372,7 +7968,8 @@
             const toggles = {
                 twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
                 twsPositionsEnabled: 'twsPositionsEnabledSetting', twsOrdersEnabled: 'twsOrdersEnabledSetting',
-                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting'
+                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting',
+                twsEntryOutsideRth: 'twsEntryOutsideRthSetting'
             };
             for (const [key, elId] of Object.entries(toggles)) {
                 const el = document.getElementById(elId);
@@ -7383,7 +7980,13 @@
                 else if (key === 'twsOrdersEnabled') twsOrdersEnabled = v;
                 else if (key === 'twsFillsJournalEnabled') twsFillsJournalEnabled = v;
                 else if (key === 'twsPnlEnabled') twsPnlEnabled = v;
+                else if (key === 'twsEntryOutsideRth') twsEntryOutsideRth = v;
                 safeStorageSet(key, String(v));
+            }
+            const stratSel = document.getElementById('twsExitStrategySetting');
+            if (stratSel && stratSel.options.length) {
+                twsExitStrategy = stratSel.value || AUTO_STRATEGY;
+                safeStorageSet('twsExitStrategy', twsExitStrategy);
             }
             safeStorageSet('twsEnabled', String(twsEnabled));
             safeStorageSet('twsBridgeUrl', twsBridgeUrl);
@@ -7414,15 +8017,17 @@
             if (urlEl) urlEl.value = twsBridgeUrl;
             if (tokEl) tokEl.value = twsBridgeToken;
             if (autoEl) autoEl.checked = autoSendExitsOnOpen;
-            const tvals = { twsQuotesEnabled, twsSyncAccount, twsPositionsEnabled, twsOrdersEnabled, twsFillsJournalEnabled, twsPnlEnabled };
+            const tvals = { twsQuotesEnabled, twsSyncAccount, twsPositionsEnabled, twsOrdersEnabled, twsFillsJournalEnabled, twsPnlEnabled, twsEntryOutsideRth };
             for (const [key, elId] of Object.entries({
                 twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
                 twsPositionsEnabled: 'twsPositionsEnabledSetting', twsOrdersEnabled: 'twsOrdersEnabledSetting',
-                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting'
+                twsFillsJournalEnabled: 'twsFillsJournalEnabledSetting', twsPnlEnabled: 'twsPnlEnabledSetting',
+                twsEntryOutsideRth: 'twsEntryOutsideRthSetting'
             })) {
                 const el = document.getElementById(elId);
                 if (el) el.checked = !!tvals[key];
             }
+            fillStrategySelect(document.getElementById('twsExitStrategySetting'), twsExitStrategy, true, true);
             if (twsEnabled && twsBridgeToken) startTwsHealthPolling();
             updateTwsStatusUI();
             syncTwsSendButtons();
@@ -7454,6 +8059,16 @@
             }
         }
         // ---------- Payload builders ----------
+        // Entry order-type spec: IB won't execute MKT outside RTH, so when the user
+        // allows extended-hours entries the order goes out as LMT at the last price.
+        // During RTH (or with the toggle off) it stays a MKT Adaptive order.
+        function twsEntryOrderSpec(px, isRth) {
+            const allowOutside = twsEntryOutsideRth === true;
+            if (allowOutside && !isRth && Number.isFinite(px) && px > 0) {
+                return { orderType: 'LMT', lmtPrice: px, outsideRth: true };
+            }
+            return { orderType: 'MKT', outsideRth: allowOutside };
+        }
         function buildEntryOrderPayload(item) {
             const f = item.kind === 'pb'
                 ? getPbFields(item, currentRiskAndSlippage().slippage)
@@ -7465,11 +8080,10 @@
                 // Pullbacks are long-only; v3 derives direction from green/red day.
                 action: item.kind === 'pb' ? 'BUY' : (f.isGreenDay ? 'BUY' : 'SELL'),
                 quantity: f.shares,
-                orderType: 'MKT',
+                ...twsEntryOrderSpec(f.c, nyNow().isRTH),
                 adaptive: true,
                 adaptivePriority: 'Normal',
                 tif: 'DAY',
-                outsideRth: false,
                 orderRef: 'PSC-' + f.ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)),
             };
         }
@@ -7607,7 +8221,7 @@
                 if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another bracket anyway?`)) return;
             }
             if (!f.shares) { showErrorToast('No shares calculated'); return; }
-            const strategyId = defaultStrategyId(f.isGreenDay);
+            const strategyId = twsAutoSendStrategyId(f.isGreenDay);
             setTwsSendState(key, 'sending');
             const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
             if (!result) {
@@ -7620,20 +8234,39 @@
                 setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
             }
         }
+        // Poll /executions until an order's fills reach the requested quantity or
+        // the order stops working. Returns {filled, avgFillPrice, done}.
+        async function waitForTwsFill(orderId, wantQty, timeoutMs) {
+            const t0 = Date.now();
+            let filled = 0, avgFillPrice = 0;
+            while (Date.now() - t0 < (timeoutMs || 20000)) {
+                try {
+                    const ex = await bridgeGet('/executions');
+                    const fills = (ex.executions || []).filter(e => e.orderId === orderId);
+                    filled = fills.reduce((a, e) => a + (Number(e.shares) || 0), 0);
+                    if (filled > 0) avgFillPrice = fills.reduce((a, e) => a + (Number(e.price) || 0) * e.shares, 0) / filled;
+                    if (filled >= wantQty) return { filled, avgFillPrice, done: true };
+                    const os = await bridgeGet('/orders');
+                    const working = (os.orders || []).some(o => o.orderId === orderId);
+                    if (!working) return { filled, avgFillPrice, done: true };
+                } catch (e) { /* bridge hiccup — keep polling until timeout */ }
+                await new Promise(r => setTimeout(r, 500));
+            }
+            return { filled, avgFillPrice, done: false };
+        }
+
         async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry, entryItem, opts) {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             opts = opts || {};
             const key = twsSendKey(ticker, 'exits', opts.stratKind);
             if (twsSendState[key] === 'sending') return;
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
+            let built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
             if (!built.ok) { showErrorToast(built.error); return; }
             const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
             if (isAdvanced && !document.getElementById('advancedCsvAck')?.checked) {
                 showErrorToast('Before sending advanced orders, acknowledge the TWS paper-validation requirement in Settings.', 8000);
                 return;
             }
-            const payload = buildExitOrdersPayload(built);
-            if (!payload.ok) { showErrorToast(payload.error); return; }
             const pf = await preflightContract(ticker);
             if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
             if (attachEntry) {
@@ -7641,11 +8274,32 @@
                 if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
                 const entryPayload = buildEntryOrderPayload(snapItem);
                 if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
-                payload.orders.unshift({ ...entryPayload, ref: 'entry', transmit: false });
-                payload.orders.forEach((o, i) => { if (i > 0) o.parentRef = 'entry'; });
-                // Bracket: only the final child transmits, releasing the parent and all children together.
-                payload.orders.forEach((o, i) => { o.transmit = i === payload.orders.length - 1; });
+                // TWS resizes parentId-attached children to the parent's filled
+                // quantity, so percentage-split exit legs can't ride the entry as
+                // bracket children. Send the entry alone, wait for the fill, then
+                // place exits as standalone OCA-grouped orders (same semantics as
+                // the manual Send Exit Order path).
+                setTwsSendState(key, 'sending');
+                const entryRes = await bridgeRequest('/order', entryPayload);
+                if (!entryRes.ok || entryRes.unknown) {
+                    setTwsSendState(key, entryRes.unknown ? 'unknown' : 'error', entryRes.error || entryRes.message || 'Entry send failed');
+                    showErrorToast('Entry send failed: ' + (entryRes.error || entryRes.message || 'unknown'), 6000);
+                    return entryRes;
+                }
+                const fill = await waitForTwsFill(entryRes.orderId, entryPayload.quantity, 60000);
+                if (!fill || !(fill.filled > 0)) {
+                    setTwsSendState(key, 'unknown', 'Entry working — exits not sent');
+                    showErrorToast(`Entry ${entryRes.orderId || ''} sent but not filled — exit legs were NOT placed (they'd sit live with no position). Send exits from the card once it fills.`, 10000);
+                    return { ok: true, unknown: true, message: 'Entry not filled — exits not sent', results: [entryRes] };
+                }
+                if (fill.filled !== shares) {
+                    // Partial fill — rebuild the legs for the actual filled size.
+                    built = buildExitLegs(ticker, isLong, fill.avgFillPrice || entry, Math.round(fill.filled), stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
+                    if (!built.ok) { showErrorToast(built.error); return built; }
+                }
             }
+            const payload = buildExitOrdersPayload(built);
+            if (!payload.ok) { showErrorToast(payload.error); return; }
             setTwsSendState(key, 'sending');
             const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
             const firstFail = result.results ? result.results.find(r => !r.ok) : null;
@@ -7789,10 +8443,46 @@
             return twsOrdersFor(ticker).filter(o => isPscRef(o.orderRef) && o.action === action);
         }
         function isPscRef(ref) { return typeof ref === 'string' && ref.startsWith('PSC-'); }
+        const twsCancelling = new Set();   // orderIds with an in-flight cancel — drives the CXL… row state
         async function cancelTwsOrder(orderId) {
+            if (twsCancelling.has(orderId)) return;
+            twsCancelling.add(orderId);
+            renderTwsOrdersDrawer();   // instant 'CXL…' feedback — don't wait on the bridge
+            showInfoToast('Cancelling order ' + orderId + '…', 2500);
             const r = await bridgeRequest('/cancel', { orderId });
-            if (r && (r.status === 'Cancelled' || r.ok)) { showSuccessToast('Order ' + orderId + ' cancelled'); }
-            else showErrorToast('Cancel failed: ' + (r && (r.error || r.message) || 'unknown'), 6000);
+            const done = (success, msg) => {
+                twsCancelling.delete(orderId);
+                if (success) {
+                    // Optimistic drop — the /orders snapshot re-adds it if TWS disagrees.
+                    twsOpenOrders = twsOpenOrders.filter(o => o.orderId !== orderId);
+                    showSuccessToast(msg);
+                } else {
+                    showErrorToast(msg, 6000);
+                }
+                refreshTwsBadges();
+                renderTwsOrdersDrawer();
+            };
+            if (r && r.ok && r.pending) {
+                // Cancel transmitted but TWS hasn't confirmed — the /orders snapshot is the
+                // source of truth; poll until the order disappears or give up clearly.
+                showInfoToast('Cancel sent for order ' + orderId + ' — waiting for TWS…', 3000);
+                for (let i = 0; i < 6 && twsCancelling.has(orderId); i++) {
+                    await new Promise(res => setTimeout(res, 1400));
+                    await refreshTwsOrders();
+                    if (!twsOpenOrders.some(o => o.orderId === orderId)) {
+                        done(true, 'Order ' + orderId + ' cancelled');
+                        return;
+                    }
+                }
+                done(false, 'Order ' + orderId + ' still working — TWS did not confirm the cancel');
+                return;
+            }
+            if (r && r.ok) {
+                done(true, 'Order ' + orderId + ' cancelled');
+                await refreshTwsOrders();
+                return;
+            }
+            done(false, 'Cancel failed: ' + (r && (r.error || r.message || r.status) || 'unknown — check TWS'));
             await refreshTwsOrders();
         }
         async function cancelAllPscOrders() {
@@ -7829,9 +8519,31 @@
             }
             return used;
         }
+        // execId dedupe is persisted: TWS returns all available executions on every
+        // /executions call, so a page reload would otherwise replay today's fills
+        // (duplicate toasts, commissions, journal mutations). Keyed on day+execId —
+        // IB execIds are only guaranteed unique per day — and capped.
+        const TWS_SEEN_EXECS_MAX = 500;
+        function twsExecKey(ex) {
+            const d = ex && typeof ex.time === 'string' ? ex.time.slice(0, 8) : '';
+            return (d ? d + '|' : '') + ex.execId;
+        }
+        function loadTwsSeenExecs() {
+            try {
+                const arr = JSON.parse(safeStorageGet('twsSeenExecs') || '[]');
+                return new Set(Array.isArray(arr) ? arr.filter(x => typeof x === 'string' && x) : []);
+            } catch (e) { return new Set(); }
+        }
+        function saveTwsSeenExecs() {
+            if (twsSeenExecs.size > TWS_SEEN_EXECS_MAX) twsSeenExecs = new Set([...twsSeenExecs].slice(-TWS_SEEN_EXECS_MAX));
+            safeStorageSet('twsSeenExecs', JSON.stringify([...twsSeenExecs]));
+        }
         function handleTwsExecution(ex) {
-            if (!ex || !ex.execId || twsSeenExecs.has(ex.execId)) return;
-            twsSeenExecs.add(ex.execId);
+            if (!ex || !ex.execId) return;
+            const key = twsExecKey(ex);
+            if (twsSeenExecs.has(key)) return;
+            twsSeenExecs.add(key);
+            saveTwsSeenExecs();
             const ticker = normalizeTwsSymbol(ex.symbol);
             const side = ex.side === 'BOT' ? 'BOT' : (ex.side === 'SLD' ? 'SLD' : (ex.side || '').toUpperCase());
             const qty = Number(ex.shares) || 0;
@@ -7849,19 +8561,35 @@
                 || (!open && held && ((heldLong && side === 'SLD') || (heldShort && side === 'BOT')));
             // Same-side fill on an existing TWS row = add-on → merge (weighted-avg entry).
             if (open && open.fillSource === 'tws' && open.side === fillDir) {
-                const tot = open.shares + qty;
-                open.entryPrice = (open.entryPrice * open.shares + price * qty) / tot;
-                open.shares = tot;
-                open.commission = (open.commission || 0) + fees;
-                // Credit the position-delta only when the position hasn't reflected it yet.
-                if (!(held && Math.abs(held.qty) >= tot)) (open._entryCredits = open._entryCredits || []).push({ qty, ts: Date.now() });
+                const post = held ? Math.abs(held.qty) : null;
+                if (post != null && post <= open.shares) {
+                    // Position already contains this fill (the row was imported/created
+                    // from the same position the exec belongs to) — record commission
+                    // only; broker qty is the truth. Prevents the import+exec double-count.
+                    open.commission = (open.commission || 0) + fees;
+                } else {
+                    const tot = post != null && post > open.shares ? post : open.shares + qty;
+                    open.entryPrice = (held && Number.isFinite(held.avgCost) && held.avgCost > 0)
+                        ? held.avgCost
+                        : (open.entryPrice * open.shares + price * qty) / (open.shares + qty);
+                    open.shares = tot;
+                    open.commission = (open.commission || 0) + fees;
+                    open._posQty = tot;
+                    // Credit the position-delta only when the position hasn't reflected it yet.
+                    if (!(held && post >= tot)) (open._entryCredits = open._entryCredits || []).push({ qty, ts: Date.now() });
+                }
             } else if (!open && !isExit) {
                 // Entry fill (any origin — PSC or manual TWS order): journal at real price.
+                const isQld = ticker === 'QLD';
                 activeTradesLog.unshift({
                     id: Date.now() + Math.random(),
                     ticker, side: fillDir,
-                    strategyId: 'tws', regime: isPscRef(ex.orderRef) ? 'TWS fill' : 'TWS fill (manual)',
-                    marketRegime: globalMarketRegime, holdLimit: maxHoldDays,
+                    strategyId: isQld ? 'qld' : 'tws',
+                    regime: isQld ? 'QLD Trend' : (isPscRef(ex.orderRef) ? 'TWS fill' : 'TWS fill (manual)'),
+                    marketRegime: globalMarketRegime,
+                    holdLimit: isQld ? null : maxHoldDays,
+                    holdUnit: isQld ? 'week' : 'day',
+                    sleeve: isQld ? 'QLD' : undefined,
                     targets: [], tp1: null, tp2: null,
                     entryDate: nyDateStr(), entryPrice: price, shares: qty,
                     stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
@@ -7946,6 +8674,12 @@
             // 1) Reconcile existing TWS rows.
             for (const tr of activeTradesLog) {
                 if (tr.status !== 'ACTIVE' || tr.fillSource !== 'tws') continue;
+                // Migrate pre-fix imported QLD rows onto the trend-sleeve rendering.
+                if (tr.ticker === 'QLD' && tr.sleeve !== 'QLD') {
+                    tr.sleeve = 'QLD'; tr.strategyId = 'qld'; tr.regime = 'QLD Trend';
+                    tr.holdUnit = 'week'; tr.holdLimit = null;
+                    changed = true;
+                }
                 const p = twsPositionFor(tr.ticker);
                 const sameDir = p && ((tr.side === 'LONG' && p.qty > 0) || (tr.side === 'SHORT' && p.qty < 0));
                 const cur = sameDir ? Math.abs(p.qty) : 0;
@@ -7973,6 +8707,22 @@
                     changed = true;
                 } else if (sameDir) {
                     tr._posQty = cur;
+                    // Self-heal: shares can drift from the position when an exec landed
+                    // after the row already reflected it (import+exec double-count).
+                    // Only fresh credits count — a stale persisted credit must not
+                    // resurrect shares the broker already reported. The QLD sleeve is a
+                    // position tracker, so the broker quantity is authoritative outright.
+                    const now = Date.now();
+                    const pend = l => (l || []).filter(c => now - (c.ts || 0) <= TWS_CREDIT_TTL_MS).reduce((a, c) => a + c.qty, 0);
+                    const expected = tr.sleeve === 'QLD'
+                        ? cur
+                        : Math.max(0, cur + pend(tr._entryCredits) - pend(tr._exitCredits));
+                    if (tr.shares !== expected) { tr.shares = expected; changed = true; }
+                    for (const k of ['_entryCredits', '_exitCredits']) {
+                        if (tr[k] && tr[k].length && !tr[k].some(c => now - (c.ts || 0) <= TWS_CREDIT_TTL_MS)) {
+                            tr[k] = []; changed = true;
+                        }
+                    }
                 } else if (posFresh) {
                     tr.status = 'CLOSED';
                     tr.exitDate = nyDateStr();
@@ -7996,12 +8746,17 @@
                 const entry = Number.isFinite(p.avgCost) && p.avgCost > 0 ? p.avgCost
                     : (Number.isFinite(p.mktPrice) && p.mktPrice > 0 ? p.mktPrice : 0);
                 if (!(entry > 0)) continue;
+                const isQld = sym === 'QLD';
                 activeTradesLog.unshift({
                     id: Date.now() + Math.random(),
                     ticker: sym,
                     side: p.qty > 0 ? 'LONG' : 'SHORT',
-                    strategyId: 'tws', regime: 'TWS position',
-                    marketRegime: globalMarketRegime, holdLimit: maxHoldDays,
+                    strategyId: isQld ? 'qld' : 'tws',
+                    regime: isQld ? 'QLD Trend' : 'TWS position',
+                    marketRegime: globalMarketRegime,
+                    holdLimit: isQld ? null : maxHoldDays,
+                    holdUnit: isQld ? 'week' : 'day',
+                    sleeve: isQld ? 'QLD' : undefined,
                     targets: [], tp1: null, tp2: null,
                     entryDate: nyDateStr(), entryPrice: entry, shares: Math.abs(p.qty),
                     stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
@@ -8055,9 +8810,10 @@
         async function pollTwsAux() {
             if (!twsReady() || !twsConnected) { updateTwsAccountTag(); updateTwsPnlChip(); return; }
             twsAuxPollCount++;
+            // Orders first, unawaited — a slow account/positions call must not delay the badge.
+            if (twsOrdersEnabled) refreshTwsOrders();
             if (twsSyncAccount) await pollTwsAccount();
             if (twsPositionsEnabled && twsAuxPollCount % 2 === 0) refreshTwsPositions();
-            if (twsOrdersEnabled && twsAuxPollCount % 2 === 0) refreshTwsOrders();
             if (twsFillsJournalEnabled && twsAuxPollCount % 4 === 0) refreshTwsExecutions();
             if (twsPnlEnabled) refreshTwsPnl();
             renderProviderPriorityList();
@@ -8092,25 +8848,36 @@
                 list.innerHTML = '<div class="text-[10px] text-gray-500 py-3 text-center">No working orders</div>';
                 return;
             }
-            list.innerHTML = twsOpenOrders.map(o => `
-                <div class="flex items-center gap-2 px-2 py-1.5 border-b border-white/5 text-[10px] font-mono-num">
-                    <span class="font-black ${o.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${o.action}</span>
-                    <span class="text-white font-bold">${escapeHtml(o.symbol || '')}</span>
-                    <span class="text-gray-300">${o.qty ?? ''} ${o.type || ''}${o.lmtPrice ? ' @' + o.lmtPrice : ''}${o.auxPrice ? ' stp@' + o.auxPrice : ''}</span>
-                    <span class="text-gray-500 truncate flex-1" title="${escapeHtml(o.orderRef || '')}">${escapeHtml(o.orderRef || '')}</span>
-                    <span class="text-gray-500">${escapeHtml(o.status || '')}</span>
-                    <button data-action="cancel-tws-order" data-order-id="${o.orderId}" class="text-red-300 hover:text-red-200 font-bold px-1">✕</button>
-                </div>`).join('');
+            list.innerHTML = twsOpenOrders.map(o => {
+                const cancelling = twsCancelling.has(o.orderId);
+                const canCancel = o.canCancel !== false;
+                return `
+                <div class="flex items-center gap-2 px-2 py-1.5 border-b border-white/5 text-[10px] font-mono-num whitespace-nowrap ${cancelling ? 'opacity-40' : ''}">
+                    <span class="font-black shrink-0 ${o.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${o.action}</span>
+                    <span class="text-white font-bold shrink-0">${escapeHtml(o.symbol || '')}</span>
+                    <span class="text-gray-300 shrink-0">${o.qty ?? ''} ${o.type || ''}${o.lmtPrice ? ' @' + o.lmtPrice : ''}${o.auxPrice ? ' stp@' + o.auxPrice : ''}</span>
+                    <span class="shrink-0 px-1 rounded border ${o.outsideRth ? 'text-cyan-300 border-cyan-500/30 bg-cyan-950/40' : 'text-gray-500 border-white/10'}" title="${o.outsideRth ? 'Eligible outside regular trading hours' : 'Regular trading hours only'}">${o.outsideRth ? 'RTH+EXT' : 'RTH'}</span>
+                    <span class="text-gray-500 truncate flex-1 min-w-0" title="${escapeHtml(o.orderRef || '')}">${escapeHtml(o.orderRef || '')}</span>
+                    <span class="shrink-0 ${cancelling ? 'text-amber-300 font-bold' : 'text-gray-500'}">${cancelling ? 'CXL…' : escapeHtml(o.status || '')}</span>
+                    ${canCancel
+                        ? `<button data-action="cancel-tws-order" data-order-id="${o.orderId}" ${cancelling ? 'disabled' : ''} class="text-red-300 hover:text-red-200 font-bold px-1 ${cancelling ? 'cursor-wait' : ''}">✕</button>`
+                        : `<button disabled title="Not managed by this session — cancel it in TWS directly" class="text-gray-600 font-bold px-1 cursor-not-allowed">✕</button>`}
+                </div>`;
+            }).join('');
         }
         function openTwsOrdersDrawer() {
             renderTwsOrdersDrawer();
             const d = document.getElementById('twsOrdersDrawer');
-            if (d) { d.classList.remove('hidden'); d.classList.add('flex'); }
+            const b = document.getElementById('twsOrdersBackdrop');
+            if (d) d.classList.remove('translate-x-full');
+            if (b) b.classList.remove('hidden');
             refreshTwsOrders();
         }
         function closeTwsOrdersDrawer() {
             const d = document.getElementById('twsOrdersDrawer');
-            if (d) { d.classList.add('hidden'); d.classList.remove('flex'); }
+            const b = document.getElementById('twsOrdersBackdrop');
+            if (d) d.classList.add('translate-x-full');
+            if (b) b.classList.add('hidden');
         }
 
         // ========================================================
@@ -8163,11 +8930,20 @@
         document.addEventListener('click', (e) => {
             const openBtn = e.target.closest('[data-action="open-tws-orders"]');
             if (openBtn) { e.stopPropagation(); openTwsOrdersDrawer(); return; }
+        });
+        // mousedown, not click: the orders list re-renders on every refresh — a render
+        // landing between press and release detaches the node and the click is lost.
+        document.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
             const cancelBtn = e.target.closest('[data-action="cancel-tws-order"]');
-            if (cancelBtn) {
-                e.stopPropagation();
-                const oid = Number(cancelBtn.dataset.orderId);
-                if (Number.isFinite(oid)) cancelTwsOrder(oid);
+            if (!cancelBtn || cancelBtn.disabled) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const oid = Number(cancelBtn.dataset.orderId);
+            if (Number.isFinite(oid)) {
+                cancelTwsOrder(oid).catch(err => showErrorToast('Cancel error: ' + (err && err.message || err)));
+            } else {
+                showErrorToast('Cannot cancel — invalid order id');
             }
         });
 

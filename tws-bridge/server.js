@@ -137,6 +137,8 @@ function shapeOpenOrder(orderId, contract, order, orderState) {
         orderRef: order && order.orderRef,
         parentId: order && order.parentId,
         ocaGroup: order && order.ocaGroup,
+        outsideRth: !!(order && order.outsideRth),
+        canCancel: !unownedOrders.has(orderId),
     };
 }
 
@@ -173,6 +175,8 @@ function shapeQuote(quote, delayed, lastTradeTs) {
 let ib = null;
 let connected = false;
 let account = '';
+let appVersion = 'dev';
+try { appVersion = require('../package.json').version; } catch (_) {}
 let nextOrderId = 0;
 let nextReqId = 1000;                  // data-request ids — separate space from order ids
 let lastError = '';
@@ -181,6 +185,7 @@ let reconnectTimer = null;
 
 const pending = new Map();             // orderId -> {resolve, reject, timer, order}
 const pendingCancel = new Map();       // orderId -> {resolve, reject, timer}
+const unownedOrders = new Set();       // orderIds TWS refused to cancel for this client (manual/other-session orders)
 const refDedupe = new Map();           // orderRef -> {result, ts}
 const REF_TTL = 60_000;
 
@@ -351,6 +356,9 @@ function connect() {
         connected = true;
         console.log(`[bridge] Connected to TWS on ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
         ib.reqIds();
+        // Bind existing API orders to this client BEFORE the open-orders snapshot —
+        // orders from dead/other sessions can only be cancelled once bound.
+        try { ib.reqAutoOpenOrders(true); } catch (_) {}
         try { ib.reqMarketDataType(1); } catch (_) {}     // ask for real-time; TWS downgrades to delayed if unentitled
         try { if (!positionSnapshotSeen) { positionSnapshotSeen = new Set(); ib.reqPositions(); } } catch (_) {}
         try { if (!orderSnapshotSeen) { orderSnapshotSeen = new Set(); ib.reqAllOpenOrders(); } } catch (_) {}
@@ -379,9 +387,13 @@ function connect() {
         streamBroadcast({ type: 'order', orderId, status, filled, remaining, avgFillPrice });
 
         const pc = pendingCancel.get(orderId);
-        if (pc && status === 'Cancelled') {
+        if (pc && (status === 'Cancelled' || status === 'ApiCancelled' || status === 'PendingCancel' || status === 'Inactive')) {
+            // PendingCancel = TWS accepted the request but hasn't finished — report sent, let
+            // the caller confirm via the /orders snapshot. Inactive = order is gone for good.
+            const stillPending = status === 'PendingCancel';
+            console.log(`[bridge] cancel ${orderId} -> ${status}`);
             clearTimeout(pc.timer); pendingCancel.delete(orderId);
-            pc.resolve({ orderId, status });
+            pc.resolve({ ok: true, orderId, status, pending: stillPending });
         }
 
         const p = pending.get(orderId);
@@ -486,7 +498,15 @@ function connect() {
         const pc = pendingCancel.get(reqId);
         if (pc) {
             clearTimeout(pc.timer); pendingCancel.delete(reqId);
-            pc.resolve({ orderId: reqId, status: 'CancelRejected', message: msg, code });
+            console.log(`[bridge] cancel ${reqId} rejected: code=${code} ${msg}`);
+            if (/not found|already.*(cancel|fill)|no order/i.test(msg)) {
+                // TWS won't let this client cancel it (manual order or another session's) —
+                // flag it so the UI can stop offering a dead cancel button.
+                unownedOrders.add(reqId);
+                const c = openOrdersCache.get(reqId);
+                if (c) { c.canCancel = false; streamBroadcast({ type: 'order', orderId: reqId, status: c.status || 'Submitted' }); }
+            }
+            pc.resolve({ ok: false, orderId: reqId, status: 'CancelRejected', message: msg, code });
         }
         if (reqId <= 0) console.warn(`[bridge] info code=${code} reqId=${reqId}: ${msg}`);
     });
@@ -651,6 +671,7 @@ function connect() {
     ib.on(EventName.disconnected, () => {
         if (connected) console.warn('[bridge] Disconnected from TWS');
         connected = false;
+        unownedOrders.clear();   // ownership may change on the next session's binding
         releaseSnapshots();
         streamBroadcast({ type: 'status', connected: false });
         scheduleReconnect();
@@ -763,10 +784,15 @@ function placeOrder(spec) {
 function cancelOrderById(orderId) {
     return new Promise((resolve) => {
         if (!connected || !ib) return resolve({ ok: false, orderId, error: 'Not connected to TWS' });
+        const cached = openOrdersCache.get(orderId);
+        console.log(`[bridge] cancel ${orderId} ${cached ? `(${cached.symbol || '?'} ${cached.action || ''} ${cached.qty ?? ''} ${cached.type || ''} status=${cached.status || '?'})` : '(not in open-orders cache)'}`);
         const timer = setTimeout(() => {
             pendingCancel.delete(orderId);
-            resolve({ ok: false, orderId, error: 'Cancel timed out — check TWS' });
-        }, 8000);
+            // cancelOrder was transmitted but TWS sent no ack — the /orders snapshot is the
+            // source of truth; report 'sent, unconfirmed' instead of blocking for 8s.
+            console.log(`[bridge] cancel ${orderId} sent, no TWS ack within 2.5s`);
+            resolve({ ok: true, orderId, status: 'CancelSent', pending: true });
+        }, 2500);
         pendingCancel.set(orderId, { resolve, timer });
         try { ib.cancelOrder(orderId); }
         catch (e) { pendingCancel.delete(orderId); clearTimeout(timer); resolve({ ok: false, orderId, error: e.message }); }
@@ -934,7 +960,7 @@ const server = http.createServer(async (req, res) => {
     // GET /health — token-free status probe
     if (req.method === 'GET' && url.pathname === '/health') {
         const body = {
-            ok: connected, connected, account, nextOrderId, twsPort: TWS_PORT,
+            ok: connected, connected, account, nextOrderId, twsPort: TWS_PORT, version: appVersion,
             netLiq: accountValues['NetLiquidation'] != null ? Number(accountValues['NetLiquidation']) : null,
             dailyPnL: pnlCache.dailyPnL != null ? pnlCache.dailyPnL : null,
         };
@@ -1077,7 +1103,7 @@ const server = http.createServer(async (req, res) => {
         const orderId = body && Number(body.orderId);
         if (!Number.isFinite(orderId)) return sendJson(res, 400, { ok: false, error: 'missing orderId' }, corsHeaders);
         const r = await cancelOrderById(orderId);
-        return sendJson(res, r.status === 'Cancelled' ? 200 : 502, r, corsHeaders);
+        return sendJson(res, r.ok ? 200 : 502, r, corsHeaders);
     }
 
     // POST /cancel-all — {scope:'psc'|'all'} — PSC-scoped by default, never reqGlobalCancel.
@@ -1092,9 +1118,11 @@ const server = http.createServer(async (req, res) => {
             results.push(await cancelOrderById(oid));
             if (targets.length > 1) await new Promise(r => setTimeout(r, 120));
         }
+        const confirmed = r => r.ok && !r.pending;
         return sendJson(res, 200, {
-            ok: results.every(r => r.status === 'Cancelled'),
-            cancelled: targets.filter((t, i) => results[i].status === 'Cancelled').length,
+            ok: results.every(r => r.ok),
+            cancelled: results.filter(confirmed).length,
+            pending: results.filter(r => r.ok && r.pending).length,
             attempted: targets.length,
             results,
         }, corsHeaders);
@@ -1205,7 +1233,7 @@ async function start(opts = {}) {
         });
         server.listen(port, '127.0.0.1');
     });
-    console.log(`[bridge] HTTP listening on http://127.0.0.1:${actualPort}`);
+    console.log(`[bridge] HTTP listening on http://127.0.0.1:${actualPort} (app v${appVersion}, streaming-quote + cancel-ack build)`);
     console.log(`[bridge] TWS target: ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
     if (opts.connectTws === false) console.log('[bridge] TWS connect skipped (connectTws:false)');
     else connect();
@@ -1223,7 +1251,7 @@ async function stop() {
     if (execPollTimer) { clearInterval(execPollTimer); execPollTimer = null; }
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     for (const m of [pending, pendingCancel, pendingSnapshot, pendingContract, pendingHistory, pendingExec]) {
-        for (const p of m.values()) clearTimeout(p.timer);
+        for (const p of m.values()) { clearTimeout(p.timer); if (p.earlyTimer) clearTimeout(p.earlyTimer); }
         m.clear();
     }
     // Release snapshot waiters without pruning on partial data.

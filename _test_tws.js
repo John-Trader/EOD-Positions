@@ -45,10 +45,11 @@ const document = {
   addEventListener: () => {},
   hidden: false
 };
+const store = {};
 const localStorage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {}
+  getItem: (k) => (store[k] !== undefined ? store[k] : null),
+  setItem: (k, v) => { store[k] = String(v); },
+  removeItem: (k) => { delete store[k]; }
 };
 const window = {
   isSecureContext: false,
@@ -58,7 +59,31 @@ const window = {
 const navigator = { serviceWorker: {}, clipboard: { writeText: () => Promise.resolve() } };
 const URL = { createObjectURL: (x) => x, revokeObjectURL: () => {} };
 const crypto = { randomUUID: () => 'test-uuid-1234' };
-const fetch = async () => ({ ok: true, json: async () => ({ ok: true, connected: true, account: 'DU123', nextOrderId: 100 }) });
+const fetchCalls = [];
+let cancelResponse = { ok: true, orderId: 0, status: 'Cancelled' };
+let ordersResponse = { ok: true, orders: [] };
+const fetch = async (url, opts) => {
+  const u = String(url);
+  fetchCalls.push({ url: u, opts });
+  let body = { ok: true, connected: true, account: 'DU123', nextOrderId: 100 };
+  if (u.endsWith('/executions')) {
+    // Fill matches whatever quantity the /order POST carried.
+    const orderPost = fetchCalls.find(c => c.url.endsWith('/order') && c.opts && c.opts.method === 'POST');
+    const q = orderPost ? (JSON.parse(orderPost.opts.body).quantity || 0) : 0;
+    body = { ok: true, executions: [{ execId: 'e1', orderId: 4242, symbol: 'AMPL', side: 'BOT', shares: q, price: 15, time: 'now' }] };
+  } else if (u.endsWith('/order') && opts && opts.method === 'POST') {
+    body = { ok: true, orderId: 4242, status: 'Filled', filled: 0, remaining: 0 };
+  } else if (u.endsWith('/orders') && opts && opts.method === 'POST') {
+    body = { ok: true, results: [{ ok: true, orderId: 4243 }, { ok: true, orderId: 4244 }, { ok: true, orderId: 4245 }, { ok: true, orderId: 4246 }] };
+  } else if (u.endsWith('/orders')) {
+    body = { ...ordersResponse, orders: (ordersResponse.orders || []).map(o => ({ ...o })) };
+  } else if (u.endsWith('/cancel') && opts && opts.method === 'POST') {
+    body = typeof cancelResponse === 'function' ? cancelResponse(JSON.parse(opts.body)) : cancelResponse;
+  } else if (u.includes('/contract')) {
+    body = { ok: true };
+  }
+  return { ok: true, status: 200, json: async () => body };
+};
 const AbortController = class { constructor() { this.signal = { aborted: false }; } abort() {} };
 
 function assertEq(actual, expected, label) {
@@ -82,7 +107,7 @@ function assertTrue(cond, label) {
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, twsOpenOrders, handleTwsExecution, twsSeenExecs, activeTradesLog, saveActiveTradesLog, syncJournalToPositions, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; } };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, get twsOpenOrders() { return twsOpenOrders; }, handleTwsExecution, twsSeenExecs, twsExecKey, activeTradesLog, saveActiveTradesLog, syncJournalToPositions, twsEntryOrderSpec, twsAutoSendStrategyId, AUTO_STRATEGY, defaultStrategyId, setGlobalRegime, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, get globalMarketRegime() { return globalMarketRegime; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, cancelTwsOrder, set twsEntryOutsideRth(v) { twsEntryOutsideRth = v; }, set twsExitStrategy(v) { twsExitStrategy = v; }, get twsExitStrategy() { return twsExitStrategy; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; } };');
   const api = fn(...Object.values(sandbox));
 
   console.log('Script loaded successfully');
@@ -307,6 +332,98 @@ function assertTrue(cond, label) {
 
   api.activeTradesLog.length = 0;
   api.upsertTwsPosition('HRMY', 0, 0, 0);
+
+  // ---- attachEntry two-phase: entry first, fill-wait, then standalone OCA exits ----
+  // (parentId-attached children get resized by TWS to the parent's filled qty —
+  // exits must NOT carry parentRef.)
+  api.twsEnabled = true; api.twsOrdersEnabled = true; api.twsConnected = true;
+  api.twsBridgeUrl = 'http://127.0.0.1:8787'; api.twsBridgeToken = 'tok';
+  fetchCalls.length = 0;
+  const attachRes = await api.sendTwsExits('AMPL', true, 15.00, 100, 14.50, 'opt2', [], true, longItem, {});
+  assertTrue(attachRes && attachRes.ok, 'attachEntry send resolves ok');
+  const orderPost = fetchCalls.find(c => c.url.endsWith('/order') && c.opts && c.opts.method === 'POST');
+  const ordersPost = fetchCalls.find(c => c.url.endsWith('/orders') && c.opts && c.opts.method === 'POST');
+  assertTrue(!!orderPost, 'entry posted to /order first');
+  assertTrue(!!ordersPost, 'exits posted to /orders after fill');
+  assertTrue(fetchCalls.indexOf(orderPost) < fetchCalls.indexOf(ordersPost), 'entry precedes exits');
+  const entryBody = JSON.parse(orderPost.opts.body);
+  assertTrue(entryBody.quantity > 0, 'entry carries qty');
+  const exitOrders = JSON.parse(ordersPost.opts.body).orders;
+  assertEq(exitOrders.length, 4, 'opt2 exits = 4 standalone orders');
+  assertTrue(exitOrders.every(o => o.parentRef === undefined && o.parentId === undefined), 'no parentRef/parentId on exits');
+  assertTrue(exitOrders.every(o => o.transmit === true), 'all exits transmit individually');
+  const stps = exitOrders.filter(o => o.orderType === 'STP').map(o => o.quantity);
+  const lmts = exitOrders.filter(o => o.orderType === 'LMT').map(o => o.quantity);
+  const want = api.splitSharesByPct(entryBody.quantity, [40, 60]);
+  assertEq(stps, want, 'STP legs carry pct split, not parent qty');
+  assertEq(lmts, want, 'LMT legs carry pct split, not parent qty');
+  assertTrue(stps[0] > 0 && stps[0] < entryBody.quantity, 'leg1 is a partial qty');
+
+  // ---- twsEntryOrderSpec: outside-RTH entries go out as LMT at last price ----
+  api.twsEntryOutsideRth = false;
+  assertEq(api.twsEntryOrderSpec(15, true).orderType, 'MKT', 'toggle off -> MKT in RTH');
+  assertEq(api.twsEntryOrderSpec(15, false).orderType, 'MKT', 'toggle off -> MKT outside RTH');
+  assertEq(api.twsEntryOrderSpec(15, false).outsideRth, false, 'toggle off -> outsideRth false');
+  api.twsEntryOutsideRth = true;
+  let spec = api.twsEntryOrderSpec(15, true);
+  assertEq(spec.orderType, 'MKT', 'toggle on, RTH -> stays MKT');
+  assertEq(spec.outsideRth, true, 'toggle on, RTH -> outsideRth flag set');
+  spec = api.twsEntryOrderSpec(15, false);
+  assertEq(spec.orderType, 'LMT', 'toggle on, outside RTH -> LMT');
+  assertEq(spec.lmtPrice, 15, 'LMT at last price');
+  assertEq(spec.outsideRth, true, 'LMT order carries outsideRth');
+  spec = api.twsEntryOrderSpec(0, false);
+  assertEq(spec.orderType, 'MKT', 'no price -> stays MKT (cannot price a limit)');
+  api.twsEntryOutsideRth = false;
+
+  // ---- twsAutoSendStrategyId: auto follows regime, manual overrides, shorts fixed ----
+  api.twsExitStrategy = '__auto';
+  assertEq(api.twsAutoSendStrategyId(true), api.defaultStrategyId(true), 'auto -> regime long strategy');
+  assertEq(api.twsAutoSendStrategyId(false), 'short16', 'shorts always short16');
+  api.twsExitStrategy = 'opt1';
+  assertEq(api.twsAutoSendStrategyId(true), 'opt1', 'manual override wins for longs');
+  assertEq(api.twsAutoSendStrategyId(false), 'short16', 'override does not touch shorts');
+  api.twsExitStrategy = 'doesnotexist';
+  assertEq(api.twsAutoSendStrategyId(true), api.defaultStrategyId(true), 'deleted strategy -> falls back to regime');
+  api.twsExitStrategy = 'short16';
+  assertEq(api.twsAutoSendStrategyId(true), api.defaultStrategyId(true), 'short strategy not selectable for longs');
+  api.twsExitStrategy = 'opt1';
+  api.setGlobalRegime('declining', false);
+  assertEq(api.twsExitStrategy, api.AUTO_STRATEGY, 'regime change resets override to auto');
+  api.setGlobalRegime('expanding', false);
+
+  // ---- cancelTwsOrder: three response paths ----
+  // 1) Confirmed cancel — row drops immediately.
+  fetchCalls.length = 0;
+  cancelResponse = { ok: true, orderId: 99, status: 'Cancelled' };
+  api.twsOpenOrders.length = 0;
+  api.twsOpenOrders.push({ orderId: 99, symbol: 'AMPL', action: 'SELL', qty: 2, type: 'STP', orderRef: 'PSC-AMPL-s1', status: 'Submitted' });
+  await api.cancelTwsOrder(99);
+  const cancelPost = fetchCalls.find(c => c.url.endsWith('/cancel') && c.opts && c.opts.method === 'POST');
+  assertTrue(!!cancelPost, 'cancel posts to /cancel');
+  assertEq(JSON.parse(cancelPost.opts.body).orderId, 99, 'cancel sends numeric orderId');
+  assertEq(api.twsOpenOrders.some(o => o.orderId === 99), false, 'confirmed cancel drops the row');
+
+  // 2) Rejected — row survives the refresh (snapshot still reports it working).
+  cancelResponse = { ok: false, orderId: 97, status: 'CancelRejected', message: 'test rejection' };
+  ordersResponse = { ok: true, orders: [{ orderId: 97, symbol: 'AMPL', action: 'SELL', qty: 3, type: 'LMT', orderRef: 'PSC-AMPL-t2', status: 'Submitted' }] };
+  api.twsOpenOrders.push({ orderId: 97, symbol: 'AMPL', action: 'SELL', qty: 3, type: 'LMT', orderRef: 'PSC-AMPL-t2', status: 'Submitted' });
+  await api.cancelTwsOrder(97);
+  assertEq(api.twsOpenOrders.some(o => o.orderId === 97), true, 'rejected cancel keeps the row after refresh');
+
+  // 3) Sent-but-unconfirmed — the /orders snapshot confirms it gone on the first poll.
+  cancelResponse = { ok: true, orderId: 98, status: 'CancelSent', pending: true };
+  api.twsOpenOrders.push({ orderId: 98, symbol: 'AMPL', action: 'SELL', qty: 3, type: 'LMT', orderRef: 'PSC-AMPL-t1', status: 'Submitted' });
+  await api.cancelTwsOrder(98);
+  assertEq(api.twsOpenOrders.some(o => o.orderId === 98), false, 'pending cancel confirmed via orders snapshot');
+  assertEq(api.twsOpenOrders.some(o => o.orderId === 97), true, 'unrelated orders untouched during pending confirm');
+  ordersResponse = { ok: true, orders: [] };
+
+  // ---- exec dedupe persists to storage (a reload must not replay fills) ----
+  assertEq(api.twsExecKey({ execId: 'e1', time: '20260914  15:42:01' }), '20260914|e1', 'exec key = day prefix + execId');
+  assertEq(api.twsExecKey({ execId: 'e1' }), 'e1', 'exec key falls back to bare execId');
+  const storedExecs = JSON.parse(store.twsSeenExecs || '[]');
+  assertTrue(storedExecs.length === api.twsSeenExecs.size && storedExecs.every(k => api.twsSeenExecs.has(k)), 'stored exec ids mirror the in-memory set');
 
   console.log('\nAll TWS tests passed');
   process.exit(0);

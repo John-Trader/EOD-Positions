@@ -121,6 +121,11 @@ $XLE - Daily
   const wExit = api.pbTimedExitDate('etf_w', '2026-09-04');
   assert(wExit === '2026-10-09', 'weekly exit = Friday of week 5 (' + wExit + ')');
   assert(api.pbTimedExitDate('bogus', '2026-09-04') === null, 'unknown cat -> null');
+  // Early-close landings keep the day — the GAT order schedules at 12:50 downstream.
+  // Thu 2026-11-19 entry -> 11/20,11/23,11/24,11/25,(11/26 holiday),11/27 -> day5 = 11/27 (1 PM close).
+  assert(api.pbTimedExitDate('etf_d', '2026-11-19') === '2026-11-27', 'daily exit stays on early-close day');
+  // Week-5 Friday = 2026-11-27 (early close) -> exit stays on Friday, not pushed to Wed.
+  assert(api.pbTimedExitDate('etf_w', '2026-10-19') === '2026-11-27', 'weekly exit stays on early-close Friday');
 
   // ---------- 8. Sizing: floor(account * riskPct / (ATR + slippage)) ----------
   api.accountValue = 100000;
