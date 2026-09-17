@@ -74,6 +74,7 @@ for (const level of ['log', 'warn', 'error']) {
 
 // ---------- single instance ----------
 let win = null;
+let bridgeToken = '';
 if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
@@ -136,7 +137,10 @@ function layoutViews() {
 }
 
 ipcMain.handle('psc:term-toggle', () => { termOpen = !termOpen; layoutViews(); return termOpen; });
-ipcMain.handle('psc:term-buffer', () => logBuffer.join('\n'));
+// The token line is pinned at the top of the terminal so it never rotates out
+// of the ring buffer — the user compares it with Settings → Bridge token → SHOW.
+ipcMain.handle('psc:term-buffer', () =>
+    `[electron] bridge token: ${bridgeToken || '(starting…)'}\n` + logBuffer.join('\n'));
 ipcMain.on('psc:term-resize', (e, w) => {
     const n = Math.round(Number(w));
     if (!Number.isFinite(n)) return;
@@ -211,6 +215,7 @@ let quitting = false;
 app.whenReady().then(async () => {
     loadWindowState();
     const token = loadOrCreateToken();
+    bridgeToken = token;
     process.env.BRIDGE_TOKEN = token;
     process.env.PSC_TOKEN_FILE = path.join(USER_DATA, 'bridge-token');
     process.env.PSC_WEB_ROOT = APP_DIR;

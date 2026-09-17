@@ -1,6 +1,6 @@
 {
   "name": "position-size-calculator",
-  "version": "3.7.5",
+  "version": "3.7.6",
   "description": "Position Size Calculator — Electron portable app with in-process TWS bridge",
   "private": true,
   "main": "electron/main.js",
