@@ -635,14 +635,13 @@
                             <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
                                 <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1 text-center">
                             </label>
-                            <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV (experimental)</label>
+                            <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV</label>
                             <label class="flex items-center justify-between text-xs">Exit time in New York
                                 <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1">
                                     <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
                                 </select>
                             </label>
-                            <p class="text-[10px] text-amber-300">Exits only, not entry orders. Review the date in each export. Advanced timed/adjustable baskets need validation in TWS paper first, including partial fills and OCA reduction. A CSV cannot read your remaining position or cancel unrelated broker orders. MOC scheduling is not offered until verified.</p>
-                            <label class="flex items-start gap-2 text-[11px] text-amber-200"><input id="advancedCsvAck" type="checkbox" class="custom-checkbox">I understand advanced CSVs are unverified and will validate them in TWS paper before live use.</label>
+                            <p class="text-[10px] text-slate-400">Exits only, not entry orders. Review the date in each export.</p>
                         </div>
                     </div>
                 </details>
@@ -6429,7 +6428,6 @@
             if (preview.some(p => !p.stopOnly && (!Number.isFinite(p.tp) || Number(p.tp.toFixed(2)) <= 0))) return { ok: false, error: 'All targets must round to a positive price.', rows: [], preview: [] };
             if (timedEnabled || preview.some(p => p.adjStop !== null)) {
                 rows.forEach(r => { r[TWS_COL.OCA_TYPE] = 2; });
-                notes.push('EXPERIMENTAL: validate all fields and proportional OCA reduction in TWS paper, including partial fills. These orders do not read account positions or cancel unrelated orders.');
             }
             if (!rows.length) return { ok: false, error: 'Strategy produced 0 shares (size too small)', rows: [], preview: [] };
             return { ok: true, error: null, rows, preview, strategy: strat, rps, notes, timedExit: timedEnabled ? { date: timed.date, time: timedTime } : null };
@@ -6454,10 +6452,6 @@
         }
 
         function triggerCsvDownload(filename, rows) {
-            if (rows.some(r => r[TWS_COL.GAT] || r[TWS_COL.ADJ_TYPE]) && !document.getElementById('advancedCsvAck')?.checked) {
-                alert('Before exporting advanced orders, acknowledge the TWS paper-validation requirement in Settings. Standard Option 1/2 exit exports are unchanged.');
-                return;
-            }
             const csvContent = csvTextForRows(rows);
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -6593,6 +6587,37 @@
                 + (both ? prevHeader('LS Pullback') : '') + pbPrev.map(blockHtml).join('')
                 + [...new Map(trades.filter(t => t.built.timedExit).map(t => [t.built.timedExit.date + '|' + t.built.timedExit.time, t.built])).values()].map(timedExitSummaryHtml).join('')
                 + buildNotesHtml({ notes: [...new Set(trades.flatMap(t => t.built.notes || []))] });
+            syncBatchTimedBox(trades);
+        }
+
+        // The batch drawer's timed-exit box must describe the exits the batch will
+        // actually schedule: pb rows always run their category clock (Day-5 / Wk-5
+        // @15:55 — fixed, not editable); LS v3 rows keep the editable global date.
+        // Idempotent: owns the box entirely so stale pb text can't leak into a
+        // later v3-only batch (and vice versa).
+        function syncBatchTimedBox(trades) {
+            const box = document.querySelector('#batchReviewOverlay .timed-exit-box');
+            if (!box) return;
+            const rows = trades || [];
+            const v3Timed = rows.some(t => t.kind !== 'pb' && t.built && t.built.timedExit);
+            const pbTimed = rows.filter(t => t.kind === 'pb' && t.built && t.built.timedExit);
+            const label = box.querySelector('span');
+            const inp = box.querySelector('.timed-exit-date');
+            if (!v3Timed && !pbTimed.length) { box.classList.add('hidden'); return; }
+            box.classList.remove('hidden');
+            const parts = [];
+            if (v3Timed) {
+                const early = timedExitDate && NYSE_EARLY_CLOSE.has(timedExitDate);
+                parts.push(`${pbTimed.length ? 'LS v3 · ' : ''}Day-${maxHoldDays} exit · ${early ? '12:50' : timedExitTime} ET on ${timedExitDate}`);
+                if (inp) { inp.style.display = ''; if (timedExitDate && inp.value !== timedExitDate) inp.value = timedExitDate; }
+            } else if (inp) inp.style.display = 'none';
+            pbTimed.forEach(t => {
+                const cat = PB_CATS[t.pbCat];
+                const unit = cat ? (cat.unit === 'week' ? `Wk-${cat.holdN}` : `Day-${cat.holdN}`) : 'Day-5';
+                const desc = `${v3Timed ? 'PB ' : ''}${unit} exit · ${t.built.timedExit.time} ET on ${t.built.timedExit.date}`;
+                if (!parts.includes(desc)) parts.push(desc);
+            });
+            if (label) label.innerHTML = '⏱ ' + parts.join(' &nbsp;·&nbsp; ');
         }
 
         async function openBatchReviewDrawer(source, parsedTrades) {
@@ -6745,7 +6770,7 @@
                 const customTps = batchCustomTps[tpKey] || [];
                 const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { explicitLegs: explicit, timedExit: timedOverride || undefined });
                 if (!built.ok) errors.push(`${ticker}${kind === 'pb' ? ' (pb)' : ''}: ${built.error}`);
-                else trades.push({ ticker, kind, isLong, entry, shares, stop, strategyId, customTps, built });
+                else trades.push({ ticker, kind, isLong, entry, shares, stop, strategyId, customTps, built, pbCat: kind === 'pb' ? (el.dataset.pbCat || null) : null });
             });
             return { trades, errors };
         }
@@ -7898,7 +7923,6 @@
                     activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
                     timedExitDate = null;
                     earningsCache = {};
-                    document.getElementById('advancedCsvAck').checked = false;
                     loadSettings();
                     navigateTo('scanner');
                     alert('Backup restored. API keys were not imported.');
@@ -8232,7 +8256,6 @@
         }
         function buildExitOrdersPayload(built) {
             if (!built || !built.ok || !built.rows || !built.rows.length) return { ok: false, error: 'No exit legs' };
-            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
             const orders = [];
             const suffix = (globalThis.crypto?.randomUUID?.() || Date.now().toString(36));
             let n = 0;
@@ -8413,11 +8436,6 @@
             if (!built.ok) { showErrorToast(built.error); return; }
             const sanity = exitStopSanityError(ticker, isLong, stop, entry);
             if (sanity) { showErrorToast(sanity + ' — not sending', 8000); return; }
-            const isAdvanced = !!(built.timedExit || built.preview.some(p => p.adjStop !== null));
-            if (isAdvanced && !document.getElementById('advancedCsvAck')?.checked) {
-                showErrorToast('Before sending advanced orders, acknowledge the TWS paper-validation requirement in Settings.', 8000);
-                return;
-            }
             const pf = await preflightContract(ticker);
             if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
             if (attachEntry) {
@@ -8476,15 +8494,21 @@
             if (!trades.length) { showErrorToast('No valid trades to send.'); return; }
             const totalLegs = trades.reduce((n, t) => n + t.built.rows.filter(r => r[7]).length, 0);
             if (!confirm(`Send ${totalLegs} exit orders for ${trades.length} ticker(s) to TWS exactly as previewed?`)) return;
-            if (trades.some(t => t.built.timedExit || t.built.preview.some(p => p.adjStop !== null))
-                && !document.getElementById('advancedCsvAck')?.checked) {
-                showErrorToast('Before sending advanced orders, acknowledge the TWS paper-validation requirement in Settings.', 8000);
-                return;
-            }
+            // One bad ticker must never abort the rest of the batch, and a skipped or
+            // failed ticker must never be silent — count results and report at the end.
+            let sent = 0, missed = 0;
             for (const t of trades) {
-                await sendTwsExits(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, t.customTps, false, null, { built: t.built, stratKind: t.kind });
+                try {
+                    const r = await sendTwsExits(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, t.customTps, false, null, { built: t.built, stratKind: t.kind });
+                    if (r && r.ok && !r.unknown) sent++; else missed++;
+                } catch (e) {
+                    missed++;
+                    showErrorToast(`${t.ticker}: send failed — ${e && e.message ? e.message : e}`, 8000);
+                }
                 await new Promise(r => setTimeout(r, 250));
             }
+            if (missed) showErrorToast(`Batch send done: ${sent} sent, ${missed} skipped/failed — retry those from the drawer or card`, 10000);
+            else showSuccessToast(`Batch send done: ${sent} ticker(s) sent to TWS`);
         }
         function syncTwsSendButtons() {
             // If TWS is disabled, hide the send buttons entirely. If TWS is enabled, show them
