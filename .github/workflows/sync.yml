@@ -1,0 +1,136 @@
+name: Mirror sync
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save this workflow file (the force-push below wipes it)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/John-Trader/EOD-Positions/contents/.github/workflows/sync.yml?ref=main" --jq '.content' | base64 -d > /tmp/sync.yml.bak
+          test -s /tmp/sync.yml.bak
+
+      - name: Mirror branches and tags
+        env:
+          PRIMARY_READ_TOKEN: ${{ secrets.PRIMARY_READ_TOKEN }}
+          PRIMARY_REPO: ${{ secrets.PRIMARY_REPO }}
+          MIRROR_PAT: ${{ secrets.MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${PRIMARY_READ_TOKEN:-}" || { echo "missing PRIMARY_READ_TOKEN secret"; exit 1; }
+          test -n "${PRIMARY_REPO:-}" || { echo "missing PRIMARY_REPO secret"; exit 1; }
+          test -n "${MIRROR_PAT:-}" || { echo "missing MIRROR_PAT secret"; exit 1; }
+          git clone --bare "https://x-access-token:${PRIMARY_READ_TOKEN}@github.com/${PRIMARY_REPO}.git" mirror.git
+          cd mirror.git
+          # Scrub authorship so the public mirror can't be traced to the primary account.
+          git filter-branch --force --env-filter '
+          export GIT_AUTHOR_NAME="John Trader"
+          export GIT_AUTHOR_EMAIL="john-trader@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="John Trader"
+          export GIT_COMMITTER_EMAIL="john-trader@users.noreply.github.com"
+          ' --tag-name-filter cat -- --all
+          # Drop filter-branch's backup refs; they must never be pushed.
+          git for-each-ref --format='%(refname)' refs/original/ | xargs -r -n1 git update-ref -d
+          git remote set-url origin "https://x-access-token:${MIRROR_PAT}@github.com/John-Trader/EOD-Positions.git"
+          # Push every branch and tag from the primary repo.
+          for ref in $(git for-each-ref --format='%(refname)' refs/heads/); do
+            git push origin "+$ref:$ref"
+          done
+          git push origin '+refs/tags/*:refs/tags/*'
+
+      - name: Sync releases (notes and assets)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIMARY_READ_TOKEN: ${{ secrets.PRIMARY_READ_TOKEN }}
+          PRIMARY_REPO: ${{ secrets.PRIMARY_REPO }}
+        run: |
+          set -euo pipefail
+          BACKUP="John-Trader/EOD-Positions"
+          PRIMARY="${PRIMARY_REPO:?missing PRIMARY_REPO secret}"
+
+          papi() {
+            if [ -n "${PRIMARY_READ_TOKEN:-}" ]; then
+              GH_TOKEN="$PRIMARY_READ_TOKEN" gh api "$@"
+            else
+              gh api "$@"
+            fi
+          }
+          pdl() {
+            if [ -n "${PRIMARY_READ_TOKEN:-}" ]; then
+              GH_TOKEN="$PRIMARY_READ_TOKEN" gh release download "$@"
+            else
+              gh release download "$@"
+            fi
+          }
+
+          tags=$(papi "repos/$PRIMARY/releases?per_page=100" --jq '.[].tag_name')
+
+          for tag in $tags; do
+            echo "== release $tag"
+            meta=$(papi "repos/$PRIMARY/releases/tags/$tag")
+            name=$(echo "$meta" | jq -r '.name // empty')
+            draft=$(echo "$meta" | jq -r '.draft')
+            prerelease=$(echo "$meta" | jq -r '.prerelease')
+            echo "$meta" | jq -r '.body // ""' > /tmp/notes.md
+
+            work=$(mktemp -d)
+            pdl "$tag" -R "$PRIMARY" -D "$work" --clobber >/dev/null 2>&1 || true
+
+            if gh release view "$tag" -R "$BACKUP" >/dev/null 2>&1; then
+              gh release delete "$tag" -R "$BACKUP" --yes
+            fi
+
+            args=()
+            [ -n "${name:-}" ] && args+=(--title "$name")
+            [ "$draft" = "true" ] && args+=(--draft)
+            [ "$prerelease" = "true" ] && args+=(--prerelease)
+            assets=()
+            while IFS= read -r -d '' f; do assets+=("$f"); done < <(find "$work" -maxdepth 1 -type f -print0)
+
+            gh release create "$tag" -R "$BACKUP" --notes-file /tmp/notes.md "${args[@]}" "${assets[@]}"
+            rm -rf "$work"
+          done
+
+          # Remove backup releases that no longer exist on the primary repo.
+          bt=$(gh api "repos/$BACKUP/releases?per_page=100" --jq '.[].tag_name')
+          for btag in $bt; do
+            if ! printf '%s\n' "$tags" | grep -qx "$btag"; then
+              echo "removing stale release $btag"
+              gh release delete "$btag" -R "$BACKUP" --yes
+            fi
+          done
+
+      - name: Restore this workflow file on main
+        # Must run even if an earlier step failed: the force-push above wipes
+        # this file, and without the restore the 15-min schedule dies silently.
+        if: always()
+        env:
+          MIRROR_PAT: ${{ secrets.MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          rm -rf restore && git clone --depth 1 -b main "https://x-access-token:${MIRROR_PAT}@github.com/John-Trader/EOD-Positions.git" restore
+          mkdir -p restore/.github/workflows
+          cp /tmp/sync.yml.bak restore/.github/workflows/sync.yml
+          cd restore
+          git add .github/workflows/sync.yml
+          if git diff --cached --quiet; then
+            echo "workflow file already present"
+          else
+            git -c user.name="John Trader" -c user.email="john-trader@users.noreply.github.com" commit -qm "Restore sync workflow"
+            attempt=1
+            until git push origin main; do
+              attempt=$((attempt + 1))
+              if [ "$attempt" -gt 3 ]; then echo "push failed after 3 attempts"; exit 1; fi
+              sleep 10
+            done
+          fi
