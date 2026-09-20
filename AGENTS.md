@@ -2,6 +2,7 @@
 
 ## Files and workflow
 
+- Strategy spec: `STRATEGY.md` — canonical Portfolio T rules distilled from the saved hub pages; keep it in sync when strategy-facing behavior changes.
 - App: `index.html`, a UTF-8 standalone HTML file with one inline application script.
 - Preserve UTF-8 when editing; legacy PowerShell `Get-Content` followed by UTF-8 output previously corrupted icons and punctuation.
 - `node _run_tests.js` runs the lightweight `_test_*.js` harnesses. No package installation is needed.

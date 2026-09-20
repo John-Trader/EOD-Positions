@@ -260,7 +260,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.8.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.9.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -396,6 +396,7 @@
         </div>
         <div class="flex items-center gap-1.5">
             <span data-role="exposureChip" class="hidden text-[9px] font-black font-mono-num px-2 py-1 rounded-full border" title="Booked notional vs the 210% LS v3 + Pullback cap (journal-based)"></span>
+            <span data-role="projChip" class="hidden text-[9px] font-black font-mono-num px-2 py-1 rounded-full border" title="Projected notional if every active candidate is admitted (advisory)"></span>
             <button id="focusBtn" data-role="focusBtn" onclick="toggleFocusMode()" class="hidden bg-slate-800 text-gray-400 border border-slate-600 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-slate-700 transition-all">
                 👁 Focus
             </button>
@@ -404,6 +405,8 @@
             </button>
         </div>
     </div>
+
+    <div data-role="breakerBanner" class="hidden w-full max-w-2xl text-[10px] font-bold font-mono-num text-rose-200 bg-rose-950/40 border border-rose-500/40 rounded-lg px-2.5 py-1.5 mb-2"></div>
 
     <!-- Results Container -->
     <div id="resultsContainer" data-role="resultsContainer" class="w-full max-w-2xl space-y-2 pb-24"></div>
@@ -751,6 +754,7 @@
                 <button onclick="exportJournalCsv()" class="ml-auto text-cyan-300">EXPORT JOURNAL CSV</button>
             </div>
             <p class="px-3 pt-2 text-[10px] text-gray-400">Local journal only. Recording a close does not submit or cancel broker orders. Quote-based levels are not confirmed fills.</p>
+            <div id="activeTradesBreaker" class="hidden mx-3 mt-2 text-[10px] font-bold font-mono-num text-rose-200 bg-rose-950/40 border border-rose-500/40 rounded-lg px-2.5 py-1.5"></div>
             <div id="activeTradesPageList" class="p-3 space-y-2 min-h-[40vh]"></div>
         </div>
     </div>
@@ -904,6 +908,7 @@
                 <div class="text-[10px] font-bold text-cyan-300 uppercase mb-1">Orders Preview</div>
                 <div id="batchPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-0.5 max-h-[60vh] overflow-y-auto"></div>
             </div>
+            <div id="batchCapBanner" class="hidden mx-3 mb-2 text-[10px] font-mono-num text-amber-200 bg-amber-950/30 border border-amber-500/30 rounded-lg px-2.5 py-1.5"></div>
             <div id="batchValidationMsg" class="hidden mx-3 mb-2 text-[11px] text-red-300 bg-red-950/40 border border-red-500/30 rounded-lg px-2.5 py-1.5"></div>
             <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex flex-col sm:flex-row justify-end gap-2">
                 <button onclick="downloadBatchCombinedCSV()" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">📥 Download Combined CSV</button>
@@ -1003,7 +1008,7 @@
         // so the file is a complete portable install (public backups keep keys out).
         function collectPortableState() {
             return {
-                version: "3.8.0",
+                version: "3.9.0",
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
@@ -3993,6 +3998,9 @@
             const { risk, slippage } = currentRiskAndSlippage();
             const results = buildSnapshotResults();
             lastRenderedSnapshot = results;
+            refreshCapProjection(results, risk, slippage);
+            updateProjectionChips();
+            updateBreakerBanner();
             markFreshRender(container);
 
             const v3 = currentPage === 'pullback' ? [] : results.filter(r => (r.kind || 'v3') === 'v3');
@@ -4107,6 +4115,7 @@
                             <div class="flex items-center gap-1 mt-1 leading-none flex-wrap">
                                 ${pbCatChip(f)}
                                 <span data-field="pbTf" class="text-[8px] font-bold uppercase px-1 py-0.5 rounded bg-slate-800 text-gray-400 border border-white/10">${f.tf ? f.tf : '?'}</span>
+                                <span data-field="capBadge" class="hidden text-[8px] font-bold leading-none"></span>
                                 <span data-field="earn" class="${f.earn ? '' : 'hidden '}${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</span>
                                 <span data-tws-badge-ticker="${f.ticker}" class="hidden text-[8px] font-bold leading-none"></span>
                             </div>
@@ -4160,11 +4169,13 @@
                 </div>
             `;
             wrap.appendChild(card);
+            setCapBadge(card.querySelector('[data-field="capBadge"]'), capBadgeFor('pb', f.ticker));
         }
 
         function updatePbCard(card, item, slippage) {
             const f = getPbFields(item, slippage);
             const q = (sel) => card.querySelector(`[data-field="${sel}"]`);
+            setCapBadge(q('capBadge'), capBadgeFor('pb', f.ticker));
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
@@ -4268,6 +4279,7 @@
         }
 
         function pbRowInnerHtml(f) {
+            const capB = capBadgeFor('pb', f.ticker);
             return `
                 <div class="flex items-center gap-2">
                     <input type="checkbox" class="trade-check" ${selectedTickers.has(selKeyFor('pb', f.ticker)) ? 'checked' : ''} onchange="toggleTickerSelect('${f.ticker}', this.checked, 'pb')">
@@ -4279,6 +4291,7 @@
                     <span class="font-mono-num text-[10px] text-red-400" data-field="stp">STP ${f.hasAtr ? f.stop.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[10px] text-emerald-400" data-field="tp1">TP1 ${f.hasAtr ? f.tp1.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[9px] text-gray-500" data-field="xn">${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}</span>
+                    <span data-field="cap" class="${capB ? '' : 'hidden '}text-[8px] font-bold leading-none ${capB ? capB.cls : ''}" title="${capB ? escapeHtml(capB.title) : ''}">${capB ? capB.text : ''}</span>
                     <button data-action="open-exit-orders" data-kind="pb" data-ticker="${f.ticker}" data-long="true" data-price="${f.c}" data-shares="${f.shares}" data-stop="${f.stop}" data-ref="${f.atr || 0}" data-cat="${f.catId || ''}" class="px-1.5 py-1 text-[8px] font-bold uppercase rounded bg-teal-950/80 text-teal-300 border border-teal-500/40">EXITS</button>
                     ${twsEnabled ? `<button data-action="send-tws-entry" data-kind="pb" data-tws-key="${f.ticker}:pb:entry" data-ticker="${f.ticker}" data-tws-default-label="OPEN PB" class="px-1.5 py-1 text-[8px] font-bold uppercase rounded bg-teal-700/80 text-white border border-teal-500/40"><span class="tws-send-label">OPEN PB</span></button>` : ''}
                 </div>`;
@@ -4345,6 +4358,9 @@
             const { risk, slippage } = currentRiskAndSlippage();
             const results = buildSnapshotResults();
             lastRenderedSnapshot = results;
+            refreshCapProjection(results, risk, slippage);
+            updateProjectionChips();
+            updateBreakerBanner();
 
             if (currentViewMode === 'table') {
                 const wrap = container.querySelector('#tableWrap');
@@ -4362,6 +4378,7 @@
                     if (!row) return;
                     const f = getPbFields(result, slippage);
                     const q = (s) => row.querySelector(`[data-field="${s}"]`);
+                    setCapBadge(q('cap'), capBadgeFor('pb', f.ticker));
                     setTextAndFlash(q('px'), '$' + f.c.toFixed(2));
                     setTextAndFlash(q('sh'), f.shares.toLocaleString() + ' sh');
                     setTextIfChanged(q('stp'), 'STP ' + (f.hasAtr ? f.stop.toFixed(2) : '--'));
@@ -4399,14 +4416,26 @@
         }
 
         // Booked notional vs the 210% LS v3+Pullback cap (journal-based, QLD sleeve excluded).
-        function updateExposureChips() {
+        function journalBookedNotional() {
             let notional = 0;
             for (const t of activeTradesLog) {
                 if (t.status !== 'ACTIVE') continue;
-                if ((t.sleeve || 'LS v3') === 'QLD') continue;
+                if ((t.sleeve || 'LS v3') === 'QLD') continue;  // QLD sleeve is outside the 210% stock-system cap
                 notional += Math.abs((t.shares || 0) * (t.entryPrice || 0));
             }
-            const pct = accountValue > 0 ? notional / accountValue : 0;
+            return notional;
+        }
+
+        // An ACTIVE journal trade for the same ticker+side already books capacity —
+        // a matching signal/exit row is not a new admission (avoids double counting
+        // once fills auto-journal). isLong === false → SHORT; anything else → LONG.
+        function hasActiveJournal(ticker, isLong) {
+            const side = isLong === false ? 'SHORT' : 'LONG';
+            return activeTradesLog.some(t => t.ticker === ticker && t.status === 'ACTIVE' && (!t.side || t.side === side));
+        }
+
+        function updateExposureChips() {
+            const pct = accountValue > 0 ? journalBookedNotional() / accountValue : 0;
             const text = `Book ${(pct * 100).toFixed(0)}% / 210%`;
             pelAll('exposureChip').forEach(el => {
                 el.textContent = text;
@@ -4416,6 +4445,181 @@
                     : (pct > PB_EXPOSURE_CAP * 0.85 ? 'text-amber-300 border-amber-500/40 bg-amber-950/30' : 'text-gray-300 border-white/10 bg-slate-950/60');
                 el.className = 'text-[9px] font-black font-mono-num px-2 py-1 rounded-full border ' + cls;
             });
+            refreshCapProjectionNow();
+            updateBreakerBanner();
+        }
+
+        // ---- 210% admission check + −9% monthly breaker (advisory only — pure fns) ----
+
+        // Stop % used for the model's admission sort: candidates admit in
+        // descending stop distance; pullback ties run Daily → Weekly → NAS Weekly.
+        function candidateStopPct(c) {
+            const e = c && c.entry, s = c && c.stop;
+            return (Number.isFinite(e) && e > 0 && Number.isFinite(s)) ? Math.abs(e - s) / e : 0;
+        }
+
+        // Admission order per the model: all LS v3 first (desc stop %), then
+        // pullbacks (desc stop %, ties etf_d → etf_w → nas_w). Pure — order-stable.
+        function admissionOrder(candidates) {
+            const PB_TIE = { etf_d: 0, etf_w: 1, nas_w: 2 };
+            return (candidates || []).map((c, i) => ({ ...c, stopPct: candidateStopPct(c), idx: i }))
+                .sort((a, b) => {
+                    const ak = a.kind === 'pb' ? 1 : 0, bk = b.kind === 'pb' ? 1 : 0;
+                    if (ak !== bk) return ak - bk;
+                    if (b.stopPct !== a.stopPct) return b.stopPct - a.stopPct;
+                    if (a.kind === 'pb') {
+                        const at = PB_TIE[a.pbCat] !== undefined ? PB_TIE[a.pbCat] : 3;
+                        const bt = PB_TIE[b.pbCat] !== undefined ? PB_TIE[b.pbCat] : 3;
+                        if (at !== bt) return at - bt;
+                    }
+                    return a.idx - b.idx;
+                });
+        }
+
+        // Projected capacity if the candidates were admitted in model order.
+        // candidates: {key, ticker, kind, entry, stop, notional, isLong, pbCat}.
+        // Rows already booked in the journal (same ticker+side) are skipped — they
+        // consume no NEW capacity. accepted=false is advisory only — nothing here
+        // blocks an order.
+        function capProjection(candidates, account) {
+            const booked = journalBookedNotional();
+            const rows = [];
+            const fitByKey = {};
+            const overCap = new Set();
+            let running = booked;
+            let attempted = booked;
+            admissionOrder(candidates).forEach((c, i) => {
+                const row = { key: c.key, ticker: c.ticker, order: i + 1, notional: c.notional || 0, notionalPct: account > 0 ? (c.notional || 0) / account : 0, accepted: false };
+                attempted += row.notional;
+                if (hasActiveJournal(c.ticker, c.isLong)) {
+                    row.booked = true;  // already counted in `booked` — not a new admission
+                } else if (account <= 0 || running + row.notional <= account * PB_EXPOSURE_CAP + 1e-9) {
+                    running += row.notional;   // only accepted candidates book projected capacity
+                    row.accepted = true;
+                } else {
+                    overCap.add(c.key);        // rejected rows leave `running` unchanged — the queue continues
+                }
+                rows.push(row);
+                fitByKey[c.key] = row;
+            });
+            return {
+                booked, bookedPct: account > 0 ? booked / account : 0,
+                projected: running, projectedPct: account > 0 ? running / account : 0,
+                attempted, attemptedPct: account > 0 ? attempted / account : 0,
+                rows, fitByKey, overCap, count: rows.length
+            };
+        }
+
+        // Candidates from the current snapshot: v3 signals that have triggered
+        // (isActive) plus every pullback signal (they always fill at the close).
+        function snapshotCapCandidates(results, risk, slippage) {
+            const out = [];
+            for (const item of results || []) {
+                if (!item || !item.success) continue;
+                if (item.kind === 'pb') {
+                    const f = getPbFields(item, slippage);
+                    if (!f.hasAtr || f.shares <= 0) continue;
+                    out.push({ key: selKeyFor('pb', item.ticker), ticker: item.ticker, kind: 'pb', pbCat: f.catId, entry: f.c, stop: f.stop, notional: f.shares * f.c, isLong: true });
+                } else {
+                    const f = getRealtimeFields(item, risk, slippage);
+                    if (!f.isActive || f.shares <= 0 || !Number.isFinite(f.stopPrice)) continue;
+                    out.push({ key: selKeyFor('v3', item.ticker), ticker: item.ticker, kind: 'v3', entry: f.c, stop: f.stopPrice, notional: f.shares * f.c, isLong: f.isGreenDay });
+                }
+            }
+            return out;
+        }
+
+        let lastCapProjection = null;
+        function refreshCapProjection(results, risk, slippage) {
+            lastCapProjection = capProjection(snapshotCapCandidates(results, risk, slippage), accountValue);
+        }
+
+        // Re-project from the current snapshot + risk inputs (journal/account edits).
+        function refreshCapProjectionNow() {
+            if (!lastRenderedSnapshot || !lastRenderedSnapshot.length) { lastCapProjection = null; updateProjectionChips(); return; }
+            const { risk, slippage } = currentRiskAndSlippage();
+            refreshCapProjection(lastRenderedSnapshot, risk, slippage);
+            updateProjectionChips();
+        }
+
+        // Per-candidate FIT/OVER chip data for card/row badges. null → hide.
+        function capBadgeFor(kind, ticker) {
+            const p = lastCapProjection;
+            if (!p || accountValue <= 0) return null;
+            const row = p.fitByKey[selKeyFor(kind || 'v3', ticker)];
+            if (!row) return null;
+            const np = (row.notionalPct * 100).toFixed(1);
+            return row.accepted
+                ? { text: `FIT ${row.order}`, cls: 'text-emerald-300', title: `Admission #${row.order}: +${np}% notional fits the 210% cap (advisory)` }
+                : { text: `OVER ${row.order}`, cls: 'text-rose-300', title: `Admission #${row.order}: +${np}% notional exceeds the 210% cap — the model rejects it (advisory, send still allowed)` };
+        }
+
+        function setCapBadge(el, badge) {
+            if (!el) return;
+            setTextIfChanged(el, badge ? badge.text : '');
+            setHidden(el, !badge);
+            if (badge) {
+                el.title = badge.title;
+                const cls = 'text-[8px] font-bold leading-none ' + badge.cls;
+                if (el.className !== cls) el.className = cls;
+            }
+        }
+
+        function updateProjectionChips() {
+            const p = lastCapProjection;
+            pelAll('projChip').forEach(el => {
+                if (!p || accountValue <= 0 || !p.count) { el.classList.add('hidden'); return; }
+                el.classList.remove('hidden');
+                el.textContent = `Proj ${(p.attemptedPct * 100).toFixed(0)}% / 210%`;
+                el.title = `Booked ${(p.bookedPct * 100).toFixed(0)}% + ${p.count} candidate(s) → ${(p.attemptedPct * 100).toFixed(0)}% if all admitted; model book ${(p.projectedPct * 100).toFixed(0)}% (advisory — orders still send)`;
+                const cls = p.overCap.size
+                    ? 'text-red-300 border-red-500/50 bg-red-950/40'
+                    : (p.attemptedPct > PB_EXPOSURE_CAP * 0.85 ? 'text-amber-300 border-amber-500/40 bg-amber-950/30' : 'text-gray-300 border-white/10 bg-slate-950/60');
+                el.className = 'text-[9px] font-black font-mono-num px-2 py-1 rounded-full border ' + cls;
+            });
+        }
+
+        // ---- −9% monthly realized-loss circuit breaker (advisory only) ----
+
+        const BREAKER_MONTHLY_PCT = 0.09;
+        function currentMonthKey(now) {
+            const d = now || new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        // Sum realized P&L of CLOSED journal trades whose exitDate falls in monthKey
+        // ('YYYY-MM'). Missing/invalid rows contribute 0.
+        function mtdRealizedPnl(monthKey) {
+            const mk = monthKey || currentMonthKey();
+            let pnl = 0;
+            for (const t of activeTradesLog) {
+                if (!t || t.status !== 'CLOSED' || !t.exitDate || String(t.exitDate).slice(0, 7) !== mk) continue;
+                const r = journalResult(t);
+                if (r && Number.isFinite(r.pnl)) pnl += r.pnl;
+            }
+            return pnl;
+        }
+
+        // {tripped, mtdPnl, mtdPct, monthKey} — advisory: the model halts new entries
+        // at −9% MTD realized; the app warns but never blocks.
+        function circuitBreakerStatus(monthKey) {
+            const mk = monthKey || currentMonthKey();
+            const mtdPnl = mtdRealizedPnl(mk);
+            const mtdPct = accountValue > 0 ? mtdPnl / accountValue : 0;
+            return { tripped: accountValue > 0 && mtdPnl < 0 && Math.abs(mtdPnl) >= accountValue * BREAKER_MONTHLY_PCT - 1e-9, mtdPnl, mtdPct, monthKey: mk };
+        }
+
+        function updateBreakerBanner() {
+            const s = circuitBreakerStatus();
+            const html = s.tripped
+                ? `<span class="font-black">−9% MONTHLY BREAKER</span> — MTD realized ${(s.mtdPct * 100).toFixed(1)}% (${fmtMoneyShort(s.mtdPnl)}). The model halts new entries until next month — <span class="text-amber-300">advisory only, orders still send.</span>`
+                : '';
+            pelAll('breakerBanner').forEach(el => {
+                el.innerHTML = html;
+                toggleCls(el, 'hidden', !s.tripped);
+            });
+            const at = document.getElementById('activeTradesBreaker');
+            if (at) { at.innerHTML = html; toggleCls(at, 'hidden', !s.tripped); }
         }
 
         // ---------- Sleeve settings (signal sync + PB universe + QLD) ----------
@@ -6007,6 +6211,7 @@
                                 <div data-field="setupType" class="text-[10px] font-black ${f.typeColor} leading-none uppercase">${f.setupType}</div>
                                 <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[8px] font-bold text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠ signal ${escapeHtml(f.signalSide || '')}</span>
                                 <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}${stopWarnBadgeClass}" title="Stop is wider than ${f.isGreenDay ? '2.5' : '1.5'}× the 20-day ATR/ADR">⚠ ${f.stopWarn ? escapeHtml(f.stopWarn.text) : ''}</span>
+                                <span data-field="capBadge" class="hidden text-[8px] font-bold leading-none"></span>
                                 <span data-tws-badge-ticker="${f.ticker}" class="hidden text-[8px] font-bold leading-none"></span>
                             </div>
                             <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-1 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
@@ -6052,6 +6257,7 @@
                 </div>
             `;
             container.appendChild(card);
+            setCapBadge(card.querySelector('[data-field="capBadge"]'), capBadgeFor('v3', f.ticker));
         }
 
         function updateCard(card, item, risk, slippage) {
@@ -6069,6 +6275,7 @@
             if (sideWarn) { setTextIfChanged(sideWarn, `⚠ signal ${f.signalSide || ''}`); setHidden(sideWarn, !f.sideMismatch); }
             const stopWarn = q('stopWarn');
             if (stopWarn) { setTextIfChanged(stopWarn, f.stopWarn ? '⚠ ' + f.stopWarn.text : ''); setHidden(stopWarn, !f.stopWarn); }
+            setCapBadge(q('capBadge'), capBadgeFor('v3', f.ticker));
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextIfChanged(q('high'), f.h.toFixed(2));
@@ -6170,6 +6377,7 @@
                             <div data-field="setupType" class="text-[9px] font-black ${f.typeColor} uppercase leading-none">${f.setupType}</div>
                             <span data-field="sideWarn" class="${f.sideMismatch ? '' : 'hidden '}text-[9px] text-amber-300 leading-none" title="Signal text said ${escapeHtml(f.signalSide || '')}">⚠</span>
                             <span data-field="stopWarn" class="${f.stopWarn ? '' : 'hidden '}text-[9px] text-rose-300 leading-none" title="Stop wider than ${f.isGreenDay ? '2.5' : '1.5'}× 20-day ATR/ADR">⚠</span>
+                            <span data-field="capBadge" class="hidden text-[8px] font-bold leading-none"></span>
                             <span data-tws-badge-ticker="${f.ticker}" class="hidden text-[8px] font-bold leading-none"></span>
                         </div>
                         <div data-field="earn" class="${f.earn ? '' : 'hidden '}mt-0.5 inline-block ${earnBadgeClass}" title="Earnings during hold window">⚠ ${f.earn ? escapeHtml(f.earn) : ''}</div>
@@ -6203,6 +6411,7 @@
                     ${twsEnabled ? `<button data-action="send-tws-entry" data-tws-key="${f.ticker}:entry" data-ticker="${f.ticker}" data-tws-default-label="S" title="${autoSendExitsOnOpen ? 'Send an entry + exit bracket to TWS for ' + f.shares + ' shares' : 'Send a Market Adaptive ' + (f.isGreenDay ? 'BUY' : 'SELL') + ' order to TWS for ' + f.shares + ' shares'}" class="bg-blue-600/80 hover:bg-blue-500 text-white text-[8px] font-black uppercase rounded px-1 py-0.5 leading-none border border-blue-500/40 transition-all active:scale-95"><span class="tws-send-label">S</span></button>` : ''}
                 </div>
             `;
+            setCapBadge(row.querySelector('[data-field="capBadge"]'), capBadgeFor('v3', f.ticker));
             return row;
         }
 
@@ -6219,6 +6428,7 @@
             }
             setHidden(q('sideWarn'), !f.sideMismatch);
             setHidden(q('stopWarn'), !f.stopWarn);
+            setCapBadge(q('capBadge'), capBadgeFor('v3', f.ticker));
             const earn = q('earn');
             if (earn) { setTextIfChanged(earn, f.earn ? '⚠ ' + f.earn : ''); setHidden(earn, !f.earn); }
             setTextAndFlash(q('lastPrice'), `$${f.c.toFixed(2)}`);
@@ -6886,6 +7096,7 @@
             const body = document.getElementById('batchPreviewBody');
             if (!body) return;
             const { trades, errors } = collectBatchTradesFromDom();
+            refreshBatchCapSummary(trades);
             showBatchValidation(errors);
             if (!trades.length) {
                 body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-2">No valid trades to preview.</div>';
@@ -6947,8 +7158,13 @@
             if (label) label.innerHTML = '⏱ ' + parts.join(' &nbsp;·&nbsp; ');
         }
 
+        let batchDrawerSource = 'selected';
+        let lastBatchProjection = null;
+
         async function openBatchReviewDrawer(source, parsedTrades) {
             const isPaste = source === 'paste';
+            batchDrawerSource = isPaste ? 'paste' : 'selected';
+            lastBatchProjection = null;
             const list = document.getElementById('batchReviewList');
             const ov = document.getElementById('batchReviewOverlay');
             if (ov) ov.setAttribute('aria-label', isPaste ? 'Batch review from pasted exit orders' : 'Batch review from selected tickers');
@@ -7023,6 +7239,7 @@
                     <div class="bg-slate-900/50 border border-white/10 rounded-xl p-2 batch-row flex items-center gap-3 justify-center" data-ticker="${t.ticker}" data-long="${isLong}"${kindTag}>
                         <div class="shrink-0 flex items-center gap-1">
                             <div class="font-black font-mono-num text-white text-sm">${escapeHtml(t.ticker)}</div>${badge}
+                            <span class="batch-cap text-[8px] font-bold leading-none"></span>
                             <select oninput="renderBatchPreview()" class="batch-side w-14 bg-slate-800 text-white text-[9px] font-bold rounded border border-slate-600 px-0.5 py-0.5">
                                 <option value="long" ${isLong ? 'selected' : ''}>SELL</option>
                                 <option value="short" ${!isLong ? 'selected' : ''}>COVER</option>
@@ -7100,6 +7317,67 @@
                 else trades.push({ ticker, kind, isLong, entry, shares, stop, strategyId, customTps, built, pbCat: kind === 'pb' ? (el.dataset.pbCat || null) : null });
             });
             return { trades, errors };
+        }
+
+        // Projected-cap admission for the drawer's rows (snapshot source only —
+        // pasted exit rows are already-open positions, not new admissions).
+        // Advisory: OVER chips + banner warn; every send/export path still works.
+        function refreshBatchCapSummary(trades) {
+            const banner = document.getElementById('batchCapBanner');
+            const rows = document.querySelectorAll('#batchReviewList .batch-row');
+            rows.forEach(el => { const s = el.querySelector('.batch-cap'); if (s) { s.textContent = ''; s.title = ''; s.className = 'batch-cap text-[8px] font-bold leading-none'; } });
+            if (!banner) return;
+            lastBatchProjection = null;
+            if (batchDrawerSource === 'paste' || accountValue <= 0 || !(trades || []).length) { banner.classList.add('hidden'); banner.innerHTML = ''; return; }
+            const cands = trades
+                .map(t => ({
+                    key: selKeyFor(t.kind || 'v3', t.ticker), ticker: t.ticker, kind: t.kind || 'v3',
+                    pbCat: t.pbCat, entry: t.entry, stop: t.stop,
+                    notional: Math.abs((t.shares || 0) * (t.entry || 0)), isLong: t.isLong,
+                }))
+                .filter(c => !hasActiveJournal(c.ticker, c.isLong));
+            const p = capProjection(cands, accountValue);
+            lastBatchProjection = p;
+            rows.forEach(el => {
+                const key = selKeyFor(el.dataset.kind === 'pb' ? 'pb' : 'v3', el.dataset.ticker);
+                const row = p.fitByKey[key];
+                const s = el.querySelector('.batch-cap');
+                if (!s || !row) return;
+                const np = (row.notionalPct * 100).toFixed(1);
+                if (row.booked) {
+                    s.textContent = 'BOOKED';
+                    s.title = 'Already active in the journal — no new capacity consumed';
+                    s.classList.add('text-gray-500');
+                } else if (row.accepted) {
+                    s.textContent = `FIT ${row.order}`;
+                    s.title = `Admission #${row.order}: +${np}% notional fits the 210% cap (advisory)`;
+                    s.classList.add('text-emerald-300');
+                } else {
+                    s.textContent = `OVER ${row.order}`;
+                    s.title = `Admission #${row.order}: +${np}% notional exceeds the 210% cap — the model rejects it (advisory, send still allowed)`;
+                    s.classList.add('text-rose-300');
+                }
+            });
+            const over = p.overCap.size;
+            const uncheckBtn = over
+                ? ` <button onclick="uncheckOverCap()" class="ml-1 underline text-amber-300 hover:text-amber-200 font-bold">uncheck over-cap</button>`
+                : '';
+            banner.innerHTML = `CAP — booked ${(p.bookedPct * 100).toFixed(0)}% + selected ${((p.attempted - p.booked) / accountValue * 100).toFixed(0)}% → ${(p.attemptedPct * 100).toFixed(0)}% / ${Math.round(PB_EXPOSURE_CAP * 100)}%${over ? ` · <span class="text-rose-300 font-black">${over} OVER</span> the model rejects them` : ''} <span class="text-gray-500">(advisory — orders still send)</span>${uncheckBtn}`;
+            banner.classList.remove('hidden');
+        }
+
+        // Convenience only: deselect + remove the over-cap rows. Everything remains
+        // overridable — re-checking the tickers brings the rows back.
+        function uncheckOverCap() {
+            const p = lastBatchProjection;
+            if (!p || !p.overCap.size) return;
+            p.overCap.forEach(key => selectedTickers.delete(key));
+            document.querySelectorAll('#batchReviewList .batch-row').forEach(el => {
+                const key = selKeyFor(el.dataset.kind === 'pb' ? 'pb' : 'v3', el.dataset.ticker);
+                if (p.overCap.has(key)) el.remove();
+            });
+            updateBatchBar();
+            renderBatchPreview();
         }
 
         // A long's SELL stop at/above market (or a short's BUY stop at/below it)
@@ -8101,6 +8379,7 @@
         function renderActiveTradesPage() {
             const container = document.getElementById('activeTradesPageList');
             if (!container) return;
+            updateBreakerBanner();
             ['active', 'history'].forEach(tab => {
                 const button = document.getElementById(tab === 'active' ? 'tradesActiveTab' : 'tradesHistoryTab');
                 if (button) button.className = `rounded px-3 py-1.5 ${tab === tradesTab ? 'bg-blue-600' : 'bg-slate-800'}`;
@@ -8135,7 +8414,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "3.8.0",
+                version: "3.9.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -8165,7 +8444,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0', '3.9.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -8452,7 +8731,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '3.8.0';
+        const APP_VERSION = '3.9.0';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
