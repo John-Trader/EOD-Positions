@@ -1859,6 +1859,11 @@
             document.querySelectorAll('.trigger-input').forEach(input => {
                 input.value = safeStorageGet(`trigger_${input.dataset.idx}`) || '';
             });
+            // Pullback rows persist under skey('pbSignals') — restore them on boot
+            // too, or the editor renders empty and the next savePbSignals() would
+            // overwrite the stored list with whatever is typed next.
+            pbSignals = loadPbSignals(currentPage);
+            renderPbEditor();
 
             const showFocus = safeStorageGet('setting_showFocus') !== 'false';
             const showVoice = safeStorageGet('setting_showVoice') === 'true';
