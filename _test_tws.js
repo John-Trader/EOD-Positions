@@ -85,6 +85,9 @@ const fetch = async (url, opts) => {
   return { ok: true, status: 200, json: async () => body };
 };
 const AbortController = class { constructor() { this.signal = { aborted: false }; } abort() {} };
+let confirmResponse = false;
+let confirmCalls = 0;
+const confirm = () => { confirmCalls++; return confirmResponse; };
 
 function assertEq(actual, expected, label) {
   const a = JSON.stringify(actual);
@@ -102,12 +105,12 @@ function assertTrue(cond, label) {
 
 (async () => { try {
   const sandbox = {
-    elements, document, localStorage, window, navigator, URL, crypto, fetch, AbortController,
+    elements, document, localStorage, window, navigator, URL, crypto, fetch, AbortController, confirm,
     console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {},
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, get twsOpenOrders() { return twsOpenOrders; }, handleTwsExecution, twsSeenExecs, twsExecKey, activeTradesLog, saveActiveTradesLog, syncJournalToPositions, twsEntryOrderSpec, twsAutoSendStrategyId, AUTO_STRATEGY, defaultStrategyId, setGlobalRegime, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, get globalMarketRegime() { return globalMarketRegime; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, cancelTwsOrder, set twsEntryOutsideRth(v) { twsEntryOutsideRth = v; }, set twsExitStrategy(v) { twsExitStrategy = v; }, get twsExitStrategy() { return twsExitStrategy; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; } };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, get twsOpenOrders() { return twsOpenOrders; }, handleTwsExecution, twsSeenExecs, twsExecKey, activeTradesLog, saveActiveTradesLog, syncJournalToPositions, twsEntryOrderSpec, twsAutoSendStrategyId, AUTO_STRATEGY, defaultStrategyId, setGlobalRegime, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, get globalMarketRegime() { return globalMarketRegime; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, cancelTwsOrder, set twsEntryOutsideRth(v) { twsEntryOutsideRth = v; }, set twsExitStrategy(v) { twsExitStrategy = v; }, get twsExitStrategy() { return twsExitStrategy; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; }, sendTwsOpen, qldSendTws, set autoSendExitsOnOpen(v) { autoSendExitsOnOpen = v; }, set lastRenderedSnapshot(v) { lastRenderedSnapshot = v; }, set qldSleeve(v) { qldSleeve = v; }, get qldSleeve() { return qldSleeve; }, set qldView(v) { qldView = v; }, set accountValue(v) { accountValue = v; }, set twsSyncAccount(v) { twsSyncAccount = v; } };');
   const api = fn(...Object.values(sandbox));
 
   console.log('Script loaded successfully');
@@ -425,6 +428,52 @@ function assertTrue(cond, label) {
   // Entries may be plain exec keys (legacy) or [key, commission] pairs.
   const storedExecs = JSON.parse(store.twsSeenExecs || '[]');
   assertTrue(storedExecs.length === api.twsSeenExecs.size && storedExecs.every(e => api.twsSeenExecs.has(Array.isArray(e) ? e[0] : e)), 'stored exec ids mirror the in-memory set');
+
+  // ---- qldSendTws: resend confirmation must fire BEFORE the send lock ----
+  // Regression: the 'sent'/'unknown' checks used to run after setTwsSendState('sending'),
+  // so the confirm could never fire and the key stayed latched at 'sending'.
+  api.twsEnabled = true; api.twsConnected = true;
+  api.twsBridgeUrl = 'http://127.0.0.1:8787'; api.twsBridgeToken = 'tok';
+  api.twsSyncAccount = false;
+  api.twsPositionsEnabled = false;
+  api.accountValue = 100000;
+  api.qldView = { qldPrice: 60 };
+  api.qldSleeve = { inPos: true, shares: 10, entryPrice: 50, entryDate: '2024-01-01', cashValue: 0, pending: { type: 'EXIT' }, pendingOrder: null };
+  fetchCalls.length = 0;
+  confirmResponse = false; confirmCalls = 0;
+  api.twsSendState['QLD:qld'] = 'sent';
+  await api.qldSendTws();
+  assertEq(confirmCalls, 1, 'qld resend prompts once');
+  assertEq(api.twsSendState['QLD:qld'], 'sent', 'declined resend leaves key at sent');
+  assertTrue(!fetchCalls.some(c => c.url.endsWith('/order') && c.opts && c.opts.method === 'POST'), 'no /order post on declined qld resend');
+
+  confirmResponse = true;
+  api.twsSendState['QLD:qld'] = 'unknown';
+  await api.qldSendTws();
+  const qldOrderPost = fetchCalls.find(c => c.url.endsWith('/order') && c.opts && c.opts.method === 'POST' && JSON.parse(c.opts.body).symbol === 'QLD');
+  assertTrue(!!qldOrderPost, 'confirmed resend posts the QLD order');
+  // Mock /executions fills orderId 4242 for the posted quantity — the pending
+  // ledger must apply the confirmed fill, not the request.
+  assertEq(api.twsSendState['QLD:qld'], 'sent', 'filled qld order marks sent');
+  assertEq(api.qldSleeve.shares, 0, 'EXIT fill of 10/10 flattens the sleeve');
+  assertEq(api.qldSleeve.pendingOrder, null, 'pendingOrder cleared after full fill');
+  assertEq(api.qldSleeve.pending, null, 'queued action cleared after full fill');
+  assertEq(api.qldSleeve.cashValue, 150, 'EXIT proceeds banked at the fill price');
+
+  // ---- sendTwsOpen: a throw inside sendTwsExits must not latch the entry lock ----
+  // Regression: the entry key used to stay 'sending' forever because the modal
+  // no longer resets send state on reopen.
+  api.autoSendExitsOnOpen = true;
+  api.lastRenderedSnapshot = [{ ticker: 'THROWX', success: true, data: { c: 15, h: 15.5, l: 14.5, pc: 14, bid: 14.99, ask: 15.01 }, trigger: 14 }];
+  const origUUID = crypto.randomUUID;
+  crypto.randomUUID = () => { throw new Error('uuid boom'); };
+  let openThrew = false;
+  try { await api.sendTwsOpen('THROWX'); } catch (e) { openThrew = e && e.message === 'uuid boom'; }
+  crypto.randomUUID = origUUID;
+  assertTrue(openThrew, 'sendTwsOpen propagates the inner failure');
+  assertEq(api.twsSendState['THROWX:entry'], 'idle', 'entry send lock released after throw');
+  assertEq(api.twsSendState['THROWX:exits'], 'idle', 'exits send lock released after throw');
+  api.autoSendExitsOnOpen = false;
 
   console.log('\nAll TWS tests passed');
   process.exit(0);

@@ -1010,7 +1010,6 @@
                 globalMarketRegime,
                 qldSleeve,
                 twsSeenExecs: [...twsSeenExecs],
-                twsExecReceipts,
                 // twsBridgeUrl/twsBridgeToken are bridge-derived (meta-injected) and
                 // machine-local — persisting them would seed another PC's copy of
                 // this file with a stale token.
@@ -1047,6 +1046,7 @@
             let s;
             try { s = await pscBridgeApi.loadSettings(); } catch (_) { return; }
             if (!s || typeof s !== 'object' || !Object.keys(s).length) return;
+            let hydratedOk = false;
             try {
                 if (pscBridgeApi.settingsStatus) {
                     const st = await pscBridgeApi.settingsStatus().catch(() => null);
@@ -1075,10 +1075,6 @@
                     safeStorageSet('twsSeenExecs', JSON.stringify(arr));
                     twsSeenExecs = loadTwsSeenExecs();
                 }
-                if (s.twsExecReceipts && typeof s.twsExecReceipts === 'object' && !Array.isArray(s.twsExecReceipts)) {
-                    twsExecReceipts = sanitizeExecReceipts(s.twsExecReceipts);
-                    safeStorageSet('twsExecReceipts', JSON.stringify(twsExecReceipts));
-                }
                 customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
                 regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
                 activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
@@ -1086,13 +1082,16 @@
                 loadSettings();
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
+                hydratedOk = true;
             } catch (e) { console.warn('portable settings apply failed:', e && e.message); }
             finally {
                 _pscHydrating = false;
                 // A boot-time save may have debounced mid-hydration and written a
-                // partial file — always rewrite the hydrated state once.
-                _pscSaveDirty = true;
-                pscFlushSave();
+                // partial file — rewrite the hydrated state once. Only when apply
+                // SUCCEEDED: on a validation failure (e.g. a newer version's file)
+                // _storage still holds defaults and a flush would clobber the
+                // untouched file with them.
+                if (hydratedOk) { _pscSaveDirty = true; pscFlushSave(); }
             }
         }
 
@@ -4492,7 +4491,7 @@
                 signalWeek: qs.signalWeek || null
             };
         } catch (e) {}
-        function qldSaveSleeve() { safeStorageSet('qldSleeve', JSON.stringify(qldSleeve)); }
+        function qldSaveSleeve() { return safeStorageSet('qldSleeve', JSON.stringify(qldSleeve)); }
 
         // TradingView-compatible EMA: seeded with the first value, iterated over the
         // whole series (Pine ta.ema uses nz(ema[1], src), not an SMA seed).
@@ -5146,9 +5145,10 @@
             if (!spec.side || !spec.shares) { showErrorToast('Nothing to send (cash adjust or 0 shares).'); return; }
             const key = 'QLD:qld';
             if (twsSendState[key] === 'sending') return;
+            if (twsSendState[key] === 'sent' && !confirm('A QLD order was already sent — send another one?')) return;
+            if (twsSendState[key] === 'unknown' && !confirm('The last QLD order outcome was UNKNOWN — it may already exist in TWS. Check TWS first.\n\nSend another anyway?')) return;
             setTwsSendState(key, 'sending');
             try {
-                if (twsSendState[key] === 'sent' && !confirm('A QLD order was already sent — send another one?')) return;
                 const pf = await preflightContract('QLD');
                 if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
                 if (twsOrdersEnabled) {
@@ -8828,11 +8828,17 @@
                 if (!f.shares) { showErrorToast('No shares calculated'); return; }
                 setTwsSendState(key, 'sending');
                 const timedOverride = f.exitDate ? { enabled: true, date: f.exitDate, time: '15:55' } : null;
-                const result = await sendTwsExits(ticker, true, f.c, f.shares, f.stop, 'lspb', [], true, item, { stratKind: 'pb', timedExit: timedOverride });
-                if (!result) setTwsSendState(key, 'idle');
-                else if (result.ok && !result.unknown) setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
-                else if (result.unknown) setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
-                else setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+                try {
+                    const result = await sendTwsExits(ticker, true, f.c, f.shares, f.stop, 'lspb', [], true, item, { stratKind: 'pb', timedExit: timedOverride });
+                    if (!result) setTwsSendState(key, 'idle');
+                    else if (result.ok && !result.unknown) setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
+                    else if (result.unknown) setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
+                    else setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+                } finally {
+                    // A throw inside sendTwsExits must not leave this key latched —
+                    // the modal no longer clears send state on reopen.
+                    if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
+                }
                 return;
             }
             const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
@@ -8843,15 +8849,19 @@
             if (!f.shares) { showErrorToast('No shares calculated'); return; }
             const strategyId = twsAutoSendStrategyId(f.isGreenDay);
             setTwsSendState(key, 'sending');
-            const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
-            if (!result) {
-                setTwsSendState(key, 'idle');
-            } else if (result.ok && !result.unknown) {
-                setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
-            } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
-            } else {
-                setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+            try {
+                const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
+                if (!result) {
+                    setTwsSendState(key, 'idle');
+                } else if (result.ok && !result.unknown) {
+                    setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
+                } else if (result.unknown) {
+                    setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
+                } else {
+                    setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
+                }
+            } finally {
+                if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
             }
         }
         // Poll /executions until an order's fills reach the requested quantity or

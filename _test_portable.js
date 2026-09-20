@@ -41,7 +41,6 @@ return {
   set qldView(v) { qldView = v; },
   set activeTradesLog(v) { activeTradesLog = v; }, get activeTradesLog() { return activeTradesLog; },
   set twsSeenExecs(v) { twsSeenExecs = v; },
-  set twsExecReceipts(v) { twsExecReceipts = v; },
   set customStrategies(v) { customStrategies = v; },
   set regimeStrategyMap(v) { regimeStrategyMap = v; }
 };`);
@@ -90,12 +89,11 @@ try {
   // ---------- collectPortableState (B01/B07/B08) ----------
   api.qldSleeve = flatSleeve({ shares: 12, inPos: true, entryPrice: 80 });
   api.twsSeenExecs = new Map([['20260101|ex1', 1.0], ['20260101|ex2', null]]);
-  api.twsExecReceipts = { '20260101|ex1': { tradeId: 7, applied: 1.0 } };
   const snap = api.collectPortableState();
   assert(snap.scannerStores && snap.scannerStores.lsv3.tickers[0] === 'QQQ', 'portable state includes scannerStores');
   assert(snap.qldSleeve && snap.qldSleeve.shares === 12, 'portable state includes qldSleeve');
   assert(Array.isArray(snap.twsSeenExecs) && snap.twsSeenExecs.length === 2, 'exec receipts serialized');
-  assert(snap.twsExecReceipts && snap.twsExecReceipts['20260101|ex1'].applied === 1.0, 'exec receipt fees serialized');
+  assert(snap.twsSeenExecs[0][0] === '20260101|ex1' && snap.twsSeenExecs[0][1] === 1.0, 'exec fee pairs serialized');
   assert(!('twsBridgeUrl' in snap) || snap.twsBridgeUrl === undefined, 'bridge url excluded');
   assert(!('twsBridgeToken' in snap) || snap.twsBridgeToken === undefined, 'bridge token excluded');
   assert(snap.apiKeys && typeof snap.apiKeys === 'object', 'apiKeys object present');
