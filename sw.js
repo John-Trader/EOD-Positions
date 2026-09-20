@@ -1,6 +1,6 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v3.7.8`;
+const CACHE_NAME = `${CACHE_PREFIX}v3.8.0`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
@@ -15,6 +15,8 @@ const PRIVATE_HEADERS = ['authorization', 'proxy-authorization', 'x-api-key', 'a
 
 function isSafeShellResponse(response, url, asset) {
   const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  // The bridge marks token-injected HTML — a private-shell response must never enter the cache.
+  if (response.headers.get('x-psc-bridge')) return false;
   return response.ok && !response.redirected && response.url === url && type === asset.type;
 }
 

@@ -1,5 +1,5 @@
 const fs = require('fs');
-const h = fs.readFileSync('C:/Users/levif/Desktop/End-of-day/index.html', 'utf8');
+const h = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
 
 const start = h.indexOf('<script>');
 const end = h.lastIndexOf('</script>');
@@ -422,8 +422,9 @@ function assertTrue(cond, label) {
   // ---- exec dedupe persists to storage (a reload must not replay fills) ----
   assertEq(api.twsExecKey({ execId: 'e1', time: '20260914  15:42:01' }), '20260914|e1', 'exec key = day prefix + execId');
   assertEq(api.twsExecKey({ execId: 'e1' }), 'e1', 'exec key falls back to bare execId');
+  // Entries may be plain exec keys (legacy) or [key, commission] pairs.
   const storedExecs = JSON.parse(store.twsSeenExecs || '[]');
-  assertTrue(storedExecs.length === api.twsSeenExecs.size && storedExecs.every(k => api.twsSeenExecs.has(k)), 'stored exec ids mirror the in-memory set');
+  assertTrue(storedExecs.length === api.twsSeenExecs.size && storedExecs.every(e => api.twsSeenExecs.has(Array.isArray(e) ? e[0] : e)), 'stored exec ids mirror the in-memory set');
 
   console.log('\nAll TWS tests passed');
   process.exit(0);

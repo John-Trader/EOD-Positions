@@ -91,16 +91,18 @@ function serveStaticFile(req, res, webRoot) {
     fs.readFile(file, (err, data) => {
         if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not Found'); }
         let body = data;
+        const headers = {
+            'Content-Type': STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+        };
         if (urlPath === '/' || urlPath === '/index.html') {
             // Inject the bridge token so the app can self-configure — same-origin only.
             const meta = `<meta name="psc-bridge" content="${BRIDGE_TOKEN}">`;
             body = Buffer.from(String(data).replace('<head>', `<head>\n    ${meta}`), 'utf8');
+            // Marker so a service worker never caches a token-bearing response.
+            headers['X-PSC-Bridge'] = '1';
         }
-        res.writeHead(200, {
-            'Content-Type': STATIC_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
-            'Content-Length': body.length,
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-        });
+        res.writeHead(200, { ...headers, 'Content-Length': body.length });
         res.end(req.method === 'HEAD' ? undefined : body);
     });
 }
@@ -209,13 +211,20 @@ function pruneToSeen(cache, seenSet) { // exported for tests
     for (const id of [...cache.keys()]) if (!seenSet.has(id)) cache.delete(id);
 }
 
+// Snapshot requests resolve { list, complete }. `complete` is true ONLY when the
+// matching End event arrived on the same connection epoch — a timeout or
+// disconnect releases waiters with complete:false and prunes nothing.
+let connEpoch = 0;
+let orderSnapshotEpoch = -1;           // connEpoch when the in-flight orders snapshot started
+let positionSnapshotEpoch = -1;
+
 function finishOrderSnapshot() {
     if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
     const seen = orderSnapshotSeen;
     orderSnapshotSeen = null;
     if (seen) pruneToSeen(openOrdersCache, seen);
     const list = Array.from(openOrdersCache.values());
-    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()(list);
+    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()({ list, complete: true });
 }
 
 function finishPositionSnapshot() {
@@ -224,7 +233,22 @@ function finishPositionSnapshot() {
     positionSnapshotSeen = null;
     if (seen) pruneToSeen(positionsCache, seen);
     const list = Array.from(positionsCache.values());
-    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()(list);
+    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()({ list, complete: true });
+}
+
+// Timeout/disconnect path: hand out the stale cache WITHOUT pruning — an
+// incomplete snapshot must never erase unseen entries.
+function abortOrderSnapshot() {
+    if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
+    orderSnapshotSeen = null;
+    const list = Array.from(openOrdersCache.values());
+    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()({ list, complete: false });
+}
+function abortPositionSnapshot() {
+    if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
+    positionSnapshotSeen = null;
+    const list = Array.from(positionsCache.values());
+    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()({ list, complete: false });
 }
 
 function requestOrdersSnapshot() {
@@ -232,8 +256,13 @@ function requestOrdersSnapshot() {
         orderSnapshotWaiters.push(resolve);
         if (orderSnapshotSeen) return;                 // join the in-flight snapshot
         orderSnapshotSeen = new Set();
+        const epoch = connEpoch;
+        orderSnapshotEpoch = epoch;
         try { if (connected && ib) ib.reqAllOpenOrders(); } catch (_) {}
-        orderSnapshotTimer = setTimeout(finishOrderSnapshot, 4000);
+        orderSnapshotTimer = setTimeout(() => {
+            if (epoch === connEpoch && orderSnapshotSeen) console.warn('[bridge] orders snapshot timed out — serving stale cache (incomplete)');
+            abortOrderSnapshot();
+        }, 4000);
     });
 }
 
@@ -242,8 +271,13 @@ function requestPositionsSnapshot() {
         positionSnapshotWaiters.push(resolve);
         if (positionSnapshotSeen) return;
         positionSnapshotSeen = new Set();
+        const epoch = connEpoch;
+        positionSnapshotEpoch = epoch;
         try { if (connected && ib) ib.reqPositions(); } catch (_) {}
-        positionSnapshotTimer = setTimeout(finishPositionSnapshot, 4000);
+        positionSnapshotTimer = setTimeout(() => {
+            if (epoch === connEpoch && positionSnapshotSeen) console.warn('[bridge] positions snapshot timed out — serving stale cache (incomplete)');
+            abortPositionSnapshot();
+        }, 4000);
     });
 }
 
@@ -354,14 +388,15 @@ function connect() {
 
     ib.on(EventName.connected, () => {
         connected = true;
+        connEpoch++;   // stale-epoch snapshot callbacks are ignored below
         console.log(`[bridge] Connected to TWS on ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
         ib.reqIds();
         // Bind existing API orders to this client BEFORE the open-orders snapshot —
         // orders from dead/other sessions can only be cancelled once bound.
         try { ib.reqAutoOpenOrders(true); } catch (_) {}
         try { ib.reqMarketDataType(1); } catch (_) {}     // ask for real-time; TWS downgrades to delayed if unentitled
-        try { if (!positionSnapshotSeen) { positionSnapshotSeen = new Set(); ib.reqPositions(); } } catch (_) {}
-        try { if (!orderSnapshotSeen) { orderSnapshotSeen = new Set(); ib.reqAllOpenOrders(); } } catch (_) {}
+        try { if (!positionSnapshotSeen) { positionSnapshotSeen = new Set(); positionSnapshotEpoch = connEpoch; ib.reqPositions(); } } catch (_) {}
+        try { if (!orderSnapshotSeen) { orderSnapshotSeen = new Set(); orderSnapshotEpoch = connEpoch; ib.reqAllOpenOrders(); } } catch (_) {}
         // Re-issue market-data subscriptions — they died with the socket.
         for (const symbol of mktSubs.keys()) issueMktSub(symbol);
         streamBroadcast({ type: 'status', connected: true });
@@ -430,7 +465,11 @@ function connect() {
         }
     });
 
-    ib.on(EventName.openOrderEnd, finishOrderSnapshot);
+    ib.on(EventName.openOrderEnd, () => {
+        // A stale-epoch End (queued before a reconnect) must not finish the new
+        // snapshot early or prune with old-connection data.
+        if (orderSnapshotEpoch === connEpoch) finishOrderSnapshot();
+    });
 
     ib.on(EventName.error, (err, code, reqId) => {
         const msg = err && err.message ? err.message : String(err);
@@ -593,7 +632,9 @@ function connect() {
         streamBroadcast({ type: 'position', symbol: contract.symbol, qty: pos, avgCost, mktPrice: prev.mktPrice });
     });
 
-    ib.on(EventName.positionEnd, finishPositionSnapshot);
+    ib.on(EventName.positionEnd, () => {
+        if (positionSnapshotEpoch === connEpoch) finishPositionSnapshot();
+    });
 
     ib.on(EventName.pnl, (reqId, dailyPnL, unrealizedPnL, realizedPnL) => {
         pnlCache.dailyPnL = dailyPnL; pnlCache.unrealizedPnL = unrealizedPnL; pnlCache.realizedPnL = realizedPnL;
@@ -658,14 +699,15 @@ function connect() {
     });
 
     function releaseSnapshots() {
-        // Disconnect mid-snapshot: don't prune on partial data — just release waiters.
+        // Disconnect mid-snapshot: don't prune on partial data — release waiters
+        // as incomplete so the app never treats a stale cache as authoritative.
         orderSnapshotSeen = null; positionSnapshotSeen = null;
         if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
         if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
         const ol = Array.from(openOrdersCache.values());
-        while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()(ol);
+        while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()({ list: ol, complete: false });
         const pl = Array.from(positionsCache.values());
-        while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()(pl);
+        while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()({ list: pl, complete: false });
     }
 
     ib.on(EventName.disconnected, () => {
@@ -744,6 +786,56 @@ function buildOrder(spec, id) {
         order.algoParams = [{ tag: 'adaptivePriority', value: spec.adaptivePriority || 'Normal' }];
     }
     return order;
+}
+
+// ---------- Order spec validation ----------
+// The HTTP layer must reject malformed specs before they allocate order ids —
+// buildOrder silently coerces garbage otherwise (NaN qty, missing symbol).
+const ORDER_TYPES = new Set(['MKT', 'LMT', 'STP', 'STP LMT', 'MOC', 'LOC', 'TRAIL', 'TRAIL LIMIT', 'MIT', 'LIT']);
+const ORDER_TIFS = new Set(['DAY', 'GTC', 'IOC', 'OPG', 'GTD', 'FOK', 'DTC']);
+const ORDER_SYMBOL_RE = /^[A-Za-z][A-Za-z0-9.\-]{0,15}$/;
+const GAT_RE = /^\d{8}\s+\d{2}:\d{2}(:\d{2})?/;
+function validateOrderSpec(spec) {
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return 'order spec must be an object';
+    if (!ORDER_SYMBOL_RE.test(String(spec.symbol || '').trim())) return 'invalid symbol';
+    if (spec.action !== 'BUY' && spec.action !== 'SELL') return 'action must be BUY or SELL';
+    const qty = Number(spec.quantity);
+    if (!Number.isFinite(qty) || qty <= 0 || qty > 1e7) return 'invalid quantity';
+    if (spec.orderType != null && !ORDER_TYPES.has(String(spec.orderType).toUpperCase())) return 'invalid orderType';
+    if (spec.tif != null && !ORDER_TIFS.has(String(spec.tif).toUpperCase())) return 'invalid tif';
+    for (const k of ['lmtPrice', 'auxPrice', 'triggerPrice', 'adjustedStopPrice']) {
+        if (spec[k] != null && (!Number.isFinite(Number(spec[k])) || Number(spec[k]) <= 0)) return 'invalid ' + k;
+    }
+    if (spec.orderRef != null && String(spec.orderRef).length > 64) return 'orderRef too long';
+    if (spec.ocaGroup != null && String(spec.ocaGroup).length > 64) return 'ocaGroup too long';
+    if (spec.parentId != null && !Number.isInteger(Number(spec.parentId))) return 'invalid parentId';
+    if (spec.goodAfterTime != null && !GAT_RE.test(String(spec.goodAfterTime))) return 'invalid goodAfterTime';
+    if (spec.ref != null && String(spec.ref).length > 64) return 'ref too long';
+    if (spec.parentRef != null && String(spec.parentRef).length > 64) return 'parentRef too long';
+    return null;
+}
+const MAX_BATCH_ORDERS = 50;
+// Per-leg acknowledgement budget: placeOrder's own timeout (5s) + the 150ms
+// inter-order pause, plus slack — not a blanket fixed window.
+const LEG_ACK_MS = 5000, INTER_ORDER_MS = 150;
+const batchDeadlineMs = (n) => 5000 + n * (LEG_ACK_MS + INTER_ORDER_MS) + 2000;
+const inflightByRef = new Map();   // orderRef -> {work, sig} — dedupe concurrent duplicates
+
+// Wrap a placement promise so concurrent same-ref requests share one order.
+function dedupeInflight(orderRef, sig, work) {
+    if (orderRef) inflightByRef.set(orderRef, { work, sig });
+    return work.finally(() => {
+        const cur = orderRef && inflightByRef.get(orderRef);
+        if (cur && cur.work === work) inflightByRef.delete(orderRef);
+    });
+}
+
+function orderResult(spec) {
+    return placeOrder(spec).then((result) => ({
+        // unknown (timeout) is NOT ok — the order may exist in TWS.
+        ok: result.status !== 'Rejected' && !result.unknown,
+        ...result,
+    })).catch((e) => ({ ok: false, error: e.message || String(e) }));
 }
 
 // ---------- Place order ----------
@@ -885,26 +977,44 @@ function fetchExecutions() {
 }
 
 // ---------- Dedupe ----------
+// refDedupe entries keep the request signature so a ref reused with a DIFFERENT
+// payload is rejected (409) instead of silently returning the old result.
 function checkDedupe(orderRef) {
     if (!orderRef) return null;
     const now = Date.now();
     const hit = refDedupe.get(orderRef);
-    if (hit && (now - hit.ts) < REF_TTL) return hit.result;
+    if (hit && (now - hit.ts) < REF_TTL) return hit;
     return null;
 }
-function recordDedupe(orderRef, result) {
+function recordDedupe(orderRef, result, sig) {
     if (!orderRef) return;
-    refDedupe.set(orderRef, { result, ts: Date.now() });
+    refDedupe.set(orderRef, { result, sig, ts: Date.now() });
     // Prune old entries.
     for (const [k, v] of refDedupe) {
         if (Date.now() - v.ts > REF_TTL) refDedupe.delete(k);
     }
 }
 
+// Host gate (DNS-rebinding): the bridge only ever answers loopback Host values.
+// A browser pointed at attacker.example resolving to 127.0.0.1 sends
+// Host: attacker.example — reject it before any content (incl. token-injected
+// index.html) or CORS response goes out.
+function requestHostOk(req) {
+    const h = req.headers.host;
+    if (!h) return true;                       // HTTP/1.0 / non-browser clients
+    const name = h.startsWith('[') ? h.slice(1, h.indexOf(']')) : h.split(':')[0];
+    return name === '127.0.0.1' || name === 'localhost' || name === '::1';
+}
+
 // ---------- HTTP server ----------
 const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin || '';
     const url = new URL(req.url, `http://127.0.0.1:${BRIDGE_PORT}`);
+
+    if (!requestHostOk(req)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        return res.end('Forbidden');
+    }
 
     // CORS headers shared by all responses.
     const corsOrigin = isAllowedOrigin(origin) ? origin : 'null';
@@ -1000,15 +1110,15 @@ const server = http.createServer(async (req, res) => {
         }
 
         if (url.pathname === '/positions') {
-            const positions = await requestPositionsSnapshot();
+            const snap = await requestPositionsSnapshot();
             res.writeHead(200, corsHeaders);
-            return res.end(JSON.stringify({ ok: true, positions: positions.filter(p => p.qty) }));
+            return res.end(JSON.stringify({ ok: true, positions: snap.list.filter(p => p.qty), complete: snap.complete }));
         }
 
         if (url.pathname === '/orders') {
-            const orders = await requestOrdersSnapshot();
+            const snap = await requestOrdersSnapshot();
             res.writeHead(200, corsHeaders);
-            return res.end(JSON.stringify({ ok: true, orders }));
+            return res.end(JSON.stringify({ ok: true, orders: snap.list, complete: snap.complete }));
         }
 
         if (url.pathname === '/executions') {
@@ -1046,54 +1156,98 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/order') {
         const body = await readBody(req);
         if (!body) return sendJson(res, 400, { ok: false, error: 'Invalid JSON body' }, corsHeaders);
+        const specErr = validateOrderSpec(body);
+        if (specErr) return sendJson(res, 400, { ok: false, error: specErr }, corsHeaders);
+        const sig = JSON.stringify(body);
         const dup = checkDedupe(body.orderRef);
-        if (dup) return sendJson(res, 200, { ...dup, deduped: true }, corsHeaders);
-        try {
-            const result = await placeOrder(body);
-            const out = { ok: result.status !== 'Rejected', ...result };
-            recordDedupe(body.orderRef, out);
-            return sendJson(res, 200, out, corsHeaders);
-        } catch (e) {
-            const out = { ok: false, error: e.message || String(e) };
-            recordDedupe(body.orderRef, out);
-            return sendJson(res, 200, out, corsHeaders);
+        if (dup) {
+            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, corsHeaders);
+            return sendJson(res, 200, { ...dup.result, deduped: true }, corsHeaders);
         }
+        const inflight = inflightByRef.get(body.orderRef);
+        if (inflight) {
+            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, corsHeaders);
+            const out = await inflight.work;
+            return sendJson(res, 200, { ...out, deduped: true }, corsHeaders);
+        }
+        const out = await dedupeInflight(body.orderRef, sig, orderResult(body));
+        // Only record real TWS outcomes — a local error (bridge down, no order id)
+        // must not pin the ref for the TTL; the client may retry deliberately.
+        if (out.orderId != null) recordDedupe(body.orderRef, out, sig);
+        return sendJson(res, 200, out, corsHeaders);
     }
 
-    // POST /orders — batch of independent orders
+    // POST /orders — batch of orders (OCA/parentRef-chained or independent)
     if (req.method === 'POST' && url.pathname === '/orders') {
         const body = await readBody(req);
         if (!body || !Array.isArray(body.orders)) return sendJson(res, 400, { ok: false, error: 'Expected {orders:[]}' }, corsHeaders);
-        const dup = checkDedupe(body.orderRef);
-        if (dup) return sendJson(res, 200, { ...dup, deduped: true }, corsHeaders);
-        const results = [];
-        // Resolve parentRef → allocated orderId.
-        const refToId = {};
-        for (const spec of body.orders) {
-            if (spec.ref) refToId[spec.ref] = null; // placeholder
+        if (body.orders.length > MAX_BATCH_ORDERS) {
+            return sendJson(res, 400, { ok: false, error: 'Batch too large (max ' + MAX_BATCH_ORDERS + ')' }, corsHeaders);
         }
         for (let i = 0; i < body.orders.length; i++) {
-            const spec = body.orders[i];
-            const resolved = { ...spec };
-            if (spec.parentRef && refToId[spec.parentRef] != null) resolved.parentId = refToId[spec.parentRef];
-            try {
-                const result = await placeOrder(resolved);
-                if (spec.ref) refToId[spec.ref] = result.orderId;
-                results.push({ ok: result.status !== 'Rejected', ...result });
-            } catch (e) {
-                results.push({ ok: false, error: e.message || String(e) });
+            const specErr = validateOrderSpec(body.orders[i]);
+            if (specErr) return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: ' + specErr }, corsHeaders);
+            const pr = body.orders[i].parentRef;
+            if (pr != null && !body.orders.some(s => s.ref === pr)) {
+                return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: unknown parentRef' }, corsHeaders);
             }
-            // Small pause between OCA members so TWS can form the group before the next order arrives.
-            if (i < body.orders.length - 1) await new Promise(r => setTimeout(r, 150));
         }
-        const firstFail = results.find(r => !r.ok);
-        const hasUnknown = results.some(r => r.unknown);
-        const out = { ok: results.every(r => r.ok), results };
-        if (!out.ok) {
-            out.error = firstFail?.error || firstFail?.message || 'One or more orders rejected';
+        const sig = JSON.stringify(body.orders);
+        const dup = checkDedupe(body.orderRef);
+        if (dup) {
+            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, corsHeaders);
+            return sendJson(res, 200, { ...dup.result, deduped: true }, corsHeaders);
         }
-        if (hasUnknown) out.unknown = true;
-        recordDedupe(body.orderRef, out);
+        const inflight = inflightByRef.get(body.orderRef);
+        if (inflight) {
+            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, corsHeaders);
+            const out = await inflight.work;
+            return sendJson(res, 200, { ...out, deduped: true }, corsHeaders);
+        }
+        const work = (async () => {
+            const deadline = Date.now() + batchDeadlineMs(body.orders.length);
+            const results = [];
+            // Resolve parentRef → allocated orderId.
+            const refToId = {};
+            const refFailed = new Set();
+            for (const spec of body.orders) {
+                if (spec.ref) refToId[spec.ref] = null; // placeholder
+            }
+            for (let i = 0; i < body.orders.length; i++) {
+                // A stalled order must not hold the whole batch hostage.
+                if (Date.now() >= deadline) {
+                    for (let j = i; j < body.orders.length; j++) {
+                        results.push({ ok: false, skipped: true, error: 'batch deadline exceeded — check TWS before retrying', ref: body.orders[j].ref });
+                    }
+                    break;
+                }
+                const spec = body.orders[i];
+                if (spec.parentRef && refFailed.has(spec.parentRef)) {
+                    // Parent was rejected/unknown — a child placed now would sit orphaned.
+                    results.push({ ok: false, skipped: true, error: 'parent ' + spec.parentRef + ' not confirmed — child skipped', ref: spec.ref });
+                    refFailed.add(spec.ref);
+                    continue;
+                }
+                const resolved = { ...spec };
+                if (spec.parentRef && refToId[spec.parentRef] != null) resolved.parentId = refToId[spec.parentRef];
+                const result = await orderResult(resolved);
+                if (spec.ref) refToId[spec.ref] = result.orderId;
+                if (spec.ref && !result.ok) refFailed.add(spec.ref);
+                results.push(spec.ref ? { ...result, ref: spec.ref } : result);
+                // Small pause between OCA members so TWS can form the group before the next order arrives.
+                if (i < body.orders.length - 1) await new Promise(r => setTimeout(r, 150));
+            }
+            const firstFail = results.find(r => !r.ok);
+            const hasUnknown = results.some(r => r.unknown);
+            const out = { ok: results.every(r => r.ok), results };
+            if (!out.ok) {
+                out.error = firstFail?.error || firstFail?.message || 'One or more orders rejected';
+            }
+            if (hasUnknown) out.unknown = true;
+            return out;
+        })();
+        const out = await dedupeInflight(body.orderRef, sig, work);
+        if (out.results) recordDedupe(body.orderRef, out, sig);
         return sendJson(res, 200, out, corsHeaders);
     }
 
@@ -1138,25 +1292,38 @@ function sendJson(res, code, obj, extraHeaders = {}) {
     res.end(JSON.stringify(obj));
 }
 
+const MAX_BODY_BYTES = 256 * 1024;   // order batches are small JSON — cap floods
 function readBody(req) {
     return new Promise((resolve) => {
         const chunks = [];
-        req.on('data', c => chunks.push(c));
-        req.on('end', () => {
-            try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
-            catch (_) { resolve(null); }
+        let size = 0, done = false;
+        const finish = (v) => { if (!done) { done = true; resolve(v); } };
+        req.on('data', c => {
+            if (done) return;
+            size += c.length;
+            if (size > MAX_BODY_BYTES) { finish(null); req.destroy(); return; }
+            chunks.push(c);
         });
-        req.on('error', () => resolve(null));
+        req.on('end', () => {
+            if (done) return;
+            try { finish(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+            catch (_) { finish(null); }
+        });
+        req.on('error', () => finish(null));
     });
 }
 
 // ---------- WS /stream ----------
+const MAX_WS_TICKERS = 200;        // per-message ticker cap
+const MAX_WS_SUBS = 500;           // per-connection subscription cap
+const WS_TICKER_RE = /^[A-Z0-9.\-]{1,16}$/;
 if (WebSocketServer) {
     wss = new WebSocketServer({ noServer: true });
     server.on('upgrade', (req, socket) => {
         let url;
         try { url = new URL(req.url, 'http://localhost'); } catch (_) { socket.destroy(); return; }
         if (url.pathname !== '/stream') { socket.destroy(); return; }
+        if (!requestHostOk(req)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
         const origin = req.headers.origin || '';
         if (origin && !isAllowedOrigin(origin)) { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); socket.destroy(); return; }
         wss.handleUpgrade(req, socket, Buffer.alloc(0), (ws) => {
@@ -1166,7 +1333,9 @@ if (WebSocketServer) {
             ws.isAlive = true;
             ws.on('pong', () => { ws.isAlive = true; });
             ws.on('message', (raw) => {
+                if (!raw || raw.length > 16384) return;      // bound frame size
                 let msg; try { msg = JSON.parse(raw); } catch (_) { return; }
+                if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
                 if (!ws._pscAuthed) {
                     if (msg.type === 'auth' && msg.token === BRIDGE_TOKEN) {
                         ws._pscAuthed = true; clearTimeout(ws._pscAuthTimer);
@@ -1177,14 +1346,16 @@ if (WebSocketServer) {
                     }
                     return;
                 }
-                if (msg.type === 'subscribe' && Array.isArray(msg.tickers)) {
-                    for (const t of msg.tickers) {
+                const tickers = Array.isArray(msg.tickers) ? msg.tickers.slice(0, MAX_WS_TICKERS) : null;
+                if (msg.type === 'subscribe' && tickers) {
+                    for (const t of tickers) {
                         const s = String(t).trim().toUpperCase();
-                        if (!s) continue;
+                        if (!WS_TICKER_RE.test(s)) continue;
+                        if (ws._pscSubs.size >= MAX_WS_SUBS) break;
                         if (!ws._pscSubs.has(s)) { ws._pscSubs.add(s); subscribeMktData(s); }
                     }
-                } else if (msg.type === 'unsubscribe' && Array.isArray(msg.tickers)) {
-                    for (const t of msg.tickers) {
+                } else if (msg.type === 'unsubscribe' && tickers) {
+                    for (const t of tickers) {
                         const s = String(t).trim().toUpperCase();
                         if (ws._pscSubs.delete(s)) unsubscribeMktData(s);
                     }
@@ -1258,8 +1429,8 @@ async function stop() {
     orderSnapshotSeen = null; positionSnapshotSeen = null;
     if (orderSnapshotTimer) { clearTimeout(orderSnapshotTimer); orderSnapshotTimer = null; }
     if (positionSnapshotTimer) { clearTimeout(positionSnapshotTimer); positionSnapshotTimer = null; }
-    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()([]);
-    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()([]);
+    while (orderSnapshotWaiters.length) orderSnapshotWaiters.shift()({ list: [], complete: false });
+    while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()({ list: [], complete: false });
     for (const sub of mktSubs.values()) { if (sub.graceTimer) { clearTimeout(sub.graceTimer); sub.graceTimer = null; } }
     mktSubs.clear();
     for (const ws of streamClients) { try { ws.terminate(); } catch (_) {} }
@@ -1274,6 +1445,7 @@ if (require.main === module) start().catch(e => { console.error('[bridge] failed
 
 module.exports = {
     toIbkSymbol, buildOrder, buildContract, isAllowedOrigin, isPscOrder, classifyMdError,
+    validateOrderSpec, requestHostOk,
     TICK_PRICE_MAP, TICK_PRICE_DELAYED, DELAYED_NOTICE_CODES, SYMBOL_ERROR_CODES,
     shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe, pruneToSeen,
     isAllowedStaticFile, resolveWebFile, start, stop,

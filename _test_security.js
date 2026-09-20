@@ -1,7 +1,7 @@
 // Security & sanitisation tests for the standalone HTML app.
 // Extracts the inline script and tests helper functions directly.
 const fs = require('fs');
-const h = fs.readFileSync('C:/Users/levif/Desktop/End-of-day/index.html', 'utf8');
+const h = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
 
 const start = h.indexOf('<script>');
 const end = h.lastIndexOf('</script>');

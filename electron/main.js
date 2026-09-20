@@ -16,7 +16,6 @@ const USER_DATA = app.getPath('userData');
 // Portable target sets PORTABLE_EXECUTABLE_DIR to the folder containing the exe.
 const SETTINGS_FILE_PRIMARY = path.join(process.env.PORTABLE_EXECUTABLE_DIR || USER_DATA, 'psc-settings.json');
 const SETTINGS_FILE_FALLBACK = path.join(USER_DATA, 'psc-settings.json');
-let settingsPath = SETTINGS_FILE_PRIMARY;
 
 // ---------- bridge token (persisted per machine) ----------
 function loadOrCreateToken() {
@@ -31,28 +30,112 @@ function loadOrCreateToken() {
 }
 
 // ---------- settings file ----------
-function readSettingsFile() {
-    try {
-        const obj = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-        return (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : {};
-    } catch (_) {
-        return {};
+// One snapshot is resolved before the window opens; the sync preload read and
+// the renderer's async load both serve it, so they can never disagree.
+let settingsPath = SETTINGS_FILE_PRIMARY;
+let settingsSnapshot = {};
+let settingsWritable = true;
+let settingsLoadError = null;
+
+// status: 'missing' | 'valid' | 'malformed' | 'error'
+function inspectSettingsFile(file) {
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); }
+    catch (e) { return { status: e && e.code === 'ENOENT' ? 'missing' : 'error', error: (e && e.message) || String(e) }; }
+    let obj;
+    try { obj = JSON.parse(raw); }
+    catch (e) { return { status: 'malformed', error: (e && e.message) || String(e) }; }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { status: 'malformed', error: 'settings file is not a JSON object' };
+    let mtime = 0;
+    try { mtime = fs.statSync(file).mtimeMs; } catch (_) {}
+    return { status: 'valid', data: obj, mtime };
+}
+
+function settingsLocation(file) { return file === SETTINGS_FILE_PRIMARY && SETTINGS_FILE_PRIMARY !== SETTINGS_FILE_FALLBACK ? 'portable' : 'userData'; }
+
+// Resolve which file this session reads/writes BEFORE the renderer exists.
+// A valid fallback (written when the portable dir was unwritable) must be
+// rediscovered here — previously the app restarted on the primary path and the
+// userData save was invisible until another write failed.
+async function initializeSettingsFile() {
+    const primary = inspectSettingsFile(SETTINGS_FILE_PRIMARY);
+    const fallback = SETTINGS_FILE_FALLBACK !== SETTINGS_FILE_PRIMARY
+        ? inspectSettingsFile(SETTINGS_FILE_FALLBACK) : { status: 'missing' };
+    const pick = (insp, file) => { settingsPath = file; settingsSnapshot = insp.data; };
+
+    if (primary.status === 'valid' && fallback.status === 'valid') {
+        const same = JSON.stringify(primary.data) === JSON.stringify(fallback.data);
+        if (same || fallback.mtime <= primary.mtime) return pick(primary, SETTINGS_FILE_PRIMARY);
+        // Fallback is newer — the last session was probably redirected to
+        // userData. Ask rather than silently discarding either file.
+        const fmt = (t) => new Date(t).toLocaleString();
+        const r = await dialog.showMessageBox({
+            type: 'question',
+            title: 'Position Size Calculator',
+            message: 'Two different settings files were found.',
+            detail: `Portable: ${SETTINGS_FILE_PRIMARY}\nsaved ${fmt(primary.mtime)}\n\nRecovered: ${SETTINGS_FILE_FALLBACK}\nsaved ${fmt(fallback.mtime)}\n\nThe recovered copy is newer — the previous save may have been redirected because the portable folder was not writable.`,
+            buttons: ['Use recovered copy', 'Use portable copy', 'Continue without saving'],
+            defaultId: 0, cancelId: 2, noLink: true,
+        });
+        if (r.response === 0) pick(fallback, SETTINGS_FILE_FALLBACK);
+        else if (r.response === 1) pick(primary, SETTINGS_FILE_PRIMARY);
+        else settingsWritable = false;
+        return;
     }
+    if (primary.status === 'valid') return pick(primary, SETTINGS_FILE_PRIMARY);
+    if (fallback.status === 'valid') return pick(fallback, SETTINGS_FILE_FALLBACK);
+
+    const bad = [primary, fallback].find(x => x.status === 'malformed' || x.status === 'error');
+    if (bad) {
+        const file = primary.status !== 'missing' ? SETTINGS_FILE_PRIMARY : SETTINGS_FILE_FALLBACK;
+        settingsLoadError = `settings file unreadable: ${file} (${bad.error || 'unknown'})`;
+        console.error('[electron]', settingsLoadError);
+        const r = await dialog.showMessageBox({
+            type: 'warning',
+            title: 'Position Size Calculator',
+            message: 'The settings file is damaged — it will NOT be overwritten.',
+            detail: `${file}\n${bad.error || ''}\n\nMove it aside to start fresh, or continue this session without saving.`,
+            buttons: ['Move aside & start fresh', 'Continue without saving', 'Quit'],
+            defaultId: 1, cancelId: 2, noLink: true,
+        });
+        if (r.response === 2) { app.quit(); return false; }
+        if (r.response === 0) {
+            try { fs.renameSync(file, file + '.corrupt-' + Date.now() + '.json'); }
+            catch (e) {
+                settingsWritable = false;
+                dialog.showErrorBox('Position Size Calculator', `Could not move the damaged file aside.\n${e && e.message}`);
+            }
+        } else {
+            settingsWritable = false;
+        }
+        return;
+    }
+    // Both missing: fresh install at the primary path.
 }
 
 function writeSettingsFile(obj) {
-    const tmp = settingsPath + '.tmp';
-    try {
-        fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-        fs.renameSync(tmp, settingsPath);
-    } catch (e) {
-        if (settingsPath !== SETTINGS_FILE_FALLBACK) {
-            settingsPath = SETTINGS_FILE_FALLBACK;
-            writeSettingsFile(obj);
-        } else {
-            console.error('[electron] settings write failed:', e && e.message);
-        }
+    if (!settingsWritable) return { ok: false, error: 'settings writes disabled for this session' };
+    let data;
+    try { data = JSON.stringify(obj, null, 2); }
+    catch (_) { return { ok: false, error: 'unserializable settings' }; }
+    // Atomic write: temp file + rename, so a crash never leaves a half file.
+    const attempt = (file) => {
+        const tmp = file + '.tmp';
+        try { fs.writeFileSync(tmp, data); fs.renameSync(tmp, file); return null; }
+        catch (e) { try { fs.rmSync(tmp, { force: true }); } catch (_) {} return e; }
+    };
+    let err = attempt(settingsPath);
+    if (err && settingsPath !== SETTINGS_FILE_FALLBACK && ['EACCES', 'EPERM', 'EROFS', 'ENOENT', 'ENOTDIR'].includes(err && err.code)) {
+        // Location/permission failure — redirect this and future writes.
+        try { fs.mkdirSync(USER_DATA, { recursive: true }); } catch (_) {}
+        if (!attempt(SETTINGS_FILE_FALLBACK)) { settingsPath = SETTINGS_FILE_FALLBACK; err = null; }
     }
+    if (err) {
+        console.error('[electron] settings write failed:', err && err.message);
+        return { ok: false, error: (err && err.message) || 'write failed' };
+    }
+    settingsSnapshot = obj;
+    return { ok: true, location: settingsLocation(settingsPath) };
 }
 
 // ---------- bridge log tee ----------
@@ -84,13 +167,22 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // ---------- settings IPC ----------
-ipcMain.on('psc:settings-load', (e) => { e.returnValue = readSettingsFile(); });
-ipcMain.handle('psc:load-settings-async', () => readSettingsFile());
+// Only the app view may read/write settings — the dock strip gets pscTerm only.
+const isAppSender = (wc) => !!(appView && wc === appView.webContents);
+const isDockSender = (wc) => !!(chromeView && wc === chromeView.webContents);
+
+ipcMain.on('psc:settings-load', (e) => { e.returnValue = isAppSender(e.sender) ? settingsSnapshot : {}; });
+ipcMain.handle('psc:load-settings-async', (e) => isAppSender(e.sender) ? settingsSnapshot : {});
+ipcMain.handle('psc:settings-status', (e) => isAppSender(e.sender)
+    ? { writable: settingsWritable, location: settingsLocation(settingsPath), error: settingsLoadError }
+    : { writable: false, location: null, error: 'unauthorized' });
 ipcMain.handle('psc:settings-save', (e, obj) => {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false };
-    if (JSON.stringify(obj).length > 5 * 1024 * 1024) return { ok: false, error: 'too large' };
-    writeSettingsFile(obj);
-    return { ok: true };
+    if (!isAppSender(e.sender)) return { ok: false, error: 'unauthorized' };
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'invalid payload' };
+    let size;
+    try { size = JSON.stringify(obj).length; } catch (_) { return { ok: false, error: 'unserializable' }; }
+    if (size > 5 * 1024 * 1024) return { ok: false, error: 'too large' };
+    return writeSettingsFile(obj);
 });
 
 // ---------- window ----------
@@ -136,12 +228,17 @@ function layoutViews() {
     appView.setBounds({ x: dockW, y: 0, width: Math.max(0, w - dockW), height: h });
 }
 
-ipcMain.handle('psc:term-toggle', () => { termOpen = !termOpen; layoutViews(); return termOpen; });
+ipcMain.handle('psc:term-toggle', (e) => {
+    if (!isDockSender(e.sender)) return termOpen;
+    termOpen = !termOpen; layoutViews(); return termOpen;
+});
 // The token line is pinned at the top of the terminal so it never rotates out
 // of the ring buffer — the user compares it with Settings → Bridge token → SHOW.
-ipcMain.handle('psc:term-buffer', () =>
-    `[electron] bridge token: ${bridgeToken || '(starting…)'}\n` + logBuffer.join('\n'));
+ipcMain.handle('psc:term-buffer', (e) => isDockSender(e.sender)
+    ? `[electron] bridge token: ${bridgeToken || '(starting…)'}\n` + logBuffer.join('\n')
+    : '');
 ipcMain.on('psc:term-resize', (e, w) => {
+    if (!isDockSender(e.sender)) return;
     const n = Math.round(Number(w));
     if (!Number.isFinite(n)) return;
     termW = Math.max(TERM_MIN, Math.min(n, termMax()));
@@ -214,6 +311,7 @@ let quitting = false;
 
 app.whenReady().then(async () => {
     loadWindowState();
+    if (await initializeSettingsFile() === false) return; // user chose Quit during recovery
     const token = loadOrCreateToken();
     bridgeToken = token;
     process.env.BRIDGE_TOKEN = token;

@@ -85,8 +85,9 @@ assertEq(ooExt.outsideRth, true, 'outsideRth flag surfaced');
 
 // ---- dedupe ----
 assertEq(bridge.checkDedupe('PSC-t1'), null, 'dedupe miss');
-bridge.recordDedupe('PSC-t1', { ok: true });
-assertEq(bridge.checkDedupe('PSC-t1').ok, true, 'dedupe hit within TTL');
+bridge.recordDedupe('PSC-t1', { ok: true }, 'sig1');
+assertEq(bridge.checkDedupe('PSC-t1').result.ok, true, 'dedupe hit within TTL');
+assertEq(bridge.checkDedupe('PSC-t1').sig, 'sig1', 'dedupe hit keeps request signature');
 
 // ---- CORS origin ----
 assertTrue(bridge.isAllowedOrigin('https://levifasten.github.io'), 'github pages allowed');

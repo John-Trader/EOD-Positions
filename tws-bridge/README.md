@@ -72,7 +72,7 @@ Paper accounts: to share real-time data with a paper account, enable
 | Variable | Default | Description |
 |---|---|---|
 | `TWS_HOST` | `127.0.0.1` | TWS host |
-| `TWS_PORT` | `7497` | TWS socket port (paper=7497, live=7496, IB Gateway paper=4002, live=4001) |
+| `TWS_PORT` | `7496` | TWS socket port (live=7496, paper=7497, IB Gateway live=4001, paper=4002) |
 | `IBKR_CLIENT_ID` | `7` | API client ID — must not conflict with another API connection |
 | `BRIDGE_PORT` | `8787` | Local HTTP port the app talks to |
 | `BRIDGE_TOKEN` | auto-generated | Shared secret; set to override the `.bridge-token` file |

@@ -260,7 +260,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.7.8</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.8.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -964,13 +964,30 @@
                 if (safeStorageGet(k) === null) safeStorageSet(k, 'true');
             }
         }
+        let _pscHydrating = false;   // suppresses saves while a file is applied
+        let _pscSaveDirty = false;   // a change landed while a save was in flight
+        let _pscSaveWarned = 0;      // rate-limit the failure toast
         function pscScheduleSave() {
-            if (!pscBridgeApi) return;
+            if (!pscBridgeApi || _pscHydrating) return;
+            _pscSaveDirty = true;
             if (_pscSaveTimer) clearTimeout(_pscSaveTimer);
-            _pscSaveTimer = setTimeout(() => {
-                _pscSaveTimer = null;
-                try { pscBridgeApi.saveSettings(collectPortableState()); } catch (_) {}
-            }, 500);
+            _pscSaveTimer = setTimeout(() => { _pscSaveTimer = null; pscFlushSave(); }, 500);
+        }
+        // Serialized save: one write at a time, dirty-flag rerun. A failed write
+        // surfaces once and retries once on the next change — never silently.
+        async function pscFlushSave() {
+            if (!pscBridgeApi || !_pscSaveDirty) return;
+            _pscSaveDirty = false;
+            let res = null;
+            try { res = await pscBridgeApi.saveSettings(collectPortableState()); } catch (e) { res = null; }
+            if (!res || res.ok !== true) {
+                console.warn('[psc] settings file save failed:', res && res.error);
+                if (Date.now() - _pscSaveWarned > 60000) {
+                    _pscSaveWarned = Date.now();
+                    showErrorToast('Settings file save failed — changes live in this window only. Free disk space or restart the app.', 8000);
+                }
+                _pscSaveDirty = true; // keep the flag — a later save retries
+            }
         }
         // Flush a pending debounced save on teardown — otherwise edits made in the
         // final <500ms before closing the window never reach psc-settings.json.
@@ -982,22 +999,25 @@
                 try { pscBridgeApi.saveSettings(collectPortableState()); } catch (_) {}
             });
         }
-        // Same payload as exportSettingsJson, plus apiKeys so the file is a complete
-        // portable install (backup exports deliberately keep keys out).
+        // Same payload as exportSettingsJson, plus apiKeys + execution-dedupe state
+        // so the file is a complete portable install (public backups keep keys out).
         function collectPortableState() {
             return {
-                version: "3.7.8",
+                version: "3.8.0",
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
                 globalMarketRegime,
                 qldSleeve,
+                twsSeenExecs: [...twsSeenExecs],
+                twsExecReceipts,
                 // twsBridgeUrl/twsBridgeToken are bridge-derived (meta-injected) and
                 // machine-local — persisting them would seed another PC's copy of
                 // this file with a stale token.
                 ...Object.fromEntries(BACKUP_SETTINGS.filter(k => k !== 'twsBridgeUrl' && k !== 'twsBridgeToken').map(k => [k, safeStorageGet(k)])),
                 apiKeys: Object.fromEntries(Object.values(API_CONFIGS).map(c => c.storageKey).filter(Boolean).map(k => [k, safeStorageGet(k)])),
-                scanner: snapshotScannerInputs()
+                scanner: collectScannerStore(''),
+                scannerStores: collectScannerStores()
             };
         }
         // Collapsible settings sections — expanded by default, collapse choices persisted.
@@ -1020,15 +1040,23 @@
 
         // Object-typed fields (journal, strategies, scanner) aren't seeded by the
         // preload's scalar pass — apply them post-init through the same validated
-        // path backups use.
+        // path backups use. _pscHydrating gates pscScheduleSave so applying the
+        // file doesn't immediately queue a redundant write-back.
         async function applyPortableSettings() {
             if (!pscBridgeApi) return;
             let s;
             try { s = await pscBridgeApi.loadSettings(); } catch (_) { return; }
             if (!s || typeof s !== 'object' || !Object.keys(s).length) return;
             try {
+                if (pscBridgeApi.settingsStatus) {
+                    const st = await pscBridgeApi.settingsStatus().catch(() => null);
+                    if (st && st.writable === false) {
+                        showErrorToast('Settings file is read-only this session — changes won\'t persist.', 8000);
+                    }
+                }
+                _pscHydrating = true;
                 const values = prepareBackup(s);
-                Object.entries(values).forEach(([k, v]) => safeStorageSet(k, v));
+                Object.entries(values).forEach(([k, v]) => { try { _storage.setItem(k, v); } catch (e) {} });
                 // The serving bridge stays authoritative for url+token — files
                 // written by older versions (or copied from another machine)
                 // carry a token that is invalid for this bridge instance.
@@ -1041,6 +1069,16 @@
                         if (typeof v === 'string' && v) safeStorageSet(k, v);
                     }
                 }
+                if (Array.isArray(s.twsSeenExecs)) {
+                    // Entries may be plain exec keys (legacy) or [key, commission] pairs.
+                    const arr = s.twsSeenExecs.filter(x => (typeof x === 'string' && x) || (Array.isArray(x) && typeof x[0] === 'string')).slice(-TWS_SEEN_EXECS_MAX);
+                    safeStorageSet('twsSeenExecs', JSON.stringify(arr));
+                    twsSeenExecs = loadTwsSeenExecs();
+                }
+                if (s.twsExecReceipts && typeof s.twsExecReceipts === 'object' && !Array.isArray(s.twsExecReceipts)) {
+                    twsExecReceipts = sanitizeExecReceipts(s.twsExecReceipts);
+                    safeStorageSet('twsExecReceipts', JSON.stringify(twsExecReceipts));
+                }
                 customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
                 regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
                 activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
@@ -1049,6 +1087,13 @@
                 updateActiveTradesCountBadge();
                 renderActiveTradesPage();
             } catch (e) { console.warn('portable settings apply failed:', e && e.message); }
+            finally {
+                _pscHydrating = false;
+                // A boot-time save may have debounced mid-hydration and written a
+                // partial file — always rewrite the hydrated state once.
+                _pscSaveDirty = true;
+                pscFlushSave();
+            }
         }
 
         let realtimeSocket = null;
@@ -1117,7 +1162,8 @@
         let twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
         let twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
         let twsPositions = {};             // symbol -> {qty, avgCost, mktPrice}
-        let twsLastPositionsAt = 0;        // last successful /positions poll — gates "flat" journal closes
+        let twsLastPositionsAt = 0;        // last COMPLETE /positions snapshot — gates "flat" journal closes
+        let twsPositionDeltaAt = {};       // per-symbol freshness from streamed position events
         let twsOpenOrders = [];            // shaped open orders incl. manual TWS orders
         let twsLastPnl = null;             // {dailyPnL, unrealizedPnL, realizedPnL}
         let twsSeenExecs = loadTwsSeenExecs(); // execId dedupe for fill→journal — persisted so a reload can't replay fills
@@ -1483,6 +1529,17 @@
             const root = pageRoot(page);
             return root && root.querySelectorAll ? root.querySelectorAll(sel) : [];
         }
+        // Literal-id lookup under a root. `querySelector('#card-BRK.B')` parses the
+        // ticker dot as a class separator — walk children and compare .id instead.
+        function findElById(root, id) {
+            if (!root) return null;
+            if (root.id === id) return root;
+            const kids = root.children;
+            if (kids && kids.length) {
+                for (const el of kids) { const hit = findElById(el, id); if (hit) return hit; }
+            }
+            return null;
+        }
         function pelAll(role) {
             return (typeof document !== 'undefined' && document.querySelectorAll) ? document.querySelectorAll(`[data-role="${role}"]`) : [];
         }
@@ -1742,8 +1799,11 @@
             const src = v && Array.isArray(v.bars) ? v.bars : null;
             if (!src || !src.length) return { daily: null, weekly: null, barsUsed: 0 };
             let bars = src;
-            if (liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0) {
-                const today = nyDateStr();
+            const nyP = nyNow();
+            // Fold the live quote only into a real session that has begun — a
+            // weekend/holiday/pre-open quote must not append a phantom daily bar.
+            if (liveQuote && Number.isFinite(liveQuote.c) && liveQuote.c > 0 && nyP.isTradingDay && nyP.minutesOfDay >= MARKET_OPEN_MIN) {
+                const today = nyP.date;
                 const lastD = barDateStr(src[src.length - 1]);
                 const fq = { d: today, o: liveQuote.o, h: Math.max(liveQuote.h || 0, liveQuote.c), l: Math.min(liveQuote.l > 0 ? liveQuote.l : liveQuote.c, liveQuote.c), c: liveQuote.c, v: liveQuote.v || 0 };
                 if (lastD === today) bars = src.slice(0, -1).concat(fq);
@@ -2224,7 +2284,7 @@
                 if (realtimeTasks.length > 0) renderRealtimeSnapshot(activeResultsContainer());
                 updateExposureChips();
             }
-            if (page === 'qld') { refreshQldPage(false); startQldLive(); } else stopQldLive();
+            if (page === 'qld') { refreshQldPage(false); startQldLive(); } else { qldEditOpen = false; stopQldLive(); }
             if (page === 'active-trades') renderActiveTradesPage();
             if (page === 'manual-builder') {
                 timedExitDate = addTradingDays(nyDateStr(), maxHoldDays);
@@ -2798,7 +2858,9 @@
                 .filter(Boolean);
 
             const STOP_WORDS = new Set(['STOP','STP','GTC','DAY','SELL','BUY','TO','COVER','LMT','PARTIAL','TP','STOPS','BE','ALARMS','ORDERS']);
-            const PRICE_RE = '(\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?)';
+            // Comma-grouped form must require ≥1 group, else `1234.56` matches the
+            // first alt's `\d{1,3}` and truncates to 123 before the \d+ alt is tried.
+            const PRICE_RE = '((?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?)';
             const priceNum = (s) => s ? Number(s.replace(/,/g, '')) : 0;
 
             const trades = [];
@@ -3047,6 +3109,42 @@
                 pb: pbSignals.map(s => ({ ...s }))
             };
         }
+
+        // ---------- Persisted scanner stores (backup/portable state) ----------
+        // Backups read STORAGE, not the live DOM — exporting from Settings must not
+        // capture whatever page happens to be open. Each page's store lives under a
+        // canonical prefix ('' base, pg_lsv3_, pg_pb_) regardless of the current
+        // signalSyncMode, so both modes round-trip intact.
+        const SCANNER_STORE_PREFIXES = { scanner: '', lsv3: 'pg_lsv3_', pullback: 'pg_pb_' };
+        function collectScannerStore(pfx) {
+            const tickers = [], triggers = [];
+            for (let i = 0; i < 9; i++) {
+                tickers.push(safeStorageGet(pfx + 'ticker_' + i) || '');
+                triggers.push(safeStorageGet(pfx + 'trigger_' + i) || '');
+            }
+            let sides = {};
+            try {
+                const sd = JSON.parse(safeStorageGet(pfx + 'signalSides') || '{}');
+                if (sd && typeof sd === 'object' && !Array.isArray(sd)) sides = sd;
+            } catch (e) {}
+            let pb = [];
+            try {
+                const arr = JSON.parse(safeStorageGet(pfx + 'pbSignals') || '[]');
+                if (Array.isArray(arr)) pb = arr;
+            } catch (e) {}
+            const vcRaw = parseInt(safeStorageGet(pfx + 'visibleCount'), 10);
+            const riskRaw = safeStorageGet(pfx + 'riskValue');
+            return {
+                visibleCount: [3, 6, 9].includes(vcRaw) ? vcRaw : 3,
+                tickers, triggers, sides, pb,
+                riskValue: Number.isFinite(Number(riskRaw)) && Number(riskRaw) > 0 ? Number(riskRaw) : null
+            };
+        }
+        function collectScannerStores() {
+            const out = {};
+            for (const [page, pfx] of Object.entries(SCANNER_STORE_PREFIXES)) out[page] = collectScannerStore(pfx);
+            return out;
+        }
         function restoreScannerInputs(snap) {
             if (!snap) return;
             pq('.ticker-input').forEach((i, k) => { i.value = snap.tickers[k] || ''; });
@@ -3225,15 +3323,24 @@
         function fetchWithTimeout(url, init, timeoutMs, parentSignal) {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(new DOMException('Request timeout', 'TimeoutError')), timeoutMs);
+            let onAbort = null;
             if (parentSignal) {
-                parentSignal.addEventListener('abort', () => { try { controller.abort(); } catch (e) {} }, { once: true });
+                if (parentSignal.aborted) {
+                    // Parent already aborted before this fetch — propagate now.
+                    try { controller.abort(parentSignal.reason); } catch (e) { controller.abort(); }
+                } else {
+                    onAbort = () => { try { controller.abort(); } catch (e) {} };
+                    parentSignal.addEventListener('abort', onAbort, { once: true });
+                }
             }
-            try {
-                const p = fetch(url, { ...init, signal: controller.signal });
-                p.catch(() => {}).finally(() => clearTimeout(id));
-                return p;
-            } finally {
-            }
+            const p = fetch(url, { ...init, signal: controller.signal });
+            // Release the parent listener on settlement — a long-lived parent signal
+            // would otherwise accumulate one listener per request.
+            p.catch(() => {}).finally(() => {
+                clearTimeout(id);
+                if (onAbort && parentSignal) parentSignal.removeEventListener('abort', onAbort);
+            });
+            return p;
         }
 
         async function fetchTickerData(ticker, provider, apiKey, signal) {
@@ -3665,22 +3772,6 @@
             return null;
         }
 
-        // PineScript "Max S.S.": shares must not exceed liqVolPct% of the liqVolPeriod-day
-        // average volume (defaults 1% of 20-day avg). Warn only — the count is not capped.
-        function liquidityWarning(ticker, shares) {
-            if (!liqWarnEnabled) return null;
-            const v = volatilityCache[ticker];
-            if (!v || v.status !== 'ok' || !Number.isFinite(v.avgVol) || v.avgVol < 0) return null;
-            if (!Number.isFinite(shares) || shares <= 0) return null;
-            const maxShares = Math.floor(v.avgVol * (liqVolPct / 100));
-            if (shares > maxShares) {
-                const ratio = maxShares > 0 ? shares / maxShares : Infinity;
-                const rounded = Number.isFinite(ratio) ? Math.round(ratio * 10) / 10 : '∞';
-                return { text: `VOL ${rounded}×`, ratio, maxShares };
-            }
-            return null;
-        }
-
         // Liquidity cap from the PineScript "Max S.S." rule: maxShares = SMA(volume, N) × pct.
         // Warn when the calculated share count exceeds what the ticker can absorb.
         function liquidityWarning(ticker, shares) {
@@ -3943,14 +4034,14 @@
                 results.forEach(res => {
                     if (res.success) {
                         seen.add(res.ticker);
-                        const card = container.querySelector(`#card-${res.ticker}`);
+                        const card = findElById(container, 'card-' + res.ticker);
                         if (card && card.dataset.shell) { card.remove(); renderCard(res, risk, slippage, container); }
                         else if (card) updateCard(card, res, risk, slippage);
                         else renderCard(res, risk, slippage, container);
                     } else {
                         seen.add('error-' + res.ticker);
                         const id = `card-${res.ticker}`;
-                        const existing = container.querySelector(`#${id}`);
+                        const existing = findElById(container, id);
                         if (existing && typeof existing.remove === 'function') existing.remove();
                         if (res.pending) renderPending(res, container); else renderError(res, container);
                     }
@@ -4158,14 +4249,14 @@
             sorted.forEach(res => {
                 if (res.success) {
                     seen.add(res.ticker);
-                    const card = wrap.querySelector(`#pbcard-${res.ticker}`);
+                    const card = findElById(wrap, 'pbcard-' + res.ticker);
                     // appendChild re-orders existing cards to match the sorted list.
                     if (card && card.dataset.shell) { card.remove(); renderPbCard(res, slippage, wrap); }
                     else if (card) { updatePbCard(card, res, slippage); wrap.appendChild(card); }
                     else renderPbCard(res, slippage, wrap);
                 } else {
                     seen.add('error-' + res.ticker);
-                    const ex = wrap.querySelector(`#pbcard-${res.ticker}`);
+                    const ex = findElById(wrap, 'pbcard-' + res.ticker);
                     if (ex && ex.remove) ex.remove();
                     if (res.pending) renderPending(res, wrap); else renderError(res, wrap);
                 }
@@ -4207,15 +4298,15 @@
             results.forEach(res => {
                 seen.add(res.ticker);
                 if (!res.success) {
-                    const ex = tw.querySelector(`#pbrow-${res.ticker}`) || tw.querySelector(`#pbcard-${res.ticker}`);
+                    const ex = findElById(tw, 'pbrow-' + res.ticker) || findElById(tw, 'pbcard-' + res.ticker);
                     if (ex && ex.remove) ex.remove();
                     if (res.pending) renderPending(res, tw); else renderError(res, tw);
                     return;
                 }
                 const f = getPbFields(res, slippage);
-                const staleCard = tw.querySelector(`#pbcard-${res.ticker}`);
+                const staleCard = findElById(tw, 'pbcard-' + res.ticker);
                 if (staleCard && staleCard.remove) staleCard.remove();
-                let row = tw.querySelector(`#pbrow-${res.ticker}`);
+                let row = findElById(tw, 'pbrow-' + res.ticker);
                 if (!row) {
                     row = document.createElement('div');
                     row.id = `pbrow-${res.ticker}`;
@@ -4238,7 +4329,7 @@
             const task = realtimeTasks.find(t => t.kind === 'pb' && t.ticker === input.dataset.ticker);
             if (task) task.atrOverride = Number.isFinite(v) && v > 0 ? v : null;
             const container = activeResultsContainer();
-            const card = container && container.querySelector(`#pbcard-${input.dataset.ticker}`);
+            const card = container && findElById(container, 'pbcard-' + input.dataset.ticker);
             const res = task && realtimeQuotes[task.ticker] ? { ...task, data: realtimeQuotes[task.ticker], success: true } : null;
             if (card && res) updatePbCard(card, res, currentRiskAndSlippage().slippage);
         }
@@ -4261,14 +4352,14 @@
                 if (wrap) changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success && (r.kind || 'v3') === 'v3');
                     if (!result) return;
-                    const row = wrap.querySelector(`#table-row-${ticker}`);
+                    const row = findElById(wrap, 'table-row-' + ticker);
                     if (row) updateTableRow(row, result, risk, slippage);
                 });
                 const pbWrap = container.querySelector('#pbTableWrap');
                 if (pbWrap) changedTickers.forEach(ticker => {
                     const result = results.find(r => r.ticker === ticker && r.success && r.kind === 'pb');
                     if (!result) return;
-                    const row = pbWrap.querySelector(`#pbrow-${ticker}`);
+                    const row = findElById(pbWrap, 'pbrow-' + ticker);
                     if (!row) return;
                     const f = getPbFields(result, slippage);
                     const q = (s) => row.querySelector(`[data-field="${s}"]`);
@@ -4284,12 +4375,12 @@
                 changedTickers.forEach(ticker => {
                     const v3res = results.find(r => r.ticker === ticker && r.success && (r.kind || 'v3') === 'v3');
                     if (v3res) {
-                        const card = container.querySelector(`#card-${ticker}`);
+                        const card = findElById(container, 'card-' + ticker);
                         if (card) updateCard(card, v3res, risk, slippage);
                     }
                     const pbres = results.find(r => r.ticker === ticker && r.success && r.kind === 'pb');
                     if (pbres) {
-                        const card = container.querySelector(`#pbcard-${ticker}`);
+                        const card = findElById(container, 'pbcard-' + ticker);
                         if (card) updatePbCard(card, pbres, slippage);
                     }
                 });
@@ -4344,6 +4435,7 @@
                     entryDate: qs.entryDate || null,
                     cashValue: Math.max(0, parseFloat(qs.cashValue) || 0),
                     pending: qs.pending && typeof qs.pending === 'object' ? qs.pending : null,
+                    pendingOrder: qs.pendingOrder && typeof qs.pendingOrder === 'object' ? qs.pendingOrder : null,
                     signalWeek: qs.signalWeek || null
                 };
             } catch (e) {}
@@ -4386,7 +4478,7 @@
         // ±qldBandPct. A timing switch carries the sleeve's value between QLD and
         // cash — it does NOT reset the weight to 35%.
         let qldTargetPct = 35, qldBandPct = 5;
-        let qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null, cashValue: 0, pending: null, signalWeek: null };
+        let qldSleeve = { inPos: false, shares: 0, entryPrice: 0, entryDate: null, cashValue: 0, pending: null, pendingOrder: null, signalWeek: null };
         try {
             const qs = JSON.parse(safeStorageGet('qldSleeve') || 'null');
             if (qs && typeof qs === 'object') qldSleeve = {
@@ -4396,6 +4488,7 @@
                 entryDate: qs.entryDate || null,
                 cashValue: Math.max(0, parseFloat(qs.cashValue) || 0),
                 pending: qs.pending && typeof qs.pending === 'object' ? qs.pending : null,
+                pendingOrder: qs.pendingOrder && typeof qs.pendingOrder === 'object' ? qs.pendingOrder : null,
                 signalWeek: qs.signalWeek || null
             };
         } catch (e) {}
@@ -4492,8 +4585,10 @@
             const equity = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? twsLastAccountValue : accountValue;
             const equitySrc = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? 'TWS' : 'manual';
             // Broker count only counts while the bridge is live — a dropped connection
-            // leaves stale positions that must not size orders.
-            const brokerKnown = !!(twsPositionsEnabled && twsConnected && twsLastPositionsAt > 0);
+            // leaves stale positions that must not size orders. A completed snapshot
+            // covers every symbol; a streamed delta covers only its own symbol.
+            const brokerKnown = !!(twsPositionsEnabled && twsConnected
+                && (twsLastPositionsAt > 0 || twsPositionDeltaAt['QLD'] > 0));
             const pos = brokerKnown ? twsPositions['QLD'] : undefined;
             const brokerShares = brokerKnown ? Math.abs(pos ? pos.qty : 0) : null;
             const avgCost = (pos && Number.isFinite(pos.avgCost) && pos.avgCost > 0) ? pos.avgCost : null;
@@ -4518,6 +4613,9 @@
         //            month?, queuedAt}. Shares are computed at execution ("values at that open").
         function qldEvaluatePending() {
             if (!qldView.signal || !qldView.lastWeekT) return;
+            // An in-flight TWS submission owns the pending action — reevaluation must
+            // not erase or replace it before its fills reconcile.
+            if (qldSleeve.pendingOrder) return;
             const r = qldReality();
             const inPos = r.shares > 0;
             let dirty = false;
@@ -4618,7 +4716,10 @@
                 const h = await fetchQldHistory(null);
                 const bars = h.bars || [];
                 const weekly = resampleDailyToWeekly(bars);
-                const forming = weekly.length && isCurrentWeekForming(nyDateStr()) ? weekly[weekly.length - 1] : null;
+                // The last bar is "forming" only when its bucket IS the current week —
+                // history ending last Friday must keep that completed week, not drop it.
+                const lastWk = weekly.length ? weekly[weekly.length - 1] : null;
+                const forming = lastWk && lastWk.t === mondayOf(nyDateStr()) && isCurrentWeekForming(nyDateStr()) ? lastWk : null;
                 const completed = forming ? weekly.slice(0, -1) : weekly;
                 const closes = completed.map(w => w.c);
                 const e12s = emaSeries(closes, 12);
@@ -4662,13 +4763,20 @@
             const N = Math.min(30, wk.length);
             const bars = wk.slice(-N).map(b => ({ ...b }));
             // Fold the live QQQ quote into the forming week so the chart is real-time.
+            // When history lacks a current-week bar, append the live preview instead —
+            // never overwrite the prior completed week's close.
             const live = qldView.liveQqq;
-            const formingLive = bars.length && isCurrentWeekForming(nyDateStr()) ? bars[bars.length - 1] : null;
-            if (formingLive && Number.isFinite(live) && live > 0) {
-                formingLive.c = live;
-                formingLive.h = Math.max(formingLive.h, live);
-                formingLive.l = Math.min(formingLive.l, live);
+            const lastBar = bars.length ? bars[bars.length - 1] : null;
+            if (Number.isFinite(live) && live > 0 && isCurrentWeekForming(nyDateStr())) {
+                if (lastBar && lastBar.t === mondayOf(nyDateStr())) {
+                    lastBar.c = live;
+                    lastBar.h = Math.max(lastBar.h, live);
+                    lastBar.l = Math.min(lastBar.l, live);
+                } else {
+                    bars.push({ t: mondayOf(nyDateStr()), o: live, h: live, l: live, c: live, v: 0 });
+                }
             }
+            const formingLive = bars.length > 0 && isCurrentWeekForming(nyDateStr()) && bars[bars.length - 1].t === mondayOf(nyDateStr());
             const closes = bars.map(b => b.c);
             const e12 = emaSeries(closes, 12);
             const e26 = emaSeries(closes, 26);
@@ -4742,10 +4850,13 @@
                 const emaLine = v.signal === null ? ''
                     : long ? 'EMA 12 &gt; EMA 26' : 'EMA 12 &le; EMA 26';
                 // Fold the live QQQ quote into the forming week so live-EMAs update each tick.
+                // If history has no current-week bar, append the live close — overwriting
+                // the prior completed week would corrupt the preview.
                 let fE12 = v.formEma12, fE26 = v.formEma26;
                 if (Number.isFinite(v.liveQqq) && v.liveQqq > 0 && v.weekly.length && isCurrentWeekForming(nyDateStr())) {
                     const cs = v.weekly.map(w => w.c);
-                    cs[cs.length - 1] = v.liveQqq;
+                    if (v.weekly[v.weekly.length - 1].t === mondayOf(nyDateStr())) cs[cs.length - 1] = v.liveQqq;
+                    else cs.push(v.liveQqq);
                     const l12 = emaLast(cs, 12), l26 = emaLast(cs, 26);
                     if (l12 !== null) fE12 = l12;
                     if (l26 !== null) fE26 = l26;
@@ -4819,15 +4930,25 @@
             } else {
                 actHtml = `<div class="text-[11px] font-bold text-gray-400">No pending action — sleeve ${r.inPos ? (inBand ? 'in position, within band' : 'in position — drifted, next check at month-end') : 'flat' + (v.signal === 'LONG' ? ', signal long' : ', signal flat')}.</div>`;
             }
-            const canSend = pend && spec && spec.side && spec.shares > 0;
+            const canSend = pend && spec && spec.side && spec.shares > 0 && !qldSleeve.pendingOrder;
+            const po = qldSleeve.pendingOrder;
+            const poHtml = po ? `<div class="text-[10px] font-bold text-sky-300">TWS order ${po.orderId != null ? '#' + po.orderId : ''} ${po.status === 'partial' ? 'partially filled ' + (po.filledQty || 0) + '/' + po.requestedQty : po.status} — ledger updates on confirmed fills.</div>
+                <div class="flex flex-wrap gap-1.5"><button onclick="qldReconcilePending()" class="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg bg-sky-800/80 border border-sky-500/40 text-white">Reconcile order</button></div>` : '';
+            const editHtml = qldEditOpen ? `<div class="flex flex-wrap items-center gap-1.5 pt-1">
+                    <input id="qldEditInput" data-role="qldEditInput" type="text" onkeydown="qldEditKey(event)" placeholder='300 @ 82.50 · cash 20000 · flat' class="flex-1 min-w-[140px] bg-slate-950/80 border border-white/15 rounded-lg px-2 py-1.5 text-[11px] font-mono-num text-white">
+                    <button onclick="qldEditSave()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg bg-emerald-700/80 border border-emerald-500/40 text-white">Save</button>
+                    <button onclick="qldEditCancel()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Cancel</button>
+                </div>` : '';
             acts.innerHTML = `
                 <div class="text-[10px] font-black uppercase text-gray-400">Pending action</div>
                 ${actHtml}
+                ${poHtml}
+                ${editHtml}
                 <div class="flex flex-wrap gap-1.5 pt-1">
                     ${canSend && twsEnabled ? `<button data-action="qld-tws-send" data-tws-key="QLD:qld" data-tws-default-label="SEND TO TWS" onclick="qldSendTws()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg bg-blue-700/80 border border-blue-500/40 text-white"><span class="tws-send-label">SEND TO TWS</span></button>` : ''}
                     ${pend ? `<button onclick="qldExecutePending()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg ${pend.type === 'EXIT' || pend.type === 'TRIM' ? 'bg-rose-700/80 border-rose-500/40' : 'bg-emerald-700/80 border-emerald-500/40'} text-white border">Log ${pend.type === 'CASH' ? 'reserve adj' : pend.type.toLowerCase()}</button>
                     <button onclick="qldDismissPending()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Dismiss</button>` : ''}
-                    <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${r.inPos ? 'Edit sleeve' : 'Set sleeve'}</button>
+                    <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${qldEditOpen ? 'Close editor' : (r.inPos ? 'Edit sleeve' : 'Set sleeve')}</button>
                 </div>`;
         }
 
@@ -4854,7 +4975,9 @@
             price = Number(price) || r.px || 0;
             const curShares = r.shares; // broker count when known — ledger follows it
             if (action === 'EXIT' || action === 'TRIM') {
-                const sell = action === 'EXIT' ? curShares : Math.min(shares, curShares);
+                // EXIT with no explicit qty sells everything; a confirmed-fill qty
+                // (partial fills included) sells exactly that many.
+                const sell = Math.min(action === 'EXIT' && !shares ? curShares : shares, curShares);
                 if (action === 'EXIT') qldSleeve.cashValue = (qldSleeve.cashValue || 0) + sell * price;   // sleeve back to cash — keep any reserve leftover
                 // TRIM proceeds leave the sleeve (that's what reduces the weight).
                 qldSleeve.shares = Math.max(0, curShares - sell);
@@ -4899,22 +5022,122 @@
             qldSaveSleeve();
             renderQldPage();
         }
-        // Broker count is truth — copy it into the ledger + journal record.
+        // Broker position is truth — copy shares AND the broker average cost into the
+        // ledger + journal record. A positive-share row never gets a zero price: when
+        // TWS doesn't report avgCost the user must supply it via the sleeve editor.
         function qldSyncLedger() {
             const r = qldReality();
             if (r.brokerShares === null) return;
             qldSleeve.shares = r.brokerShares;
             qldSleeve.inPos = r.brokerShares > 0;
-            if (!qldSleeve.inPos) { qldSleeve.entryPrice = 0; qldSleeve.entryDate = null; }
+            if (qldSleeve.inPos) {
+                if (r.avgCost != null) {
+                    qldSleeve.entryPrice = r.avgCost;
+                } else if (!(qldSleeve.entryPrice > 0)) {
+                    showErrorToast('Broker avg cost unavailable — use Edit sleeve to set "shares @ price".', 8000);
+                }
+                if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr(); // reconciliation date
+            } else {
+                qldSleeve.entryPrice = 0; qldSleeve.entryDate = null;
+            }
             qldSaveSleeve();
             qldJournalUpsert();
             updateExposureChips();
             renderQldPage();
         }
 
+        // Apply the pendingOrder's cumulative confirmed fills against its captured
+        // baseline — never against broker shares (which may already include the fill).
+        // Idempotent: replays recompute the same result.
+        function qldApplyPendingFill() {
+            const po = qldSleeve.pendingOrder;
+            if (!po) return;
+            const b = po.baseline || { shares: 0, entryPrice: 0, entryDate: null, cashValue: 0 };
+            const qty = Math.max(0, Math.round(po.filledQty || 0));
+            if (!qty) return;
+            const px = Number(po.avgFillPrice) || 0;
+            if (po.side === 'SELL') {
+                const sell = Math.min(qty, b.shares);
+                qldSleeve.shares = Math.max(0, b.shares - sell);
+                if (po.action === 'EXIT') qldSleeve.cashValue = (b.cashValue || 0) + sell * px;
+                qldSleeve.inPos = qldSleeve.shares > 0;
+                if (!qldSleeve.inPos) { qldSleeve.entryPrice = 0; qldSleeve.entryDate = null; }
+            } else {
+                qldSleeve.shares = b.shares + qty;
+                qldSleeve.entryPrice = qldSleeve.shares ? (b.shares * b.entryPrice + qty * px) / qldSleeve.shares : 0;
+                qldSleeve.inPos = qldSleeve.shares > 0;
+                if (!qldSleeve.entryDate) qldSleeve.entryDate = b.entryDate || nyDateStr();
+                if (po.action === 'ENTER') qldSleeve.cashValue = Math.max(0, (b.cashValue || 0) - qty * px);
+            }
+            if (qty >= po.requestedQty) {
+                qldSleeve.pendingOrder = null;
+                qldSleeve.pending = null;
+            } else {
+                po.status = 'partial';
+            }
+            qldSaveSleeve();
+            qldJournalUpsert();
+            updateExposureChips();
+        }
+        // Record one unique confirmed execution against the outstanding order.
+        function qldRecordPendingFill(execKey, qty, price) {
+            const po = qldSleeve.pendingOrder;
+            if (!po || !qty) return false;
+            po.execKeys = po.execKeys || {};
+            const k = String(execKey || '');
+            if (!k || po.execKeys[k]) return false;
+            po.execKeys[k] = { qty: Math.round(qty), price: Number(price) || 0 };
+            let fq = 0, fp = 0;
+            for (const kk in po.execKeys) { fq += po.execKeys[kk].qty; fp += po.execKeys[kk].qty * po.execKeys[kk].price; }
+            po.filledQty = fq;
+            po.avgFillPrice = fq ? fp / fq : 0;
+            qldApplyPendingFill();
+            return true;
+        }
+        function qldPendingOrderFor(ex) {
+            const po = qldSleeve.pendingOrder;
+            if (!po || !ex || normalizeTwsSymbol(ex.symbol) !== 'QLD') return null;
+            if (ex.orderRef && ex.orderRef === po.orderRef) return po;
+            if (ex.orderId != null && po.orderId != null && ex.orderId === po.orderId) return po;
+            return null;
+        }
+        // Manual reconcile — checks the broker for the order's real state.
+        async function qldReconcilePending() {
+            const po = qldSleeve.pendingOrder;
+            if (!po) return;
+            if (!twsReady()) { showErrorToast('TWS bridge not configured.'); return; }
+            try {
+                const os = await bridgeGet('/orders');
+                if (os.complete === false) { showErrorToast('Order snapshot incomplete — try again.'); return; }
+                const working = (os.orders || []).find(o => (po.orderId != null && o.orderId === po.orderId) || (o.orderRef && o.orderRef === po.orderRef));
+                if (working) { showInfoToast('QLD order still working at TWS — no reconcile needed.', 7000); return; }
+                const ex = await bridgeGet('/executions');
+                (ex.executions || []).filter(e => qldPendingOrderFor(e)).forEach(e => {
+                    qldRecordPendingFill(twsExecKey(e), Number(e.shares) || 0, Number(e.price) || 0);
+                });
+            } catch (e) { showErrorToast('Reconcile failed: ' + (e.message || e)); return; }
+            const left = qldSleeve.pendingOrder;
+            if (!left) {
+                showSuccessToast('QLD order fully filled — ledger reconciled.');
+            } else if ((left.filledQty || 0) > 0) {
+                // Partial fill and no longer working — done as filled; keep the action
+                // only if it still needs shares.
+                qldSleeve.pendingOrder = null;
+                qldSleeve.pending = null;
+                qldSaveSleeve(); qldJournalUpsert();
+                showInfoToast('QLD order partially filled (' + left.filledQty + '/' + left.requestedQty + ') — ledger updated for filled quantity.', 9000);
+            } else {
+                qldSleeve.pendingOrder = null;
+                qldSaveSleeve();
+                showInfoToast('QLD order gone with no fills — pending action kept; send again when ready.', 9000);
+            }
+            renderQldPage();
+        }
+
         async function qldSendTws() {
             const pend = qldSleeve.pending;
             if (!pend) return;
+            if (qldSleeve.pendingOrder) { showErrorToast('A QLD order is already outstanding — reconcile it before sending again.', 7000); return; }
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const r = qldReality();
             const px = qldView.qldPrice || r.px;
@@ -4923,39 +5146,104 @@
             if (!spec.side || !spec.shares) { showErrorToast('Nothing to send (cash adjust or 0 shares).'); return; }
             const key = 'QLD:qld';
             if (twsSendState[key] === 'sending') return;
-            if (twsSendState[key] === 'sent' && !confirm('A QLD order was already sent — send another one?')) return;
-            const pf = await preflightContract('QLD');
-            if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
-            if (twsOrdersEnabled) {
-                const dup = findDuplicatePscOrders('QLD', spec.side);
-                if (dup.length && !confirm(`${dup.length} working PSC ${spec.side} order(s) already exist for QLD — send another?`)) return;
-            }
             setTwsSendState(key, 'sending');
-            const result = await bridgeRequest('/order', {
-                symbol: 'QLD', action: spec.side, quantity: spec.shares,
-                ...twsEntryOrderSpec(px, nyNow().isRTH),
-                adaptive: true, adaptivePriority: 'Normal',
-                tif: 'DAY',
-                orderRef: 'PSC-QLD-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36))
-            });
-            if (result.ok) {
-                setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
-                qldExecute(pend.type, spec.shares, px, 'tws');
-            } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
-                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
-            } else {
-                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
-                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            try {
+                if (twsSendState[key] === 'sent' && !confirm('A QLD order was already sent — send another one?')) return;
+                const pf = await preflightContract('QLD');
+                if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
+                if (twsOrdersEnabled) {
+                    const dup = findDuplicatePscOrders('QLD', spec.side);
+                    if (dup.length && !confirm(`${dup.length} working PSC ${spec.side} order(s) already exist for QLD — send another?`)) return;
+                }
+                // Persist the submission + pre-submit baseline BEFORE dispatch — if it
+                // can't be saved, do not send (a reload must be able to reconcile it).
+                const orderRef = 'PSC-QLD-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36));
+                qldSleeve.pendingOrder = {
+                    orderRef, orderId: null, action: pend.type, side: spec.side,
+                    requestedQty: spec.shares,
+                    baseline: { shares: qldSleeve.shares, entryPrice: qldSleeve.entryPrice, entryDate: qldSleeve.entryDate, cashValue: qldSleeve.cashValue },
+                    execKeys: {}, filledQty: 0, avgFillPrice: 0, status: 'submitting'
+                };
+                if (!qldSaveSleeve()) { qldSleeve.pendingOrder = null; showErrorToast('Could not save pending order — not sending.'); return; }
+                const result = await bridgeRequest('/order', {
+                    symbol: 'QLD', action: spec.side, quantity: spec.shares,
+                    ...twsEntryOrderSpec(px, nyNow().isRTH),
+                    adaptive: true, adaptivePriority: 'Normal',
+                    tif: 'DAY',
+                    orderRef
+                });
+                if (result.unknown) {
+                    // Timeout/ambiguous — the order may exist. Keep the pendingOrder so
+                    // fills still reconcile; do not touch the ledger yet.
+                    if (qldSleeve.pendingOrder && qldSleeve.pendingOrder.orderRef === orderRef) {
+                        qldSleeve.pendingOrder.status = 'unknown';
+                        qldSaveSleeve();
+                    }
+                    setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                    showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+                } else if (result.ok) {
+                    // Accepted ≠ filled: the ledger only moves on confirmed fills.
+                    if (qldSleeve.pendingOrder && qldSleeve.pendingOrder.orderRef === orderRef) {
+                        qldSleeve.pendingOrder.orderId = result.orderId != null ? result.orderId : null;
+                        qldSleeve.pendingOrder.status = 'submitted';
+                        qldSaveSleeve();
+                    }
+                    setTwsSendState(key, 'sending', 'Order ' + (result.orderId || '') + ' working — waiting for fill…');
+                    const fill = await waitForTwsFill(result.orderId, spec.shares, 45000);
+                    (fill && fill.fills || []).forEach(e => qldRecordPendingFill(twsExecKey(e), Number(e.shares) || 0, Number(e.price) || 0));
+                    const po = qldSleeve.pendingOrder;
+                    if (!po || po.orderRef !== orderRef) {
+                        // Fully filled and applied by qldRecordPendingFill.
+                        setTwsSendState(key, 'sent', 'Filled ' + (fill ? fill.filled : spec.shares) + ' @ ' + Number(fill && fill.avgFillPrice || px).toFixed(2));
+                        showSuccessToast('QLD order filled — ledger updated.');
+                    } else if ((po.filledQty || 0) > 0) {
+                        setTwsSendState(key, 'sent', 'Partially filled ' + po.filledQty + '/' + spec.shares);
+                        showInfoToast('QLD partially filled (' + po.filledQty + '/' + spec.shares + ') — ledger updated for the filled quantity.', 8000);
+                    } else {
+                        po.status = 'submitted';
+                        qldSaveSleeve();
+                        setTwsSendState(key, 'unknown', 'Order ' + (result.orderId || '') + ' accepted but no fill confirmed — ledger NOT updated');
+                        showErrorToast('QLD order working — no confirmed fill. Ledger left unchanged; reconcile after it fills.', 9000);
+                    }
+                } else {
+                    // Definite rejection — release the pendingOrder; the action stays queued.
+                    if (qldSleeve.pendingOrder && qldSleeve.pendingOrder.orderRef === orderRef) {
+                        qldSleeve.pendingOrder = null;
+                        qldSaveSleeve();
+                    }
+                    setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                    showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+                }
+            } finally {
+                if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
             }
         }
 
-        function qldManualSet() {
-            const cur = qldSleeve.inPos ? `${qldSleeve.shares} @ ${qldSleeve.entryPrice.toFixed(2)}` : `flat · cash $${Math.round(qldSleeve.cashValue || 0).toLocaleString()}`;
-            const input = prompt(`QLD sleeve (currently ${cur}). Enter "shares @ price", "cash 20000", or "flat":`, cur);
-            if (input === null) return;
-            const t = input.trim().toLowerCase();
-            if (t === 'flat' || t === '0' || t === 'flat 0') {
+        // Parse a sleeve-editor command. Returns {kind, shares?, price?, cash?} or
+        // {error}. Separated from DOM so the harness can test it.
+        function qldParseSleeveInput(input, fallbackPx) {
+            const t = String(input || '').trim().toLowerCase();
+            if (!t) return { error: 'Enter a value.' };
+            if (t === 'flat' || t === 'flat 0' || t === '0')
+                return { kind: 'flat', wipeCash: t !== 'flat' };
+            if (t.startsWith('cash')) {
+                const m = t.match(/^cash\s+\$?([\d,]+(?:\.\d+)?)$/);
+                if (!m) return { error: 'Use "cash 20000".' };
+                const cash = parseFloat(m[1].replace(/,/g, ''));
+                if (!Number.isFinite(cash) || cash < 0) return { error: 'Invalid cash amount.' };
+                return { kind: 'cash', cash };
+            }
+            const m = t.replace(/,/g, '').match(/^(\d+)\s*(?:@\s*\$?(\d+(?:\.\d+)?))?$/);
+            if (!m) return { error: 'Use "300 @ 82.50", "cash 20000", or "flat".' };
+            const sh = parseInt(m[1], 10);
+            const pr = m[2] ? parseFloat(m[2]) : (Number(fallbackPx) || 0);
+            if (!sh || sh < 0) return { error: 'Shares must be a positive whole number.' };
+            if (!Number.isFinite(pr) || pr <= 0) return { error: 'Need a positive price — add "@ price".' };
+            return { kind: 'position', shares: sh, price: pr };
+        }
+        function qldApplySleeveEdit(p) {
+            if (!p || p.error) return false;
+            if (p.kind === 'flat') {
                 // "flat" moves the position's value into the cash reserve (sleeve → cash);
                 // "flat 0"/"0" wipes the reserve too (leave nothing earmarked).
                 if (qldSleeve.shares > 0) {
@@ -4963,18 +5251,12 @@
                     qldSleeve.cashValue = (qldSleeve.cashValue || 0) + qldSleeve.shares * px;
                 }
                 qldSleeve.inPos = false; qldSleeve.shares = 0; qldSleeve.entryPrice = 0; qldSleeve.entryDate = null;
-                if (t === '0' || t === 'flat 0') qldSleeve.cashValue = 0;
-            } else if (t.startsWith('cash')) {
-                const m = t.match(/cash\s+\$?([\d,]+(?:\.\d+)?)/);
-                if (!m) { showErrorToast('Could not parse — use "cash 20000".'); return; }
-                qldSleeve.cashValue = parseFloat(m[1].replace(/,/g, ''));
+                if (p.wipeCash) qldSleeve.cashValue = 0;
+            } else if (p.kind === 'cash') {
+                qldSleeve.cashValue = p.cash;
                 qldSleeve.inPos = false; qldSleeve.shares = 0; qldSleeve.entryPrice = 0; qldSleeve.entryDate = null;
             } else {
-                const m = t.replace(/,/g, '').match(/(\d+)\s*(?:@\s*\$?(\d+(?:\.\d+)?))?/);
-                const sh = m ? parseInt(m[1], 10) : 0;
-                const pr = m && m[2] ? parseFloat(m[2]) : (qldView.qldPrice || 0);
-                if (!sh) { showErrorToast('Could not parse — use "300 @ 82.50", "cash 20000", or "flat".'); return; }
-                qldSleeve.inPos = true; qldSleeve.shares = sh; qldSleeve.entryPrice = pr;
+                qldSleeve.inPos = true; qldSleeve.shares = p.shares; qldSleeve.entryPrice = p.price;
                 if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr();
             }
             qldSleeve.pending = null;
@@ -4982,6 +5264,30 @@
             qldJournalUpsert();
             updateExposureChips();
             renderQldPage();
+            return true;
+        }
+        // In-app sleeve editor (Electron has no window.prompt). The input supports the
+        // same commands the old prompt did: "shares @ price", "cash 20000", "flat", "flat 0".
+        let qldEditOpen = false;
+        function qldManualSet() {
+            qldEditOpen = !qldEditOpen;
+            renderQldPage();
+            if (qldEditOpen) {
+                const inp = typeof document !== 'undefined' ? document.getElementById('qldEditInput') : null;
+                if (inp) { inp.value = qldSleeve.inPos ? `${qldSleeve.shares} @ ${qldSleeve.entryPrice.toFixed(2)}` : `cash ${Math.round(qldSleeve.cashValue || 0)}`; inp.focus && inp.focus(); }
+            }
+        }
+        function qldEditCancel() { qldEditOpen = false; renderQldPage(); }
+        function qldEditSave() {
+            const inp = typeof document !== 'undefined' ? document.getElementById('qldEditInput') : null;
+            const p = qldParseSleeveInput(inp ? inp.value : '', qldView.qldPrice);
+            if (p.error) { showErrorToast(p.error); return; }
+            qldEditOpen = false;
+            qldApplySleeveEdit(p);
+        }
+        function qldEditKey(e) {
+            if (e && e.key === 'Enter') qldEditSave();
+            else if (e && e.key === 'Escape') qldEditCancel();
         }
 
         async function startWebSocketStream(provider, apiKey, tasks, riskVal, slippageVal, container) {
@@ -5244,6 +5550,9 @@
                             if (applyLivePrice(key, price)) { delayedByTicker[key] = false; changedTickers.add(key); }
                         }
                     } else if (provider === 'tws') {
+                        // Master toggle off mid-stream (config changed while the socket
+                        // was live) — apply nothing until the provider is re-resolved.
+                        if (!twsEnabled) return;
                         // The bridge echoes the client symbol string — no normalization needed.
                         if (response.type === 'tick' && response.s) {
                             const tkr = String(response.s).toUpperCase();
@@ -5271,7 +5580,10 @@
                             applyTwsAccountValue(response.key, response.value);
                         } else if (response.type === 'position' && twsPositionsEnabled) {
                             upsertTwsPosition(response.symbol, response.qty, response.avgCost, response.mktPrice);
-                            twsLastPositionsAt = Date.now();
+                            // A streamed delta is real data for THIS symbol only — it must
+                            // not set the global "positions known" marker that lets an
+                            // absent symbol be closed as flat.
+                            twsPositionDeltaAt[normalizeTwsSymbol(response.symbol)] = Date.now();
                             syncJournalToPositions();
                         } else if (response.type === 'order' && twsOrdersEnabled) {
                             // openOrder cache keeps the canonical list; this just marks a quick change.
@@ -5502,16 +5814,18 @@
                     const promises = tasks.map(async (task) => {
                         try {
                             const data = await fetchTickerData(task.ticker, provider, apiKey, controller.signal);
-                            realtimeQuotes[task.ticker] = data;
-                            delete realtimeQuoteErrors[task.ticker];
+                            // Gate the shared-state write on the generation — a superseded
+                            // scan must not leave stale quotes behind for the next render.
                             if (gen === streamGeneration) {
+                                realtimeQuotes[task.ticker] = data;
+                                delete realtimeQuoteErrors[task.ticker];
                                 fetchDone++;
                                 renderScanProgress(riskVal, slippageVal, fetchDone, tasks.length);
                             }
                             return { ...task, data, success: true };
                         } catch (e) {
-                            realtimeQuoteErrors[task.ticker] = e.message;
                             if (gen === streamGeneration) {
+                                realtimeQuoteErrors[task.ticker] = e.message;
                                 fetchDone++;
                                 renderScanProgress(riskVal, slippageVal, fetchDone, tasks.length);
                             }
@@ -5814,9 +6128,9 @@
 
             validResults.forEach(item => {
                 seen.add(item.ticker);
-                const stale = container.querySelector(`#card-${item.ticker}`);
+                const stale = findElById(container, 'card-' + item.ticker);
                 if (stale && typeof stale.remove === 'function') stale.remove();
-                const row = wrap.querySelector(`#table-row-${item.ticker}`);
+                const row = findElById(wrap, 'table-row-' + item.ticker);
                 if (row) updateTableRow(row, item, risk, slippage);
                 else wrap.appendChild(createTableRow(item, risk, slippage));
             });
@@ -5829,7 +6143,7 @@
             errorResults.forEach(res => {
                 seen.add('error-' + res.ticker);
                 const id = `card-${res.ticker}`;
-                const existing = container.querySelector(`#${id}`);
+                const existing = findElById(container, id);
                 if (existing && typeof existing.remove === 'function') existing.remove();
                 if (res.pending) renderPending(res, container); else renderError(res, container);
             });
@@ -6046,12 +6360,13 @@
 
             overlay.setAttribute('aria-label', `Strategy orders for ${currentModalState.ticker} ${currentModalState.isLong ? 'LONG' : 'SHORT'}`);
 
-            // Update TWS send key on modal send-exits button and reset its state.
+            // Update TWS send key on modal send-exits button and repaint its CURRENT
+            // state — reopening mid-send must not clear 'sending'/'sent'/'unknown'.
             const modalSendExits = document.getElementById('modalSendExits');
             if (modalSendExits) {
                 const modalExitsKey = twsSendKey(currentModalState.ticker, 'exits', currentModalState.kind);
                 modalSendExits.setAttribute('data-tws-key', modalExitsKey);
-                resetTwsSendState(modalExitsKey);
+                setTwsSendState(modalExitsKey, twsSendState[modalExitsKey] || 'idle');
             }
             syncTwsSendButtons();
 
@@ -6267,7 +6582,10 @@
             const isLong = currentModalState.isLong;
             const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
             const customTps = readCustomTpsFromDom();
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            const modalTimedOverride = currentModalState.kind === 'pb'
+                ? (timedExitDate ? { enabled: true, date: timedExitDate, time: '15:55' } : null)
+                : undefined;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: modalTimedOverride });
             if (!built.ok) { alert(built.error); return; }
             const legs = built.preview.map(p => `${p.qty}sh STP $${p.stop.toFixed(2)}${p.stopOnly ? ' (stop only)' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}`).join(' | ');
             const summary = `[IBKR ${isLong ? 'LONG' : 'SHORT'} GTC] ${ticker} | ${shares} sh @ $${entry.toFixed(2)} | ${built.strategy.name} | ${legs}`;
@@ -6477,7 +6795,11 @@
             const isLong = currentModalState.isLong;
             const strategyId = document.getElementById('modalStrategySelect').value || currentModalState.strategyId;
             const customTps = readCustomTpsFromDom();
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
+            // Same timed-exit override the modal preview + TWS send use — the CSV must match.
+            const modalTimedOverride = currentModalState.kind === 'pb'
+                ? (timedExitDate ? { enabled: true, date: timedExitDate, time: '15:55' } : null)
+                : undefined;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: modalTimedOverride });
             if (!built.ok) {
                 alert(built.error);
                 return;
@@ -6785,11 +7107,15 @@
         // The market is the reference (entry only when no quote is known), so a
         // profit-locking stop between entry and market stays allowed.
         function exitStopSanityError(ticker, isLong, stop, entry) {
-            if (!Number.isFinite(stop) || !Number.isFinite(entry)) return null;
+            if (!Number.isFinite(stop)) return null;
             const snap = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success && r.data && Number.isFinite(r.data.c) && r.data.c > 0);
             const last = snap ? snap.data.c : null;
             if (stop <= 0) return `${ticker}: stop ${stop.toFixed(2)} must be above 0`;
-            const ref = last !== null ? last : entry;
+            // Only compare against a real positive market reference — with no quote
+            // and no entry (entry-less pasted exits), 0 would wrongly pass a long
+            // stop above it, or wrongly fail every short stop below it.
+            const ref = last !== null ? last : (Number.isFinite(entry) && entry > 0 ? entry : null);
+            if (ref === null) return null;
             if (isLong && stop >= ref) return `${ticker}: stop ${stop.toFixed(2)} is at/above market ${ref.toFixed(2)} — it would trigger immediately`;
             if (!isLong && stop <= ref) return `${ticker}: stop ${stop.toFixed(2)} is at/below market ${ref.toFixed(2)} — it would trigger immediately`;
             return null;
@@ -7296,9 +7622,21 @@
         }
 
         function deleteStrategy(id) {
+            const wasReferenced = regimeStrategyMap.expanding === id || regimeStrategyMap.declining === id || twsExitStrategy === id;
+            if (wasReferenced && !confirm(`"${id}" is assigned to a regime or TWS exit override — delete it and reset those to defaults?`)) return;
             customStrategies = customStrategies.filter(s => s.id !== id);
+            // Dangling refs would silently fall back to built-ins at read time —
+            // reset them explicitly so the stored map stays honest.
+            if (regimeStrategyMap.expanding === id) regimeStrategyMap.expanding = 'opt1';
+            if (regimeStrategyMap.declining === id) regimeStrategyMap.declining = 'opt2';
+            safeStorageSet('regimeStrategyMap', JSON.stringify(regimeStrategyMap));
+            if (twsExitStrategy === id) {
+                twsExitStrategy = AUTO_STRATEGY;
+                safeStorageSet('twsExitStrategy', twsExitStrategy);
+            }
             persistCustomStrategies();
             renderStrategyEditor();
+            updateTwsActiveStrategyDisplay();
         }
 
         function saveActiveTradesLog() {
@@ -7564,9 +7902,23 @@
         let tradesTab = 'active';
         let closingTradeId = null;
 
+        // Original position size — broker-synced closes decrement shares to 0, so
+        // reporting/risk must use the lifetime quantity, not the leftover.
+        function tradeReportQty(trade) {
+            return Number(trade.closedQty) || Number(trade.totalQty) || Number(trade.shares) || 0;
+        }
+        function journalFees(trade) {
+            const tws = (Number(trade.commission) || 0) + (Number(trade.exitCommission) || 0);
+            return tws > 0 ? tws : (Number(trade.fees) || 0);
+        }
         function journalResult(trade) {
-            const risk = Math.abs(trade.entryPrice - trade.stopPrice) * trade.shares;
-            const pnl = (trade.side === 'LONG' ? 1 : -1) * (trade.exitPrice - trade.entryPrice) * trade.shares - (Number(trade.fees) || 0);
+            const qty = tradeReportQty(trade);
+            const risk = (Number.isFinite(trade.entryPrice) && Number.isFinite(trade.stopPrice))
+                ? Math.abs(trade.entryPrice - trade.stopPrice) * qty : 0;
+            // A stored realized P&L (TWS rows bank per-fill results incl. commissions)
+            // beats recomputation — recomputing would multiply by the post-close qty.
+            const pnl = Number.isFinite(trade.pnl) ? Number(trade.pnl)
+                : (trade.side === 'LONG' ? 1 : -1) * (trade.exitPrice - trade.entryPrice) * qty - journalFees(trade);
             return { pnl, rMultiple: risk > 0 ? pnl / risk : 0, holdDays: tradingDaysBetween(trade.entryDate, trade.exitDate) };
         }
 
@@ -7612,7 +7964,7 @@
                 return;
             }
             const before = { ...trade };
-            Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
+            Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, closedQty: trade.totalQty || trade.shares, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
             Object.assign(trade, journalResult(trade));
             if (!saveActiveTradesLog()) {
                 activeTradesLog[activeTradesLog.indexOf(trade)] = before;
@@ -7647,7 +7999,7 @@
                 const result = results[i];
                 return `<div class="bg-slate-900/60 rounded-xl border border-white/10 p-3 space-y-1 text-xs">
                     <div class="flex justify-between gap-2"><strong>${escapeHtml(trade.ticker)} ${escapeHtml(trade.side)}</strong><strong class="${result.pnl >= 0 ? 'text-emerald-300' : 'text-red-300'}">$${result.pnl.toFixed(2)} / ${result.rMultiple.toFixed(2)}R</strong></div>
-                    <div class="text-gray-400">${trade.shares} shares @ $${Number(trade.entryPrice).toFixed(2)} / Avg exit $${Number(trade.exitPrice).toFixed(2)} / Fees $${(Number(trade.fees) || 0).toFixed(2)}</div>
+                    <div class="text-gray-400">${tradeReportQty(trade)} shares @ $${Number(trade.entryPrice).toFixed(2)} / Avg exit $${Number(trade.exitPrice).toFixed(2)} / Fees $${journalFees(trade).toFixed(2)}</div>
                     <div class="text-gray-400">${escapeHtml(trade.entryDate)} to ${escapeHtml(trade.exitDate)} / ${result.holdDays} trading days</div>
                     <div class="text-gray-400">${escapeHtml(trade.regime)}</div>
                     ${trade.note ? `<p class="whitespace-pre-wrap break-words text-gray-300">${escapeHtml(trade.note)}</p>` : ''}
@@ -7679,7 +8031,7 @@
             const header = ['Ticker', 'Side', 'Strategy', 'Regime', 'EntryDate', 'ExitDate', 'Shares', 'EntryPrice', 'AverageExitPrice', 'Fees', 'NetPnL', 'RMultiple', 'HoldDays', 'Note'];
             const rows = closed.map(t => {
                 const r = journalResult(t);
-                return [t.ticker, t.side, t.regime, t.marketRegime || '', t.entryDate, t.exitDate, t.shares, t.entryPrice, t.exitPrice, Number(t.fees) || 0, Number(r.pnl.toFixed(2)), Number(r.rMultiple.toFixed(4)), r.holdDays, t.note || ''];
+                return [t.ticker, t.side, t.regime, t.marketRegime || '', t.entryDate, t.exitDate, tradeReportQty(t), t.entryPrice, t.exitPrice, Number(journalFees(t).toFixed(2)), Number(r.pnl.toFixed(2)), Number(r.rMultiple.toFixed(4)), r.holdDays, t.note || ''];
             });
             downloadText(`Trade_Journal_${nyDateStr()}.csv`, [header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
         }
@@ -7783,7 +8135,7 @@
 
         function exportSettingsJson() {
             const backupData = {
-                version: "3.7.8",
+                version: "3.8.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -7796,7 +8148,8 @@
                 collapseAfterCalc: safeStorageGet('collapseAfterCalc'),
                 preferredViewMode: safeStorageGet('preferredViewMode'),
                 ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
-                scanner: snapshotScannerInputs()
+                scanner: collectScannerStore(''),
+                scannerStores: collectScannerStores()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
@@ -7812,10 +8165,13 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
+                // Machine-local bridge config is dropped below — validating it would
+                // fail a whole restore over a field we discard anyway.
+                if (key === 'twsBridgeUrl' || key === 'twsBridgeToken') return;
                 const value = String(data[key]);
                 if (key === 'riskValue' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid risk');
                 if (key === 'slippageValue' && (!Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error('Invalid slippage');
@@ -7829,7 +8185,7 @@
                 if (key === 'liqVolPct' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid liquidity %');
                 if (key === 'liqVolPeriod' && (!Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > 250)) throw new Error('Invalid liquidity period');
                 if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
-                if (key === 'twsBridgeUrl' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(value)) throw new Error('Invalid bridge URL');
+                if (key === 'twsBridgeUrl' && !isValidBridgeUrl(value)) throw new Error('Invalid bridge URL');
                 if (key === 'riskMode' && !['fixed', 'percent'].includes(value)) throw new Error('Invalid risk mode');
                 if (key === 'signalSyncMode' && !['shared', 'perPage'].includes(value)) throw new Error('Invalid signal sync mode');
                 if (key === 'pbEtfUniverse') {
@@ -7864,12 +8220,28 @@
             if (data.activeTradesLog !== undefined) {
                 if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
                 data.activeTradesLog.forEach(t => {
-                    // TWS-fill entries have no precomputed stop — validate params only when a stop exists.
-                    const paramsOk = t.fillSource === 'tws' && !Number.isFinite(t.stopPrice)
-                        ? (Number.isFinite(t.entryPrice) && t.entryPrice > 0 && Number.isSafeInteger(t.shares) && t.shares > 0 ? null : 'bad fill params')
+                    if (!t || typeof t !== 'object') throw new Error('Invalid trade record');
+                    // Stopless records the app itself creates: QLD sleeve entries and
+                    // broker fill/position imports — validate shared shape, skip stop rules.
+                    // Broker fill/position imports (and QLD sleeve rows) can carry a
+                    // recorded stop yet still have shares=0 when fully closed — the
+                    // shared shape check must not route them through shares>0 rules.
+                    const stopless = (t.sleeve === 'QLD' || t.strategyId === 'qld' || t.fillSource === 'tws')
+                        && (!Number.isFinite(t.stopPrice) || t.fillSource === 'tws');
+                    const sharesOk = t.fillSource === 'tws'
+                        ? (Number.isFinite(t.shares) && t.shares >= 0)         // broker fractional / fully-closed 0
+                        : (Number.isSafeInteger(t.shares) && t.shares > 0);
+                    const paramsOk = stopless
+                        ? (Number.isFinite(t.entryPrice) && t.entryPrice > 0 && sharesOk
+                            && (!Number.isFinite(t.stopPrice) || t.stopPrice > 0) ? null : 'bad fill params')
                         : validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice);
-                    if (!t || !Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || paramsOk) throw new Error('Invalid trade record');
-                    if (t.status === 'CLOSED' && (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate)) throw new Error('Invalid closed trade');
+                    if (!Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || paramsOk) throw new Error('Invalid trade record');
+                    if (t.status === 'CLOSED') {
+                        // Broker-sourced closes may hold shares=0 (flat) — the recorded
+                        // exitPrice/realized result carries the outcome, not shares.
+                        if (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate) throw new Error('Invalid closed trade');
+                        if (t.shares === 0 && t.fillSource !== 'tws') throw new Error('Invalid closed trade');
+                    }
                 });
                 if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
                 values.activeTradesLog = JSON.stringify(data.activeTradesLog);
@@ -7880,14 +8252,40 @@
                 const pend = s.pending && typeof s.pending === 'object' && ['ENTER', 'EXIT', 'ADD', 'TRIM', 'CASH'].includes(s.pending.type) && ['WEEKLY', 'MONTH_END'].includes(s.pending.reason)
                     ? { type: s.pending.type, reason: s.pending.reason, month: typeof s.pending.month === 'string' ? s.pending.month : undefined, queuedAt: typeof s.pending.queuedAt === 'string' ? s.pending.queuedAt : undefined }
                     : null;
-                values.qldSleeve = JSON.stringify({ inPos: !!s.inPos && Number(s.shares) > 0, shares: Math.max(0, Number(s.shares) || 0), entryPrice: Number(s.entryPrice) || 0, entryDate: typeof s.entryDate === 'string' ? s.entryDate : null, cashValue: Math.max(0, Number(s.cashValue) || 0), pending: pend, signalWeek: typeof s.signalWeek === 'string' ? s.signalWeek : null });
+                const pord = s.pendingOrder && typeof s.pendingOrder === 'object'
+                    && typeof s.pendingOrder.orderRef === 'string'
+                    && ['ENTER', 'EXIT', 'ADD', 'TRIM'].includes(s.pendingOrder.action)
+                    && ['BUY', 'SELL'].includes(s.pendingOrder.side)
+                    && Number.isSafeInteger(Number(s.pendingOrder.requestedQty)) && Number(s.pendingOrder.requestedQty) > 0
+                    ? {
+                        orderRef: s.pendingOrder.orderRef, orderId: Number.isSafeInteger(Number(s.pendingOrder.orderId)) ? Number(s.pendingOrder.orderId) : null,
+                        action: s.pendingOrder.action, side: s.pendingOrder.side, requestedQty: Number(s.pendingOrder.requestedQty),
+                        baseline: s.pendingOrder.baseline && typeof s.pendingOrder.baseline === 'object' ? {
+                            shares: Math.max(0, Number(s.pendingOrder.baseline.shares) || 0),
+                            entryPrice: Number(s.pendingOrder.baseline.entryPrice) || 0,
+                            entryDate: typeof s.pendingOrder.baseline.entryDate === 'string' ? s.pendingOrder.baseline.entryDate : null,
+                            cashValue: Math.max(0, Number(s.pendingOrder.baseline.cashValue) || 0)
+                        } : { shares: 0, entryPrice: 0, entryDate: null, cashValue: 0 },
+                        execKeys: s.pendingOrder.execKeys && typeof s.pendingOrder.execKeys === 'object' ? s.pendingOrder.execKeys : {},
+                        filledQty: Math.max(0, Number(s.pendingOrder.filledQty) || 0),
+                        avgFillPrice: Number(s.pendingOrder.avgFillPrice) || 0,
+                        status: ['submitted', 'partial', 'unknown'].includes(s.pendingOrder.status) ? s.pendingOrder.status : 'submitted'
+                    } : null;
+                values.qldSleeve = JSON.stringify({ inPos: !!s.inPos && Number(s.shares) > 0, shares: Math.max(0, Number(s.shares) || 0), entryPrice: Number(s.entryPrice) || 0, entryDate: typeof s.entryDate === 'string' ? s.entryDate : null, cashValue: Math.max(0, Number(s.cashValue) || 0), pending: pend, pendingOrder: pord, signalWeek: typeof s.signalWeek === 'string' ? s.signalWeek : null });
             }
-            if (data.scanner !== undefined) {
-                const scan = data.scanner;
+            // One scanner store = the persisted state of a scanner page (grid +
+            // pullback list + per-page risk). Written under `pfx` so per-page
+            // stores land on their own keys.
+            const prepareScannerStore = (scan, pfx) => {
                 if (!scan || !Array.isArray(scan.tickers) || !Array.isArray(scan.triggers) || scan.tickers.length > 9 || scan.triggers.length > 9 || ![3, 6, 9].includes(scan.visibleCount)) throw new Error('Invalid scanner grid');
                 if (scan.pb !== undefined) {
                     if (!Array.isArray(scan.pb) || scan.pb.length > 24 || scan.pb.some(s => !s || !/^[A-Za-z][A-Za-z0-9.\-]{0,9}$/.test(String(s.ticker || '')) || (s.tf !== undefined && s.tf !== null && !['daily', 'weekly'].includes(s.tf)) || (s.cat !== undefined && s.cat !== null && !['auto', 'etf_d', 'etf_w', 'nas_w'].includes(s.cat)))) throw new Error('Invalid pullback signal list');
-                    values.pbSignals = JSON.stringify(scan.pb.map(s => ({ ticker: String(s.ticker).toUpperCase(), tf: s.tf || null, cat: s.cat || 'auto', atrOverride: Number.isFinite(Number(s.atrOverride)) && Number(s.atrOverride) > 0 ? Number(s.atrOverride) : null })));
+                    values[pfx + 'pbSignals'] = JSON.stringify(scan.pb.map(s => ({ ticker: String(s.ticker).toUpperCase(), tf: s.tf || null, cat: s.cat || 'auto', atrOverride: Number.isFinite(Number(s.atrOverride)) && Number(s.atrOverride) > 0 ? Number(s.atrOverride) : null })));
+                }
+                if (scan.riskValue !== undefined && scan.riskValue !== null) {
+                    const rv = Number(scan.riskValue);
+                    if (!Number.isFinite(rv) || rv <= 0) throw new Error('Invalid risk');
+                    values[pfx + 'riskValue'] = String(rv);
                 }
                 const sides = {};
                 for (let i = 0; i < 9; i++) {
@@ -7895,13 +8293,28 @@
                     const trigger = String(scan.triggers[i] ?? '');
                     if (ticker && !/^[A-Za-z][A-Za-z0-9.-]{0,9}$/.test(ticker)) throw new Error('Invalid ticker');
                     if (trigger && (!Number.isFinite(Number(trigger)) || Number(trigger) <= 0)) throw new Error('Invalid trigger');
-                    values[`ticker_${i}`] = ticker.toUpperCase();
-                    values[`trigger_${i}`] = trigger;
+                    values[pfx + `ticker_${i}`] = ticker.toUpperCase();
+                    values[pfx + `trigger_${i}`] = trigger;
                     if (['LONG', 'SHORT'].includes(scan.sides?.[i])) sides[i] = scan.sides[i];
                 }
-                values.visibleCount = String(scan.visibleCount);
-                values.signalSides = JSON.stringify(sides);
+                values[pfx + 'visibleCount'] = String(scan.visibleCount);
+                values[pfx + 'signalSides'] = JSON.stringify(sides);
+            };
+            if (data.scanner !== undefined) prepareScannerStore(data.scanner, '');
+            // Per-page stores are authoritative over the legacy flat `scanner` field —
+            // apply them after it so scannerStores.scanner wins for shared keys.
+            if (data.scannerStores !== undefined) {
+                const stores = data.scannerStores;
+                if (!stores || typeof stores !== 'object' || Array.isArray(stores)) throw new Error('Invalid scanner stores');
+                for (const page of Object.keys(stores)) {
+                    if (!Object.hasOwn(SCANNER_STORE_PREFIXES, page)) throw new Error('Unknown scanner store: ' + page);
+                    prepareScannerStore(stores[page], SCANNER_STORE_PREFIXES[page]);
+                }
             }
+            // Bridge URL + token are machine-local — a backup from another machine
+            // must never overwrite the live bridge config with stale values.
+            delete values.twsBridgeUrl;
+            delete values.twsBridgeToken;
             return values;
         }
 
@@ -7969,6 +8382,20 @@
         function twsReady() {
             return twsEnabled && twsBridgeToken && twsBridgeUrl;
         }
+        // Bridge URL must be http(s) on loopback — exact parsed hostname, never a
+        // prefix match (http://localhost.evil.com must fail). No credentials, query,
+        // hash or path beyond '/'.
+        function isValidBridgeUrl(u) {
+            try {
+                const url = new URL(String(u || ''));
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+                const h = url.hostname.toLowerCase();
+                if (h !== 'localhost' && h !== '127.0.0.1' && h !== '::1' && h !== '[::1]') return false;
+                if (url.username || url.password || url.search || url.hash) return false;
+                if (url.pathname !== '/' && url.pathname !== '') return false;
+                return true;
+            } catch (e) { return false; }
+        }
         // Loopback + RFC1918 + link-local — the addresses Chrome/Edge gate behind the
         // "Local network access" permission when the page is served from a public HTTPS origin.
         function isLocalNetworkHost(host) {
@@ -8025,7 +8452,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '3.7.8';
+        const APP_VERSION = '3.8.0';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
@@ -8115,7 +8542,13 @@
                 twsManualAccountValue = accountValue;
             }
             twsEnabled = en ? en.checked : false;
-            twsBridgeUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
+            const newUrl = urlEl ? urlEl.value.trim() : twsBridgeUrl;
+            if (newUrl && !isValidBridgeUrl(newUrl)) {
+                showErrorToast('Bridge URL must be http(s) on localhost/127.0.0.1 — not saved.', 7000);
+                if (urlEl) urlEl.value = twsBridgeUrl;
+            } else {
+                twsBridgeUrl = newUrl || twsBridgeUrl;
+            }
             twsBridgeToken = tokEl ? tokEl.value.trim() : twsBridgeToken;
             autoSendExitsOnOpen = autoEl ? autoEl.checked : false;
             const toggles = {
@@ -8165,7 +8598,8 @@
             // Re-read storage so a restored backup takes effect in this session —
             // the module-level vars were snapshotted once at script load.
             twsEnabled = safeStorageGet('twsEnabled') === 'true';
-            twsBridgeUrl = safeStorageGet('twsBridgeUrl') || 'http://127.0.0.1:8787';
+            const storedUrl = safeStorageGet('twsBridgeUrl');
+            twsBridgeUrl = storedUrl && isValidBridgeUrl(storedUrl) ? storedUrl : 'http://127.0.0.1:8787';
             twsBridgeToken = safeStorageGet('twsBridgeToken') || '';
             autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
             twsQuotesEnabled = safeStorageGet('twsQuotesEnabled') === 'true';
@@ -8335,34 +8769,45 @@
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const key = twsSendKey(ticker, 'entry', kind);
             if (twsSendState[key] === 'sending') return;
-            const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success && (kind === 'pb' ? r.kind === 'pb' : r.kind !== 'pb'));
-            if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
-            const payload = buildEntryOrderPayload(item);
-            if (!payload.ok) { showErrorToast(payload.error); return; }
-            // Same-direction position already held → confirm before adding on.
-            const pos = twsPositionFor(ticker);
-            if (pos && ((payload.action === 'BUY' && pos.qty > 0) || (payload.action === 'SELL' && pos.qty < 0))) {
-                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another ${payload.action} order anyway?`)) return;
-            }
-            // Duplicate working PSC entry for the same ticker+side → confirm before resending.
-            if (twsOrdersEnabled) {
-                const dup = findDuplicatePscOrders(ticker, payload.action);
-                if (dup.length && !confirm(`${dup.length} working PSC ${payload.action} order(s) already exist for ${ticker} — send another?`)) return;
-            }
-            // Contract preflight once per symbol per session.
-            const pf = await preflightContract(ticker);
-            if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
+            // An UNKNOWN outcome may mean the order reached TWS — require an explicit
+            // "I checked TWS" confirmation before resending; never auto-retry.
+            if (twsSendState[key] === 'unknown' && !confirm(`The last ${ticker} order outcome was UNKNOWN — it may already exist in TWS. Check TWS first.\n\nSend another anyway?`)) return;
+            // Lock before the first await — a second click during preflight must not
+            // pass this check and double-send.
             setTwsSendState(key, 'sending');
-            const result = await bridgeRequest('/order', payload);
-            if (result.ok) {
-                setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
-                showSuccessToast('Opening order ' + (result.orderId || '') + ' sent to TWS');
-            } else if (result.unknown) {
-                setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
-                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
-            } else {
-                setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
-                showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+            try {
+                const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success && (kind === 'pb' ? r.kind === 'pb' : r.kind !== 'pb'));
+                if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
+                const payload = buildEntryOrderPayload(item);
+                if (!payload.ok) { showErrorToast(payload.error); return; }
+                // Same-direction position already held → confirm before adding on.
+                const pos = twsPositionFor(ticker);
+                if (pos && ((payload.action === 'BUY' && pos.qty > 0) || (payload.action === 'SELL' && pos.qty < 0))) {
+                    if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another ${payload.action} order anyway?`)) return;
+                }
+                // Duplicate working PSC entry for the same ticker+side → confirm before resending.
+                if (twsOrdersEnabled) {
+                    const dup = findDuplicatePscOrders(ticker, payload.action);
+                    if (dup.length && !confirm(`${dup.length} working PSC ${payload.action} order(s) already exist for ${ticker} — send another?`)) return;
+                }
+                // Contract preflight once per symbol per session.
+                const pf = await preflightContract(ticker);
+                if (!pf.ok) { setTwsSendState(key, 'error', pf.error); showErrorToast(pf.error, 6000); return; }
+                const result = await bridgeRequest('/order', payload);
+                // Unknown-first: a timeout returns ok:true + unknown:true from older
+                // bridges — never classify it as sent.
+                if (result.unknown) {
+                    setTwsSendState(key, 'unknown', result.message || 'No confirmation from TWS');
+                    showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+                } else if (result.ok) {
+                    setTwsSendState(key, 'sent', 'Order ' + (result.orderId || '') + ' ' + (result.status || ''));
+                    showSuccessToast('Opening order ' + (result.orderId || '') + ' sent to TWS');
+                } else {
+                    setTwsSendState(key, 'error', result.error || result.message || 'Send failed');
+                    showErrorToast('TWS send failed: ' + (result.error || result.message || 'unknown'), 6000);
+                }
+            } finally {
+                if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
             }
         }
         async function sendTwsOpen(ticker, kind) {
@@ -8370,6 +8815,7 @@
             const key = twsSendKey(ticker, 'entry', kind);
             if (twsSendState[key] === 'sending') return;
             if (twsSendState[key] === 'sent' && !confirm(`An order was already sent for ${ticker} — send another one?`)) return;
+            if (twsSendState[key] === 'unknown' && !confirm(`The last ${ticker} order outcome was UNKNOWN — it may already exist in TWS. Check TWS first.\n\nSend another anyway?`)) return;
             if (!autoSendExitsOnOpen) { await sendTwsEntry(ticker, kind); return; }
             const item = (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success && (kind === 'pb' ? r.kind === 'pb' : r.kind !== 'pb'));
             if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
@@ -8409,24 +8855,26 @@
             }
         }
         // Poll /executions until an order's fills reach the requested quantity or
-        // the order stops working. Returns {filled, avgFillPrice, done}.
+        // the order stops working. Returns {filled, avgFillPrice, done, fills}.
         async function waitForTwsFill(orderId, wantQty, timeoutMs) {
             const t0 = Date.now();
-            let filled = 0, avgFillPrice = 0;
+            let filled = 0, avgFillPrice = 0, fills = [];
             while (Date.now() - t0 < (timeoutMs || 20000)) {
                 try {
                     const ex = await bridgeGet('/executions');
-                    const fills = (ex.executions || []).filter(e => e.orderId === orderId);
+                    fills = (ex.executions || []).filter(e => e.orderId === orderId);
                     filled = fills.reduce((a, e) => a + (Number(e.shares) || 0), 0);
                     if (filled > 0) avgFillPrice = fills.reduce((a, e) => a + (Number(e.price) || 0) * e.shares, 0) / filled;
-                    if (filled >= wantQty) return { filled, avgFillPrice, done: true };
+                    if (filled >= wantQty) return { filled, avgFillPrice, done: true, fills };
                     const os = await bridgeGet('/orders');
+                    // Partial snapshot can't prove the order stopped — keep polling.
+                    if (os.complete === false) { await new Promise(r => setTimeout(r, 500)); continue; }
                     const working = (os.orders || []).some(o => o.orderId === orderId);
-                    if (!working) return { filled, avgFillPrice, done: true };
+                    if (!working) return { filled, avgFillPrice, done: true, fills };
                 } catch (e) { /* bridge hiccup — keep polling until timeout */ }
                 await new Promise(r => setTimeout(r, 500));
             }
-            return { filled, avgFillPrice, done: false };
+            return { filled, avgFillPrice, done: false, fills };
         }
 
         async function sendTwsExits(ticker, isLong, entry, shares, stop, strategyId, customTps, attachEntry, entryItem, opts) {
@@ -8437,68 +8885,79 @@
             // attachEntry calls come through sendTwsOpen, which already confirmed a
             // resend on its own key — don't double-prompt here.
             if (!attachEntry && twsSendState[key] === 'sent' && !confirm(`Exit orders were already sent for ${ticker} — send another?`)) return;
-            let built = opts.built || buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
-            if (!built.ok) { showErrorToast(built.error); return; }
-            const sanity = exitStopSanityError(ticker, isLong, stop, entry);
-            if (sanity) { showErrorToast(sanity + ' — not sending', 8000); return; }
-            const pf = await preflightContract(ticker);
-            if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
-            if (attachEntry) {
-                const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
-                if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
-                const entryPayload = buildEntryOrderPayload(snapItem);
-                if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
-                // TWS resizes parentId-attached children to the parent's filled
-                // quantity, so percentage-split exit legs can't ride the entry as
-                // bracket children. Send the entry alone, wait for the fill, then
-                // place exits as standalone OCA-grouped orders (same semantics as
-                // the manual Send Exit Order path).
-                setTwsSendState(key, 'sending');
-                const entryRes = await bridgeRequest('/order', entryPayload);
-                if (!entryRes.ok || entryRes.unknown) {
-                    setTwsSendState(key, entryRes.unknown ? 'unknown' : 'error', entryRes.error || entryRes.message || 'Entry send failed');
-                    showErrorToast('Entry send failed: ' + (entryRes.error || entryRes.message || 'unknown'), 6000);
-                    return entryRes;
-                }
-                const fill = await waitForTwsFill(entryRes.orderId, entryPayload.quantity, 60000);
-                if (!fill || !(fill.filled > 0)) {
-                    setTwsSendState(key, 'unknown', 'Entry working — exits not sent');
-                    showErrorToast(`Entry ${entryRes.orderId || ''} sent but not filled — exit legs were NOT placed (they'd sit live with no position). Send exits from the card once it fills.`, 10000);
-                    return { ok: true, unknown: true, message: 'Entry not filled — exits not sent', results: [entryRes] };
-                }
-                if (fill.filled !== shares) {
-                    // Partial fill — rebuild the legs for the actual filled size.
-                    built = buildExitLegs(ticker, isLong, fill.avgFillPrice || entry, Math.round(fill.filled), stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
-                    if (!built.ok) { showErrorToast(built.error); return built; }
-                }
-            }
-            const payload = buildExitOrdersPayload(built);
-            if (!payload.ok) { showErrorToast(payload.error); return; }
+            // UNKNOWN may mean orders exist in TWS — require check-TWS confirmation.
+            if (!attachEntry && twsSendState[key] === 'unknown' && !confirm(`The last ${ticker} exit send outcome was UNKNOWN — orders may exist in TWS. Check TWS first.\n\nSend another anyway?`)) return;
+            // Lock before the first await — a second click during preflight must not
+            // pass this check and double-send.
             setTwsSendState(key, 'sending');
-            const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
-            const firstFail = result.results ? result.results.find(r => !r.ok) : null;
-            const failMsg = firstFail ? (firstFail.error || firstFail.message) : null;
-            if (result.ok && !result.unknown) {
-                const sentCount = result.results ? result.results.length : 1;
-                setTwsSendState(key, 'sent', sentCount + ' orders sent');
-                const what = attachEntry ? 'Bracket' : (sentCount > 1 ? 'Exit orders' : 'Exit order');
-                showSuccessToast(what + ' sent to TWS');
-            } else if (result.unknown || (result.ok && result.results && result.results.some(r => r.unknown))) {
-                setTwsSendState(key, 'unknown', failMsg || result.message || result.error || 'No confirmation from TWS');
-                showErrorToast('UNKNOWN — check TWS before retrying', 8000);
-            } else {
-                setTwsSendState(key, 'error', failMsg || result.error || result.message || 'Send failed');
-                showErrorToast('TWS send failed: ' + (failMsg || result.error || result.message || 'unknown'), 6000);
+            try {
+                let built = opts.built || buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
+                if (!built.ok) { showErrorToast(built.error); return; }
+                const sanity = exitStopSanityError(ticker, isLong, stop, entry);
+                if (sanity) { showErrorToast(sanity + ' — not sending', 8000); return; }
+                const pf = await preflightContract(ticker);
+                if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
+                if (attachEntry) {
+                    const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
+                    if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
+                    const entryPayload = buildEntryOrderPayload(snapItem);
+                    if (!entryPayload.ok) { showErrorToast(entryPayload.error); return; }
+                    // TWS resizes parentId-attached children to the parent's filled
+                    // quantity, so percentage-split exit legs can't ride the entry as
+                    // bracket children. Send the entry alone, wait for the fill, then
+                    // place exits as standalone OCA-grouped orders (same semantics as
+                    // the manual Send Exit Order path).
+                    const entryRes = await bridgeRequest('/order', entryPayload);
+                    if (!entryRes.ok || entryRes.unknown) {
+                        setTwsSendState(key, entryRes.unknown ? 'unknown' : 'error', entryRes.error || entryRes.message || 'Entry send failed');
+                        showErrorToast('Entry send failed: ' + (entryRes.error || entryRes.message || 'unknown'), 6000);
+                        return entryRes;
+                    }
+                    const fill = await waitForTwsFill(entryRes.orderId, entryPayload.quantity, 60000);
+                    if (!fill || !(fill.filled > 0)) {
+                        setTwsSendState(key, 'unknown', 'Entry working — exits not sent');
+                        showErrorToast(`Entry ${entryRes.orderId || ''} sent but not filled — exit legs were NOT placed (they'd sit live with no position). Send exits from the card once it fills.`, 10000);
+                        return { ok: true, unknown: true, message: 'Entry not filled — exits not sent', results: [entryRes] };
+                    }
+                    if (fill.filled !== shares) {
+                        // Partial fill — rebuild the legs for the actual filled size.
+                        built = buildExitLegs(ticker, isLong, fill.avgFillPrice || entry, Math.round(fill.filled), stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
+                        if (!built.ok) { showErrorToast(built.error); return built; }
+                    }
+                }
+                const payload = buildExitOrdersPayload(built);
+                if (!payload.ok) { showErrorToast(payload.error); return; }
+                const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
+                const firstFail = result.results ? result.results.find(r => !r.ok) : null;
+                const failMsg = firstFail ? (firstFail.error || firstFail.message) : null;
+                if (result.ok && !result.unknown) {
+                    const sentCount = result.results ? result.results.length : 1;
+                    setTwsSendState(key, 'sent', sentCount + ' orders sent');
+                    const what = attachEntry ? 'Bracket' : (sentCount > 1 ? 'Exit orders' : 'Exit order');
+                    showSuccessToast(what + ' sent to TWS');
+                } else if (result.unknown || (result.ok && result.results && result.results.some(r => r.unknown))) {
+                    setTwsSendState(key, 'unknown', failMsg || result.message || result.error || 'No confirmation from TWS');
+                    showErrorToast('UNKNOWN — check TWS before retrying', 8000);
+                } else {
+                    setTwsSendState(key, 'error', failMsg || result.error || result.message || 'Send failed');
+                    showErrorToast('TWS send failed: ' + (failMsg || result.error || result.message || 'unknown'), 6000);
+                }
+                return result;
+            } finally {
+                if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
             }
-            return result;
         }
+        let batchSending = false;   // re-entry lock — a second click must not double-place
         async function sendTwsBatchAll() {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
+            if (batchSending) return;
             const { trades, errors } = collectBatchTradesFromDom();
             if (!showBatchValidation(errors)) return;
             if (!trades.length) { showErrorToast('No valid trades to send.'); return; }
             const totalLegs = trades.reduce((n, t) => n + t.built.rows.filter(r => r[7]).length, 0);
             if (!confirm(`Send ${totalLegs} exit orders for ${trades.length} ticker(s) to TWS exactly as previewed?`)) return;
+            batchSending = true;
+            try {
             // One bad ticker must never abort the rest of the batch, and a skipped or
             // failed ticker must never be silent — count results and report at the end.
             let sent = 0, missed = 0;
@@ -8514,6 +8973,7 @@
             }
             if (missed) showErrorToast(`Batch send done: ${sent} sent, ${missed} skipped/failed — retry those from the drawer or card`, 10000);
             else showSuccessToast(`Batch send done: ${sent} ticker(s) sent to TWS`);
+            } finally { batchSending = false; }
         }
         function syncTwsSendButtons() {
             // If TWS is disabled, hide the send buttons entirely. If TWS is enabled, show them
@@ -8594,6 +9054,9 @@
             try {
                 const d = await bridgeGet('/positions');
                 if (!d || !d.ok || !Array.isArray(d.positions)) return;
+                // An incomplete snapshot (timeout/disconnect mid-stream) is partial —
+                // replacing the map would drop unseen positions and falsely close trades.
+                if (d.complete === false) return;
                 const next = {};
                 for (const p of d.positions) {
                     if (!p || !p.symbol || !p.qty) continue;
@@ -8616,6 +9079,7 @@
             try {
                 const d = await bridgeGet('/orders');
                 if (!d || !d.ok || !Array.isArray(d.orders)) return;
+                if (d.complete === false) return;   // partial snapshot — keep the last full list
                 twsOpenOrders = d.orders;
                 refreshTwsBadges();
                 renderTwsOrdersDrawer();
@@ -8716,27 +9180,74 @@
             const d = ex && typeof ex.time === 'string' ? ex.time.slice(0, 8) : '';
             return (d ? d + '|' : '') + ex.execId;
         }
+        // Map<execKey, appliedCommission>. Commission reports can arrive AFTER the
+        // exec was first seen (or grow on a later poll) — a re-seen key applies
+        // only the delta instead of skipping the fill data entirely.
+        // null = migrated legacy entry (commission already consumed, delta unknown).
         function loadTwsSeenExecs() {
             try {
-                const arr = JSON.parse(safeStorageGet('twsSeenExecs') || '[]');
-                return new Set(Array.isArray(arr) ? arr.filter(x => typeof x === 'string' && x) : []);
-            } catch (e) { return new Set(); }
+                const raw = JSON.parse(safeStorageGet('twsSeenExecs') || '[]');
+                const map = new Map();
+                if (Array.isArray(raw)) for (const e of raw) {
+                    if (typeof e === 'string' && e) map.set(e, null);
+                    else if (Array.isArray(e) && typeof e[0] === 'string') map.set(e[0], Number.isFinite(e[1]) ? e[1] : null);
+                }
+                return map;
+            } catch (e) { return new Map(); }
         }
         function saveTwsSeenExecs() {
-            if (twsSeenExecs.size > TWS_SEEN_EXECS_MAX) twsSeenExecs = new Set([...twsSeenExecs].slice(-TWS_SEEN_EXECS_MAX));
+            if (twsSeenExecs.size > TWS_SEEN_EXECS_MAX) twsSeenExecs = new Map([...twsSeenExecs].slice(-TWS_SEEN_EXECS_MAX));
             safeStorageSet('twsSeenExecs', JSON.stringify([...twsSeenExecs]));
+        }
+        // A commission delta arriving after the exec was processed.
+        function applyLateCommission(ticker, delta) {
+            if (!(delta > 0)) return;
+            const tr = [...activeTradesLog].reverse().find(t => t.ticker === ticker && t.fillSource === 'tws')
+                || activeTradesLog.find(t => t.ticker === ticker && t.status === 'ACTIVE');
+            if (!tr) return;
+            if (tr.status === 'CLOSED') {
+                tr.exitCommission = (tr.exitCommission || 0) + delta;
+                if (Number.isFinite(tr.realizedPnl)) tr.realizedPnl -= delta;
+                if (Number.isFinite(tr.pnl)) tr.pnl -= delta;
+            } else {
+                tr.commission = (tr.commission || 0) + delta;
+            }
+            saveActiveTradesLog();
+            renderActiveTradesPage();
         }
         function handleTwsExecution(ex) {
             if (!ex || !ex.execId) return;
             const key = twsExecKey(ex);
-            if (twsSeenExecs.has(key)) return;
-            twsSeenExecs.add(key);
+            const ticker0 = normalizeTwsSymbol(ex.symbol);
+            const fees0 = Math.abs(Number(ex.commission)) || 0;
+            if (twsSeenExecs.has(key)) {
+                // Late commissionReport for an already-processed fill — apply the delta only.
+                const recorded = twsSeenExecs.get(key);
+                if (recorded != null && fees0 > recorded) {
+                    twsSeenExecs.set(key, fees0);
+                    saveTwsSeenExecs();
+                    applyLateCommission(ticker0, fees0 - recorded);
+                }
+                return;
+            }
+            twsSeenExecs.set(key, fees0);
             saveTwsSeenExecs();
-            const ticker = normalizeTwsSymbol(ex.symbol);
+            const ticker = ticker0;
+            // A fill matching an outstanding QLD pendingOrder is owned by the sleeve
+            // ledger — apply it there and skip generic journal ingestion entirely.
+            if (qldPendingOrderFor(ex)) {
+                const qty0 = Number(ex.shares) || 0, price0 = Number(ex.price) || 0;
+                if (qty0 && price0) {
+                    showSuccessToast('QLD filled ' + qty0 + ' @ ' + price0.toFixed(2), 5000);
+                    qldRecordPendingFill(key, qty0, price0);
+                    renderQldPage();
+                }
+                return;
+            }
             const side = ex.side === 'BOT' ? 'BOT' : (ex.side === 'SLD' ? 'SLD' : (ex.side || '').toUpperCase());
             const qty = Number(ex.shares) || 0;
             const price = Number(ex.price) || 0;
-            const fees = Math.abs(Number(ex.commission)) || 0;
+            const fees = fees0;
             if (!ticker || !qty || !price) return;
             showSuccessToast('Filled ' + qty + ' ' + ticker + ' @ ' + price.toFixed(2), 5000);
             const open = activeTradesLog.find(t => t.ticker === ticker && t.status === 'ACTIVE');
@@ -8761,6 +9272,7 @@
                         ? held.avgCost
                         : (open.entryPrice * open.shares + price * qty) / (open.shares + qty);
                     open.shares = tot;
+                    open.totalQty = Math.max(open.totalQty || 0, tot);
                     open.commission = (open.commission || 0) + fees;
                     open._posQty = tot;
                     // Credit the position-delta only when the position hasn't reflected it yet.
@@ -8782,6 +9294,7 @@
                     entryDate: nyDateStr(), entryPrice: price, shares: qty,
                     stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
                     commission: fees, realizedPnl: 0, entryCommissionCounted: false,
+                    totalQty: qty,
                     _entryCredits: [{ qty, ts: Date.now() }],
                     _posQty: held ? Math.max(0, Math.abs(held.qty) - qty) : qty
                 });
@@ -8833,6 +9346,7 @@
                 if (afterQty <= 0) {
                     open.status = 'CLOSED';
                     open.shares = 0;
+                    open.closedQty = open.totalQty || qty;
                     open.exitPrice = price;
                     open.exitDate = nyDateStr();
                     open.closedAtMs = Date.now();
@@ -8913,6 +9427,7 @@
                     }
                 } else if (posFresh) {
                     tr.status = 'CLOSED';
+                    tr.closedQty = tr.totalQty || tr.shares;
                     tr.exitDate = nyDateStr();
                     tr.exitPrice = (p && Number.isFinite(p.mktPrice) && p.mktPrice > 0) ? p.mktPrice : tr.entryPrice;
                     tr.pnl = (tr.realizedPnl || 0) + (tr.side === 'LONG' ? 1 : -1) * (tr.exitPrice - tr.entryPrice) * tr.shares - (tr.commission || 0);
@@ -8921,8 +9436,10 @@
                     changed = true;
                 }
             }
-            // 2) Import held positions with no journal row.
-            if (posFresh) for (const sym of Object.keys(twsPositions)) {
+            // 2) Import held positions with no journal row. A completed snapshot proves
+            //    absence authority globally; a streamed delta proves only its own symbol.
+            for (const sym of Object.keys(twsPositions)) {
+                if (!posFresh && !(twsPositionDeltaAt[sym] > 0)) continue;
                 const p = twsPositions[sym];
                 if (!p || !p.qty) continue;
                 if (activeByTicker[sym]) continue;
@@ -8950,6 +9467,7 @@
                     stopPrice: null, status: 'ACTIVE', fillSource: 'tws',
                     commission: 0, realizedPnl: 0, entryCommissionCounted: true,
                     note: 'Imported from TWS position',
+                    totalQty: Math.abs(p.qty),
                     _posQty: Math.abs(p.qty)
                 });
                 activeByTicker[sym] = true;
@@ -9230,6 +9748,21 @@
                 setHidden(document.getElementById('installAppBtn'), true);
                 status.textContent = 'Installed. Quotes still require an internet connection.';
             });
+            // Bridge-served pages carry the auth token in this HTML — never let a
+            // service worker run on the loopback bridge origin (it could cache the token).
+            if (pscBridgeInfo) {
+                // A registration from an older version may still control this origin —
+                // unregister it and drop only our shell caches (prefix-scoped), never
+                // touching localStorage, settings, or unrelated caches.
+                if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+                    navigator.serviceWorker.getRegistrations().then(regs => {
+                        regs.forEach(r => { try { r.unregister(); } catch (_) {} });
+                        if (self.caches && caches.keys) caches.keys().then(keys =>
+                            keys.filter(k => k.startsWith('positioncalc-shell-')).forEach(k => caches.delete(k)));
+                    }).catch(() => {});
+                }
+                return;
+            }
             if (!window.isSecureContext || !('serviceWorker' in navigator)) return;
             const register = async () => {
                 try {
