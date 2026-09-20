@@ -62,6 +62,7 @@ let stopping = false;                // set by stop() — suppresses reconnects
 const STATIC_FILES = {
     '/': 'index.html',
     '/index.html': 'index.html',
+    '/ledger.js': 'ledger.js',
     '/manifest.webmanifest': 'manifest.webmanifest',
     '/sw.js': 'sw.js',
     '/icon.svg': 'icon.svg',

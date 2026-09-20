@@ -97,11 +97,11 @@ try {
   assert(!('twsBridgeUrl' in snap) || snap.twsBridgeUrl === undefined, 'bridge url excluded');
   assert(!('twsBridgeToken' in snap) || snap.twsBridgeToken === undefined, 'bridge token excluded');
   assert(snap.apiKeys && typeof snap.apiKeys === 'object', 'apiKeys object present');
-  assert(snap.version === '3.9.0', 'portable version synced');
+  assert(snap.version === '4.0.0', 'portable version synced');
 
   // ---------- prepareBackup: real producer shapes must validate (B02) ----------
   const backup = {
-    version: '3.9.0',
+    version: '4.0.0',
     activeTradesLog: [
       // QLD journal row â€” no stop, no targets, null holdLimit.
       { id: 1, ticker: 'QLD', side: 'LONG', sleeve: 'QLD', strategyId: 'qld', regime: 'QLD Trend',
@@ -137,8 +137,8 @@ try {
   assert(prepared['pg_lsv3_ticker_0'] === 'MSFT', 'scannerStores restore into prefixed keys');
   assert(prepared['pg_pb_pbSignals'] && JSON.parse(prepared['pg_pb_pbSignals'])[0].ticker === 'SPY', 'pb store restored');
   assert(!('twsBridgeUrl' in prepared) && !('twsBridgeToken' in prepared), 'bridge fields dropped from restore values');
-  assertThrows(() => api.prepareBackup({ version: '3.9.0', scannerStores: { bogus: {} } }), 'unknown scanner store rejected');
-  assertThrows(() => api.prepareBackup({ version: '3.9.0', activeTradesLog: [{ id: 1, ticker: 'XX', side: 'LONG', status: 'ACTIVE', shares: 'lots' }] }), 'malformed trade rejected');
+  assertThrows(() => api.prepareBackup({ version: '4.0.0', scannerStores: { bogus: {} } }), 'unknown scanner store rejected');
+  assertThrows(() => api.prepareBackup({ version: '4.0.0', activeTradesLog: [{ id: 1, ticker: 'XX', side: 'LONG', status: 'ACTIVE', shares: 'lots' }] }), 'malformed trade rejected');
 
   // ---------- qldParseSleeveInput + qldApplySleeveEdit (B16) ----------
   let p = api.qldParseSleeveInput('300 @ 82.50', 0);

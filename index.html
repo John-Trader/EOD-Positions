@@ -9,6 +9,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./ledger.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         html, body { overflow-x: hidden; }
@@ -260,7 +261,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v3.9.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.0.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -730,6 +731,38 @@
                         </div>
                     </div>
                 </details>
+                <!-- Cloud sync (optional — journal/report data across devices) -->
+                <details class="setsec bg-slate-900/60 border border-white/10 rounded-xl" data-setsec="sync">
+                    <summary class="px-2.5 py-2 flex items-center gap-1.5 text-[10px] font-black uppercase text-gray-300 select-none">
+                        <span class="setsec-chev text-gray-500 text-[9px]">▸</span>Cloud Sync <span class="text-gray-500 normal-case font-normal">(optional)</span>
+                    </summary>
+                    <div class="px-2.5 pb-2.5 pt-1.5 border-t border-white/5 space-y-2 text-xs">
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="col-span-2 sm:col-span-1">Provider
+                                <select id="syncProvider" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5" onchange="syncProviderChanged()">
+                                    <option value="none">Off — local only</option>
+                                    <option value="appscript">Google Apps Script</option>
+                                    <option value="jsonbin">JSONBin.io</option>
+                                    <option value="npoint">npoint.io</option>
+                                    <option value="pantry">Pantry</option>
+                                    <option value="custom">Custom endpoint</option>
+                                </select>
+                            </label>
+                            <label id="syncUrlWrap" class="col-span-2 sm:col-span-1 hidden">Endpoint URL<input id="syncUrl" type="url" placeholder="https://…" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5"></label>
+                            <label id="syncBinIdWrap" class="hidden">Bin ID<input id="syncBinId" type="text" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5"></label>
+                            <label id="syncApiKeyWrap" class="hidden">API key<input id="syncApiKey" type="password" autocomplete="off" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5"></label>
+                            <label id="syncBasketWrap" class="hidden">Basket name<input id="syncBasket" type="text" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5"></label>
+                        </div>
+                        <p id="syncProviderHint" class="text-[9px] text-gray-500"></p>
+                        <p class="text-[9px] text-amber-400/80">Sync is whole-state, newest timestamp wins — don't edit on two devices at the same time. URL-only providers are readable by anyone holding the URL.</p>
+                        <div class="flex items-center gap-2">
+                            <button onclick="saveSyncSettings()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold text-[10px] uppercase">Save</button>
+                            <button onclick="syncPullAndApply()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Pull now</button>
+                            <button onclick="syncPushNow()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Push now</button>
+                        </div>
+                        <p id="syncStatusLine" class="text-[10px] text-gray-400"></p>
+                    </div>
+                </details>
             </div>
         </div>
     </div>
@@ -751,6 +784,7 @@
             <div class="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs font-bold">
                 <button id="tradesActiveTab" onclick="setTradesTab('active')" class="rounded bg-blue-600 px-3 py-1.5">ACTIVE</button>
                 <button id="tradesHistoryTab" onclick="setTradesTab('history')" class="rounded bg-slate-800 px-3 py-1.5">HISTORY</button>
+                <button id="tradesReportTab" onclick="setTradesTab('report')" class="rounded bg-slate-800 px-3 py-1.5">REPORT</button>
                 <button onclick="exportJournalCsv()" class="ml-auto text-cyan-300">EXPORT JOURNAL CSV</button>
             </div>
             <p class="px-3 pt-2 text-[10px] text-gray-400">Local journal only. Recording a close does not submit or cancel broker orders. Quote-based levels are not confirmed fills.</p>
@@ -1008,13 +1042,20 @@
         // so the file is a complete portable install (public backups keep keys out).
         function collectPortableState() {
             return {
-                version: "3.9.0",
+                version: "4.0.0",
                 customStrategies,
                 regimeStrategyMap,
                 activeTradesLog,
                 globalMarketRegime,
                 qldSleeve,
                 twsSeenExecs: [...twsSeenExecs],
+                // Ledger stores — without these the portable exe loses the whole
+                // event ledger / valuations / report data on every restart.
+                ...(ledgerReady() ? Object.fromEntries(
+                    ['config', 'valuations', 'cash', 'qldTxns', 'snapshots', 'audit', 'sync']
+                        .map(k => [Ledger.KEYS[k], safeStorageGet(Ledger.KEYS[k])])
+                        .concat([['journalSyncedAt', safeStorageGet('journalSyncedAt')]])
+                ) : {}),
                 // twsBridgeUrl/twsBridgeToken are bridge-derived (meta-injected) and
                 // machine-local — persisting them would seed another PC's copy of
                 // this file with a stale token.
@@ -4646,6 +4687,7 @@
             qldBandPct = Math.min(25, Math.max(1, parseFloat(safeStorageGet('qldBandPct')) || 5));
             const syncEl = document.getElementById('signalSyncSetting');
             if (syncEl) syncEl.checked = signalSyncMode !== 'perPage';
+            if (typeof loadSyncSettings === 'function') loadSyncSettings();
             const uEl = document.getElementById('pbEtfUniverseSetting');
             if (uEl) uEl.value = pbEtfUniverse.join(', ');
             const tEl = document.getElementById('qldTargetPctSetting');
@@ -5158,16 +5200,20 @@
         // Shared journal upsert — the record shape drives the slim amber TREND SLEEVE
         // card on Active Trades (and the TWS-import migration produces the same shape).
         function qldJournalUpsert() {
+            const priorQld = activeTradesLog.find(t => t.sleeve === 'QLD' && t.status === 'ACTIVE');
             activeTradesLog = activeTradesLog.filter(t => !(t.sleeve === 'QLD' && t.status === 'ACTIVE'));
             if (qldSleeve.inPos && qldSleeve.shares > 0) {
                 activeTradesLog.unshift({
-                    id: Date.now() + Math.random(), ticker: 'QLD', side: 'LONG', sleeve: 'QLD',
+                    id: priorQld ? priorQld.id : Date.now() + Math.random(),   // keep id → marks continuity
+                    ticker: 'QLD', side: 'LONG', sleeve: 'QLD',
                     strategyId: 'qld', marketRegime: globalMarketRegime,
                     holdLimit: null, holdUnit: 'week', targets: [],
                     entryDate: qldSleeve.entryDate, entryPrice: qldSleeve.entryPrice,
                     shares: qldSleeve.shares, stopPrice: null, regime: 'QLD Trend',
-                    tp1: null, tp2: null, status: 'ACTIVE'
+                    tp1: null, tp2: null, status: 'ACTIVE',
+                    events: priorQld && Array.isArray(priorQld.events) ? priorQld.events : undefined
                 });
+                if (window.Ledger && !activeTradesLog[0].events) Ledger.onImportedPosition(activeTradesLog[0]);
             }
             saveActiveTradesLog(); updateActiveTradesCountBadge(); renderActiveTradesPage();
         }
@@ -5177,10 +5223,11 @@
             const r = qldReality();
             price = Number(price) || r.px || 0;
             const curShares = r.shares; // broker count when known — ledger follows it
+            let sell = 0;
             if (action === 'EXIT' || action === 'TRIM') {
                 // EXIT with no explicit qty sells everything; a confirmed-fill qty
                 // (partial fills included) sells exactly that many.
-                const sell = Math.min(action === 'EXIT' && !shares ? curShares : shares, curShares);
+                sell = Math.min(action === 'EXIT' && !shares ? curShares : shares, curShares);
                 if (action === 'EXIT') qldSleeve.cashValue = (qldSleeve.cashValue || 0) + sell * price;   // sleeve back to cash — keep any reserve leftover
                 // TRIM proceeds leave the sleeve (that's what reduces the weight).
                 qldSleeve.shares = Math.max(0, curShares - sell);
@@ -5201,6 +5248,11 @@
                 qldSleeve.inPos = true;
                 if (!qldSleeve.entryDate) qldSleeve.entryDate = nyDateStr();
                 if (action === 'ENTER') qldSleeve.cashValue = Math.max(0, (qldSleeve.cashValue || 0) - shares * price);
+            }
+            if (window.Ledger && (action === 'EXIT' || action === 'TRIM') && sell > 0) {
+                Ledger.recordQldTxn('Sale', nyDateStr(), sell * price, sell, price, 'QLD sleeve ' + action);
+            } else if (window.Ledger && (action === 'ENTER' || action === 'ADD') && shares > 0) {
+                Ledger.recordQldTxn('Buy', nyDateStr(), shares * price, shares, price, 'QLD sleeve ' + action);
             }
             qldSleeve.pending = null;
             qldSaveSleeve();
@@ -5294,6 +5346,10 @@
             for (const kk in po.execKeys) { fq += po.execKeys[kk].qty; fp += po.execKeys[kk].qty * po.execKeys[kk].price; }
             po.filledQty = fq;
             po.avgFillPrice = fq ? fp / fq : 0;
+            if (window.Ledger) {
+                Ledger.recordQldTxn(po.side === 'SELL' ? 'Sale' : 'Buy', nyDateStr(), qty * Number(price), qty, Number(price),
+                    'QLD TWS fill (' + (po.action || po.side) + ')');
+            }
             qldApplyPendingFill();
             return true;
         }
@@ -7467,6 +7523,7 @@
                 tp2: tps[tps.length - 1] || null,
                 status: 'ACTIVE'
             });
+            if (window.Ledger) Ledger.onTradeLogged(activeTradesLog[0]);
         }
 
         function logSelectedTrades() {
@@ -7918,7 +7975,9 @@
         }
 
         function saveActiveTradesLog() {
-            return safeStorageSet('activeTradesLog', JSON.stringify(activeTradesLog));
+            const r = safeStorageSet('activeTradesLog', JSON.stringify(activeTradesLog));
+            if (r && typeof notifyLedgerDirty === 'function') notifyLedgerDirty();
+            return r;
         }
 
         function updateActiveTradesCountBadge() {
@@ -8101,6 +8160,11 @@
                 const activeSet = new Set(tickers);
                 Object.keys(activeTradesPriceCache).forEach(k => { if (!activeSet.has(k)) delete activeTradesPriceCache[k]; });
                 updateActiveTradeCards();
+                if (window.Ledger) {
+                    Ledger.captureMarksFromQuotes();
+                    Ledger.captureQldValue();
+                    if (twsSyncAccount && twsConnected && twsLastAccountValue > 0) Ledger.captureEquity(twsLastAccountValue);
+                }
                 if (failed) alert(`${failed} price refresh(es) failed. Previously displayed quotes may be stale.`);
             } catch (e) {
                 console.warn('Active trade price refresh failed:', e);
@@ -8201,7 +8265,7 @@
         }
 
         function setTradesTab(tab) {
-            tradesTab = tab === 'history' ? 'history' : 'active';
+            tradesTab = ['active', 'history', 'report'].includes(tab) ? tab : 'active';
             closingTradeId = null;
             renderActiveTradesPage();
         }
@@ -8242,7 +8306,13 @@
                 return;
             }
             const before = { ...trade };
+            const _undo = window.Ledger ? Ledger.captureTradeUndo([id]) : null;
             Object.assign(trade, { status: 'CLOSED', exitPrice, fees, entryDate, exitDate, closedQty: trade.totalQty || trade.shares, note: document.getElementById(`closeNote-${id}`).value.trim().slice(0, 2000) });
+            if (window.Ledger) {
+                Ledger.onTradeClosed(trade, exitPrice, exitDate);
+                Ledger.auditPush('Close ' + trade.ticker, '', _undo || {});
+                Ledger.flagStaleFrom(exitDate);
+            }
             Object.assign(trade, journalResult(trade));
             if (!saveActiveTradesLog()) {
                 activeTradesLog[activeTradesLog.indexOf(trade)] = before;
@@ -8264,8 +8334,17 @@
             });
         }
 
+        let journalSearch = '';
         function journalHistoryHtml(trades) {
-            if (!trades.length) return '<p class="text-center text-gray-400 py-8 text-xs">No closed trades yet.</p>';
+            const searchBox = `<div class="flex items-center gap-2">
+                <input id="journalSearch" type="text" placeholder="Search symbol or note…" value="${escapeHtml(journalSearch)}"
+                    oninput="journalSearch=this.value; renderActiveTradesPage()"
+                    class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs">
+                <button onclick="exportEventsCsv()" class="text-cyan-300 text-[10px] font-bold whitespace-nowrap">EVENTS CSV</button>
+            </div>`;
+            const q = journalSearch.trim().toUpperCase();
+            if (q) trades = trades.filter(t => t.ticker.toUpperCase().includes(q) || (t.note || '').toUpperCase().includes(q));
+            if (!trades.length) return searchBox + '<p class="text-center text-gray-400 py-8 text-xs">No closed trades yet.</p>';
             const results = trades.map(journalResult);
             const sum = key => results.reduce((n, r) => n + r[key], 0);
             const stats = [
@@ -8273,7 +8352,7 @@
                 ['Avg R', (sum('rMultiple') / trades.length).toFixed(2)], ['Total R', sum('rMultiple').toFixed(2)],
                 ['Net P&L', `$${sum('pnl').toFixed(2)}`], ['Avg days', (sum('holdDays') / trades.length).toFixed(1)]
             ];
-            return `<div class="grid grid-cols-3 gap-2">${stats.map(([label, value]) => `<div class="bg-slate-900/60 rounded p-2 text-center"><div class="text-[9px] text-gray-400">${label}</div><strong class="text-xs">${value}</strong></div>`).join('')}</div>` + trades.map((trade, i) => {
+            return searchBox + `<div class="grid grid-cols-3 gap-2">${stats.map(([label, value]) => `<div class="bg-slate-900/60 rounded p-2 text-center"><div class="text-[9px] text-gray-400">${label}</div><strong class="text-xs">${value}</strong></div>`).join('')}</div>` + trades.map((trade, i) => {
                 const result = results[i];
                 return `<div class="bg-slate-900/60 rounded-xl border border-white/10 p-3 space-y-1 text-xs">
                     <div class="flex justify-between gap-2"><strong>${escapeHtml(trade.ticker)} ${escapeHtml(trade.side)}</strong><strong class="${result.pnl >= 0 ? 'text-emerald-300' : 'text-red-300'}">$${result.pnl.toFixed(2)} / ${result.rMultiple.toFixed(2)}R</strong></div>
@@ -8281,7 +8360,11 @@
                     <div class="text-gray-400">${escapeHtml(trade.entryDate)} to ${escapeHtml(trade.exitDate)} / ${result.holdDays} trading days</div>
                     <div class="text-gray-400">${escapeHtml(trade.regime)}</div>
                     ${trade.note ? `<p class="whitespace-pre-wrap break-words text-gray-300">${escapeHtml(trade.note)}</p>` : ''}
-                    <button onclick="deleteTrade(${trade.id})" class="text-red-400 text-[10px]">Remove record</button>
+                    <div class="flex gap-3">
+                        <button onclick="toggleTxnEditor(${trade.id})" class="text-cyan-300 text-[10px]">History</button>
+                        <button onclick="deleteTrade(${trade.id})" class="text-red-400 text-[10px]">Remove record</button>
+                    </div>
+                    ${txnEditorHtml(trade)}
                 </div>`;
             }).join('');
         }
@@ -8367,10 +8450,12 @@
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
                         <div class="flex gap-2 text-[11px] font-bold">
+                            <button onclick="toggleTxnEditor(${trade.id})" class="text-cyan-300 px-2 py-1">History</button>
                             <button onclick="toggleTradeClose(${trade.id})" class="text-emerald-300 px-2 py-1">Record close</button>
                             <button onclick="deleteTrade(${trade.id})" class="text-red-400 px-2 py-1">Remove</button>
                         </div>
                     </div>
+                    ${txnEditorHtml(trade)}
                     ${tradeCloseForm(trade)}
                 </div>
             `;
@@ -8380,13 +8465,23 @@
             const container = document.getElementById('activeTradesPageList');
             if (!container) return;
             updateBreakerBanner();
-            ['active', 'history'].forEach(tab => {
-                const button = document.getElementById(tab === 'active' ? 'tradesActiveTab' : 'tradesHistoryTab');
+            ['active', 'history', 'report'].forEach(tab => {
+                const button = document.getElementById(tab === 'active' ? 'tradesActiveTab' : tab === 'history' ? 'tradesHistoryTab' : 'tradesReportTab');
                 if (button) button.className = `rounded px-3 py-1.5 ${tab === tradesTab ? 'bg-blue-600' : 'bg-slate-800'}`;
             });
+            if (tradesTab === 'report') {
+                container.innerHTML = reportTabHtml();
+                return;
+            }
             if (tradesTab === 'history') {
                 const closed = activeTradesLog.filter(t => t.status === 'CLOSED').sort((a, b) => b.exitDate.localeCompare(a.exitDate) || b.id - a.id);
+                const ae = document.activeElement;
+                const caret = (ae && ae.id === 'journalSearch') ? ae.selectionStart : null;
                 container.innerHTML = journalHistoryHtml(closed);
+                if (caret !== null) {
+                    const el = document.getElementById('journalSearch');
+                    if (el) { el.focus(); el.setSelectionRange(caret, caret); }
+                }
                 return;
             }
             const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
@@ -8412,9 +8507,510 @@
             });
         }
 
-        function exportSettingsJson() {
-            const backupData = {
-                version: "3.9.0",
+        // ========================================================
+        // LEDGER REPORT TAB (ledger.js UI — guarded throughout)
+        // ========================================================
+        let reportMonth = null;            // 'YYYY-MM' — null = latest
+        let reportViewSnapshot = null;     // {month, revision} when viewing a frozen revision
+        let reportPanels = {};             // open/closed state for collapsible editors
+
+        function ledgerReady() { return !!window.Ledger; }
+        function toggleReportPanel(key) { reportPanels[key] = !reportPanels[key]; renderActiveTradesPage(); }
+        function panelHead(key, label, hint) {
+            return `<button onclick="toggleReportPanel('${key}')" class="w-full flex justify-between items-center text-left text-[11px] font-black uppercase text-gray-300 py-2">
+                <span>${escapeHtml(label)}</span><span class="text-gray-500">${reportPanels[key] ? '▾' : '▸'} ${hint || ''}</span></button>`;
+        }
+        // Ask for a correction reason when the change touches a finalized month.
+        function ledgerReasonFor(dateStr) {
+            if (!ledgerReady() || !Ledger.requiresReason(dateStr)) return '';
+            const r = prompt('This changes a finalized month — enter a correction reason:');
+            return r === null ? null : r.trim();
+        }
+
+        function reportTabHtml() {
+            if (!ledgerReady()) return '<p class="text-center text-gray-400 py-8 text-xs">Ledger module (ledger.js) not loaded.</p>';
+            const conf = Ledger.config();
+            const months = Ledger.monthsWithData();
+            const month = reportMonth || months[0] || Ledger.today().slice(0, 7);
+            const report = reportViewSnapshot
+                ? (Ledger.snapshotList(reportViewSnapshot.month).find(s => s.revision === reportViewSnapshot.revision) || {}).report
+                : Ledger.buildMonthReport(month);
+
+            let out = '';
+            // Setup gate
+            if (!conf.start) {
+                out += `<div class="bg-slate-900/60 border border-white/10 rounded-xl p-3 space-y-2 text-xs">
+                    <div class="font-bold text-white">Ledger setup</div>
+                    <p class="text-gray-400">One-time: pick the day the ledger starts and the account equity that day. The report engine needs both.</p>
+                    ${reportSetupHtml()}
+                </div>`;
+            }
+            // Month picker + actions
+            out += `<div class="flex flex-wrap items-center gap-2 text-xs">
+                <select onchange="reportMonth=this.value; reportViewSnapshot=null; renderActiveTradesPage()" class="bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-white font-bold">
+                    ${months.map(m => `<option value="${m}" ${m === month ? 'selected' : ''}>${m}</option>`).join('')}
+                </select>
+                ${reportViewSnapshot ? `<span class="text-[10px] font-bold text-amber-300 border border-amber-500/40 rounded px-2 py-0.5">VIEWING FROZEN REVISION ${reportViewSnapshot.revision} — <button class="underline" onclick="reportViewSnapshot=null; renderActiveTradesPage()">live</button></span>` : ''}
+                <button onclick="ledgerSaveTodaysClose()" class="ml-auto bg-emerald-700 hover:bg-emerald-600 text-white rounded px-2.5 py-1.5 font-bold text-[10px] uppercase">Save today's close</button>
+                <button onclick="downloadLedgerReport()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-2.5 py-1.5 font-bold text-[10px] uppercase">Download HTML</button>
+                <button onclick="printLedgerReport()" class="bg-slate-800 text-gray-300 border border-white/10 rounded px-2.5 py-1.5 font-bold text-[10px] uppercase">Print / PDF</button>
+            </div>`;
+
+            if (report && report.ok === false) {
+                out += `<div class="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-500/30 rounded-lg px-3 py-2">${escapeHtml(report.error || 'Report unavailable.')}</div>`;
+            } else if (report) {
+                // warnings row
+                const warns = [];
+                if (report.incompleteReason) warns.push(report.incompleteReason);
+                if (Math.abs(report.residualMagnitude) > 0.01) warns.push(`Unreconciled ${Ledger.pct(report.unreconciledPp, ' pp')} — ledger components don't fully explain the equity change. Check deposits/income and daily values.`);
+                if (report.equityAsOf && (report.equityAsOf.start !== report.start || report.equityAsOf.end !== report.end)) {
+                    warns.push(`Equity uses nearest saved values (start: ${report.equityAsOf.start || '—'}, end: ${report.equityAsOf.end || '—'}).`);
+                }
+                if (warns.length) out += `<div class="text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/30 rounded-lg px-2.5 py-1.5 space-y-0.5">${warns.map(w => `<div>⚠ ${escapeHtml(w)}</div>`).join('')}</div>`;
+                out += Ledger.reportHtml(report);
+                // finalize + revisions
+                const snaps = Ledger.snapshotList(report.month);
+                const stale = snaps.filter(s => s.stale).length;
+                out += `<div class="flex flex-wrap items-center gap-2 text-[10px] mt-2">
+                    ${stale ? `<span class="text-rose-300 font-bold">${stale} saved revision(s) stale — data changed after they were frozen.</span>` : ''}
+                    <span class="text-gray-500">${snaps.length ? 'Saved revisions: ' + snaps.map(s => `<button class="underline ${s.stale ? 'text-rose-300' : 'text-cyan-300'}" onclick="reportViewSnapshot={month:'${report.month}',revision:${s.revision}}; renderActiveTradesPage()">r${s.revision}${s.stale ? ' (stale)' : ''}</button>`).join(' · ') : 'Not finalized yet.'}</span>
+                    <button onclick="finalizeReportMonth('${report.month}')" class="ml-auto bg-indigo-700 hover:bg-indigo-600 text-white rounded px-2.5 py-1 font-bold uppercase">Finalize month</button>
+                </div>`;
+                const ferr = Ledger.canFinalize(report);
+                if (ferr) out += `<div class="text-[9px] text-gray-500 mt-0.5">Finalize blocked: ${escapeHtml(ferr)}</div>`;
+                // Per-month report note (like the reference app's report_notes store)
+                const note = (conf.reportNotes || {})[report.month] || '';
+                out += `<div class="flex gap-1.5 items-center mt-2">
+                    <input id="reportNoteInput" type="text" maxlength="300" placeholder="Note for this month's report…" value="${escapeHtml(note)}"
+                        class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[11px]">
+                    <button onclick="saveReportNote('${report.month}')" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-2.5 py-1 font-bold text-[10px] uppercase">Save note</button>
+                </div>`;
+            }
+
+            // Collapsible editors
+            out += `<div class="bg-slate-900/60 border border-white/10 rounded-xl px-3 divide-y divide-white/5 mt-2">
+                ${panelHead('setup', 'Ledger setup', 'opening date · equity · mode')}
+                ${reportPanels.setup ? reportSetupHtml() : ''}
+                ${panelHead('valuations', 'Daily valuations', 'close prices · account equity')}
+                ${reportPanels.valuations ? reportValuationHtml() : ''}
+                ${panelHead('cash', 'Deposits / withdrawals / income', '')}
+                ${reportPanels.cash ? reportCashHtml() : ''}
+                ${panelHead('interval', 'Since previous valuation', 'per-position change')}
+                ${reportPanels.interval ? reportIntervalHtml() : ''}
+                ${panelHead('audit', 'Change log', 'audit · undo')}
+                ${reportPanels.audit ? reportAuditHtml() : ''}
+            </div>`;
+            return out;
+        }
+
+        function reportSetupHtml() {
+            const conf = Ledger.config();
+            const eqGuess = conf.openingEquity ?? (Number(accountValue) || '');
+            return `<div class="pb-3 space-y-2 text-[11px]">
+                <div class="grid grid-cols-2 gap-2">
+                    <label>Opening date<input id="ledgerSetupStart" type="date" value="${escapeHtml(conf.start || Ledger.today().slice(0, 8) + '01')}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
+                    <label>Opening equity $<input id="ledgerSetupEquity" type="number" min="0.01" step="any" value="${eqGuess}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
+                    <label>Mode<select id="ledgerSetupMode" class="w-full bg-slate-800 border border-slate-600 rounded p-1">
+                        <option value="actual" ${conf.mode === 'actual' ? 'selected' : ''}>Actual account (equity from daily values / TWS)</option>
+                        <option value="model" ${conf.mode === 'model' ? 'selected' : ''}>Model portfolio (computed from the ledger)</option>
+                    </select></label>
+                    <label>Opening QLD shares (optional)<input id="ledgerSetupQldShares" type="number" min="0" step="any" value="${conf.qldOpeningShares ?? ''}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
+                </div>
+                <button onclick="saveLedgerSetup()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold uppercase">Save setup</button>
+            </div>`;
+        }
+        function saveLedgerSetup() {
+            if (!ledgerReady()) return;
+            const start = document.getElementById('ledgerSetupStart').value;
+            const equity = Number(document.getElementById('ledgerSetupEquity').value);
+            const mode = document.getElementById('ledgerSetupMode').value;
+            const qldSh = document.getElementById('ledgerSetupQldShares').value;
+            if (!Ledger.isIsoDate(start) || !Number.isFinite(equity) || equity <= 0) { showErrorToast('Enter a valid opening date and equity.'); return; }
+            const reason = ledgerReasonFor(start);
+            if (reason === null) return;
+            const conf = Ledger.config();
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.config]);
+            Object.assign(conf, { start, openingEquity: equity, mode, qldOpeningShares: qldSh === '' ? null : Number(qldSh) });
+            Ledger.saveConfig(conf);
+            Ledger.auditPush('Ledger setup', reason, undo);
+            Ledger.flagStaleFrom(start);
+            showSuccessToast('Ledger setup saved.');
+            renderActiveTradesPage();
+        }
+
+        function reportValuationHtml() {
+            const dates = Object.keys(Ledger.valuations()).sort().reverse().slice(0, 30);
+            const date = reportPanels.valDate || Ledger.today();
+            const vals = Ledger.valuations()[date] || {};
+            const openTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
+            return `<div class="pb-3 space-y-2 text-[11px]">
+                <div class="flex gap-2 items-center flex-wrap">
+                    <input id="valGridDate" type="date" value="${date}" onchange="reportPanels.valDate=this.value; renderActiveTradesPage()" class="bg-slate-800 border border-slate-600 rounded p-1">
+                    <span class="text-gray-500">${vals.kind === 'close' ? 'Market close' : 'Intraday'} · recent: ${dates.map(d => `<button class="underline text-cyan-300" onclick="reportPanels.valDate='${d}'; renderActiveTradesPage()">${d.slice(5)}</button>`).join(' ') || 'none'}</span>
+                </div>
+                ${openTrades.map(t => `<div class="flex items-center gap-2">
+                    <span class="w-16 font-bold text-white">${escapeHtml(t.ticker)}</span>
+                    <input id="valMark-${String(t.id).replace(/\./g, '_')}" type="number" min="0.0001" step="any" placeholder="close price"
+                        value="${(vals.marks && vals.marks[String(t.id)]) || getTradePrice(t.ticker) || ''}"
+                        class="w-28 bg-slate-800 border border-slate-600 rounded p-1">
+                </div>`).join('') || '<div class="text-gray-500">No open positions.</div>'}
+                <div class="flex items-center gap-2"><span class="w-16 font-bold text-amber-300">QLD $</span>
+                    <input id="valQld" type="number" min="0" step="any" placeholder="holdings value" value="${vals.qldValue ?? ''}" class="w-28 bg-slate-800 border border-slate-600 rounded p-1"></div>
+                <div class="flex items-center gap-2"><span class="w-16 font-bold text-cyan-300">Equity $</span>
+                    <input id="valEquity" type="number" min="0.01" step="any" placeholder="total account" value="${vals.equity ?? ''}" class="w-28 bg-slate-800 border border-slate-600 rounded p-1"></div>
+                <label class="flex items-center gap-2 text-gray-400"><input id="valKindClose" type="checkbox" ${vals.kind !== 'intraday' ? 'checked' : ''}> Final market-close values</label>
+                <button onclick="saveValuationGrid()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold uppercase">Save valuation</button>
+            </div>`;
+        }
+        function saveValuationGrid() {
+            if (!ledgerReady()) return;
+            const date = document.getElementById('valGridDate').value;
+            if (!Ledger.isIsoDate(date)) { showErrorToast('Pick a valid date.'); return; }
+            const reason = ledgerReasonFor(date);
+            if (reason === null) return;
+            const marks = {};
+            activeTradesLog.filter(t => t.status === 'ACTIVE').forEach(t => {
+                const el = document.getElementById('valMark-' + String(t.id).replace(/\./g, '_'));
+                const v = el && Number(el.value);
+                if (Number.isFinite(v) && v > 0) marks[String(t.id)] = v;
+            });
+            const equity = Number(document.getElementById('valEquity').value) || null;
+            const qld = document.getElementById('valQld').value === '' ? null : Number(document.getElementById('valQld').value);
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.valuations]);
+            Ledger.captureValuation(date, { marks, equity, qldValue: qld, kind: document.getElementById('valKindClose').checked ? 'close' : 'intraday' });
+            Ledger.auditPush('Valuation ' + date, reason, undo);
+            Ledger.flagStaleFrom(date);
+            showSuccessToast('Valuation saved for ' + date + '.');
+            renderActiveTradesPage();
+        }
+        function ledgerSaveTodaysClose() {
+            if (!ledgerReady()) return;
+            const marks = {};
+            activeTradesLog.filter(t => t.status === 'ACTIVE').forEach(t => {
+                const p = getTradePrice(t.ticker);
+                if (Number.isFinite(p) && p > 0) marks[String(t.id)] = p;
+            });
+            const equity = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? twsLastAccountValue : (Number(accountValue) || null);
+            const qldR = qldReality();
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.valuations]);
+            Ledger.saveTodayClose(equity, marks, qldR.shares > 0 ? qldR.posValue : (qldR.sleeveValue || 0));
+            Ledger.auditPush('Save today\'s close', '', undo);
+            showSuccessToast('Saved today\'s closing values — ' + Object.keys(marks).length + ' position(s), equity $' + (equity ? Math.round(equity).toLocaleString() : '—') + '.');
+            renderActiveTradesPage();
+        }
+
+        function reportCashHtml() {
+            const cash = Ledger.cashRecords();
+            const row = (x, kind) => `<div class="flex items-center gap-2 text-[11px]">
+                <span class="text-gray-400 w-20">${x.date}</span>
+                <span class="${x.amount >= 0 ? 'text-emerald-300' : 'text-rose-300'} font-bold">${x.amount >= 0 ? '+' : '−'}$${Math.abs(x.amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                ${kind === 'income' ? `<span class="text-gray-500">${escapeHtml(x.sleeve)}</span>` : ''}
+                <span class="text-gray-500 flex-1 truncate">${escapeHtml(x.note || '')}</span>
+                <button onclick="deleteCashRecord('${kind}','${x.id}')" class="text-red-400">✕</button></div>`;
+            return `<div class="pb-3 space-y-2 text-[11px]">
+                <div class="text-gray-400 uppercase text-[9px] font-bold pt-1">Deposits / withdrawals (negative = withdrawal; counted from start of that day)</div>
+                ${cash.flows.map(f => row(f, 'flows')).join('') || '<div class="text-gray-600">None.</div>'}
+                <div class="flex gap-1.5 flex-wrap items-center">
+                    <input id="flowDate" type="date" value="${Ledger.today()}" class="bg-slate-800 border border-slate-600 rounded p-1 w-32">
+                    <input id="flowAmt" type="number" step="any" placeholder="+ deposit / − withdrawal" class="bg-slate-800 border border-slate-600 rounded p-1 w-40">
+                    <input id="flowNote" type="text" placeholder="note" class="bg-slate-800 border border-slate-600 rounded p-1 flex-1 min-w-[80px]">
+                    <button onclick="addCashRecord('flows')" class="bg-blue-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
+                </div>
+                <div class="text-gray-400 uppercase text-[9px] font-bold pt-2">Cash income (dividends, interest — assigned to a sleeve)</div>
+                ${cash.income.map(i => row(i, 'income')).join('') || '<div class="text-gray-600">None.</div>'}
+                <div class="flex gap-1.5 flex-wrap items-center">
+                    <input id="incomeDate" type="date" value="${Ledger.today()}" class="bg-slate-800 border border-slate-600 rounded p-1 w-32">
+                    <input id="incomeAmt" type="number" min="0.01" step="any" placeholder="amount" class="bg-slate-800 border border-slate-600 rounded p-1 w-24">
+                    <select id="incomeSleeve" class="bg-slate-800 border border-slate-600 rounded p-1">
+                        ${Ledger.SLEEVES.concat([Ledger.CASH]).map(s => `<option>${s}</option>`).join('')}
+                    </select>
+                    <input id="incomeNote" type="text" placeholder="note" class="bg-slate-800 border border-slate-600 rounded p-1 flex-1 min-w-[80px]">
+                    <button onclick="addCashRecord('income')" class="bg-blue-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
+                </div>
+            </div>`;
+        }
+        function addCashRecord(kind) {
+            if (!ledgerReady()) return;
+            const date = document.getElementById(kind === 'flows' ? 'flowDate' : 'incomeDate').value;
+            const amt = Number(document.getElementById(kind === 'flows' ? 'flowAmt' : 'incomeAmt').value);
+            const note = document.getElementById(kind === 'flows' ? 'flowNote' : 'incomeNote').value.trim();
+            if (!Ledger.isIsoDate(date) || !Number.isFinite(amt) || amt === 0) { showErrorToast('Enter a date and a non-zero amount.'); return; }
+            const reason = ledgerReasonFor(date);
+            if (reason === null) return;
+            const cash = Ledger.cashRecords();
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.cash]);
+            cash[kind].push({ id: Ledger.uid(), date, amount: amt, sleeve: kind === 'income' ? document.getElementById('incomeSleeve').value : undefined, note });
+            Ledger.saveCashRecords(cash);
+            Ledger.auditPush('Add ' + (kind === 'flows' ? 'cash flow' : 'income'), reason, undo);
+            Ledger.flagStaleFrom(date);
+            renderActiveTradesPage();
+        }
+        function deleteCashRecord(kind, id) {
+            if (!ledgerReady()) return;
+            const cash = Ledger.cashRecords();
+            const rec = cash[kind].find(x => x.id === id);
+            if (!rec) return;
+            const reason = ledgerReasonFor(rec.date);
+            if (reason === null) return;
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.cash]);
+            cash[kind] = cash[kind].filter(x => x.id !== id);
+            Ledger.saveCashRecords(cash);
+            Ledger.auditPush('Remove ' + (kind === 'flows' ? 'cash flow' : 'income'), reason, undo);
+            Ledger.flagStaleFrom(rec.date);
+            renderActiveTradesPage();
+        }
+
+        function reportIntervalHtml() {
+            const dates = Object.keys(Ledger.valuations()).sort();
+            if (dates.length < 2) return '<div class="pb-3 text-[11px] text-gray-500">Save valuations on two different days to compare.</div>';
+            const b = reportPanels.intB || dates[dates.length - 1];
+            const a = reportPanels.intA || dates[dates.length - 2];
+            const ic = Ledger.intervalContribution(a, b);
+            const sel = (id, val) => `<select id="${id}" class="bg-slate-800 border border-slate-600 rounded p-1">${dates.map(d => `<option ${d === val ? 'selected' : ''}>${d}</option>`).join('')}</select>`;
+            return `<div class="pb-3 space-y-2 text-[11px]">
+                <div class="flex gap-2 items-center">${sel('intA', a)} <span class="text-gray-500">→</span> ${sel('intB', b)}
+                    <button onclick="reportPanels.intA=document.getElementById('intA').value; reportPanels.intB=document.getElementById('intB').value; renderActiveTradesPage()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-2 py-1 font-bold">Compare</button></div>
+                <div class="text-gray-400">Equity ${ic.equity0.value !== null ? '$' + Math.round(ic.equity0.value).toLocaleString() : '—'} → ${ic.equity1.value !== null ? '$' + Math.round(ic.equity1.value).toLocaleString() : '—'}${ic.delta !== null ? ' (' + (ic.delta >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(ic.delta)).toLocaleString() + ')' : ''}</div>
+                ${ic.rows.filter(r => Math.abs(r.pnl) > 0.005).map(r => `<div class="flex justify-between"><span>${escapeHtml(r.symbol)} <span class="text-gray-500">${escapeHtml(r.sleeve)}</span></span><span class="${r.pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'} font-bold">${r.pnl >= 0 ? '+' : '−'}$${Math.abs(r.pnl).toFixed(2)}${r.pp !== null ? ' (' + (r.pp >= 0 ? '+' : '−') + Math.abs(r.pp).toFixed(2) + ' pp)' : ''}</span></div>`).join('') || '<div class="text-gray-600">No movement.</div>'}
+            </div>`;
+        }
+
+        function reportAuditHtml() {
+            const log = Ledger.auditLog().slice().reverse();
+            return `<div class="pb-3 space-y-2 text-[11px]">
+                <button onclick="ledgerUndoLast()" class="bg-amber-700/80 text-white rounded px-2.5 py-1 font-bold uppercase">Undo last change</button>
+                ${log.map(e => `<div class="border-b border-white/5 py-1"><span class="text-gray-500">${e.time.slice(0, 16).replace('T', ' ')}</span> ${escapeHtml(e.action)}${e.reason ? ` <span class="text-amber-300">— ${escapeHtml(e.reason)}</span>` : ''}</div>`).join('') || '<div class="text-gray-600">No recorded changes yet.</div>'}
+            </div>`;
+        }
+        function ledgerUndoLast() {
+            if (!ledgerReady()) return;
+            const r = Ledger.undoLast('user undo');
+            if (!r.ok) { showErrorToast(r.error); return; }
+            showSuccessToast('Undid: ' + r.entry.action);
+            updateActiveTradesCountBadge();
+            renderActiveTradesPage();
+        }
+
+        function saveReportNote(month) {
+            if (!ledgerReady()) return;
+            const conf = Ledger.config();
+            const undo = Ledger.captureStoreUndo([Ledger.KEYS.config]);
+            conf.reportNotes = conf.reportNotes || {};
+            conf.reportNotes[month] = document.getElementById('reportNoteInput').value.trim();
+            Ledger.saveConfig(conf);
+            Ledger.auditPush('Report note ' + month, '', undo);
+            showSuccessToast('Note saved.');
+        }
+
+        function finalizeReportMonth(month) {
+            if (!ledgerReady()) return;
+            const report = Ledger.buildMonthReport(month, Ledger.monthBounds(month)[1]);
+            const existing = Ledger.snapshotList(month).length;
+            let reason = '';
+            if (existing) {
+                reason = prompt('Revising finalized report ' + month + ' — enter a reason:');
+                if (reason === null || !reason.trim()) { if (reason !== null) showErrorToast('A reason is required to revise.'); return; }
+            }
+            const res = Ledger.finalizeMonth(month, report, reason);
+            if (!res.ok) { showErrorToast(res.error); return; }
+            showSuccessToast(month + ' frozen as revision ' + res.revision + '.');
+            renderActiveTradesPage();
+        }
+        function downloadLedgerReport() {
+            if (!ledgerReady()) return;
+            const month = reportViewSnapshot ? reportViewSnapshot.month : (reportMonth || Ledger.today().slice(0, 7));
+            const report = reportViewSnapshot
+                ? (Ledger.snapshotList(reportViewSnapshot.month).find(s => s.revision === reportViewSnapshot.revision) || {}).report
+                : Ledger.buildMonthReport(month);
+            if (!report || report.ok === false) { showErrorToast('No report to export.'); return; }
+            downloadText(`PortfolioT_${report.month}.html`, Ledger.reportHtmlDocument(report), 'text/html;charset=utf-8');
+        }
+        function printLedgerReport() {
+            if (!ledgerReady()) return;
+            const month = reportViewSnapshot ? reportViewSnapshot.month : (reportMonth || Ledger.today().slice(0, 7));
+            const report = reportViewSnapshot
+                ? (Ledger.snapshotList(reportViewSnapshot.month).find(s => s.revision === reportViewSnapshot.revision) || {}).report
+                : Ledger.buildMonthReport(month);
+            if (!report || report.ok === false) { showErrorToast('No report to print.'); return; }
+            const w = window.open('', '_blank');
+            if (!w) { showErrorToast('Popup blocked — allow popups to print.'); return; }
+            w.document.write(Ledger.reportHtmlDocument(report));
+            w.document.close();
+            setTimeout(() => { w.focus(); w.print(); }, 300);
+        }
+
+        // ---------- Record transaction (events) on a card ----------
+        let txnEditorId = null;
+        function toggleTxnEditor(id) { txnEditorId = txnEditorId === id ? null : id; renderActiveTradesPage(); }
+        function txnEditorHtml(trade) {
+            if (txnEditorId !== trade.id || !ledgerReady()) return '';
+            const warnings = Ledger.validateTradeEvents(trade);
+            const events = Ledger.tradeEvents(trade);
+            return `<div class="border-t border-white/10 pt-2 space-y-1.5 text-[11px]">
+                <div class="text-[9px] uppercase font-bold text-gray-400">Transaction history</div>
+                ${events.map(e => `<div class="flex items-center gap-2 text-gray-300">
+                    <span class="w-14 text-gray-500">${e.date.slice(5)}</span>
+                    <span class="w-14 font-bold ${e.kind === 'Exit' || e.kind === 'Partial' ? 'text-rose-300' : e.kind === 'Income' ? 'text-amber-300' : 'text-emerald-300'}">${e.kind}</span>
+                    <span class="font-mono-num">${e.kind === 'Income' ? '$' + e.amount : e.qty + ' @ $' + Number(e.price).toFixed(2)}</span>
+                    <span class="text-gray-600 flex-1 truncate">${escapeHtml(e.note || '')}</span>
+                    ${e.kind !== 'Entry' ? `<button onclick="removeTradeEvent(${trade.id},'${e.id}')" class="text-red-400">✕</button>` : ''}
+                </div>`).join('')}
+                ${warnings.length ? `<div class="text-[9px] text-amber-300">${warnings.map(w => '⚠ ' + escapeHtml(w)).join('<br>')}</div>` : ''}
+                <div class="flex gap-1.5 flex-wrap items-center pt-1">
+                    <select id="txnKind-${trade.id}" class="bg-slate-800 border border-slate-600 rounded p-1">
+                        <option>Partial</option><option>Add</option><option>Income</option><option>Split</option>
+                    </select>
+                    <input id="txnDate-${trade.id}" type="date" value="${nyDateStr()}" class="bg-slate-800 border border-slate-600 rounded p-1 w-32">
+                    <input id="txnQty-${trade.id}" type="number" min="0" step="any" placeholder="qty / factor" class="bg-slate-800 border border-slate-600 rounded p-1 w-24">
+                    <input id="txnPrice-${trade.id}" type="number" min="0" step="any" placeholder="price" class="bg-slate-800 border border-slate-600 rounded p-1 w-24">
+                    <input id="txnAmt-${trade.id}" type="number" step="any" placeholder="$ (income)" class="bg-slate-800 border border-slate-600 rounded p-1 w-20">
+                    <button onclick="submitTxnEvent(${trade.id})" class="bg-emerald-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
+                </div>
+                <p class="text-[9px] text-gray-600">Advisory only — events feed the monthly report; the card's live numbers stay as they are.</p>
+            </div>`;
+        }
+        function submitTxnEvent(id) {
+            if (!ledgerReady()) return;
+            const trade = activeTradesLog.find(t => t.id === id);
+            if (!trade) return;
+            const kind = document.getElementById(`txnKind-${id}`).value;
+            const date = document.getElementById(`txnDate-${id}`).value;
+            const qty = Number(document.getElementById(`txnQty-${id}`).value) || 0;
+            const price = Number(document.getElementById(`txnPrice-${id}`).value) || 0;
+            const amount = Number(document.getElementById(`txnAmt-${id}`).value) || 0;
+            if (!Ledger.isIsoDate(date)) { showErrorToast('Pick a valid date.'); return; }
+            if (kind === 'Income' ? !(amount > 0) : !(qty > 0 && (kind === 'Split' || price > 0))) { showErrorToast('Enter qty + price (or $ amount for income).'); return; }
+            const reason = ledgerReasonFor(date);
+            if (reason === null) return;
+            const undo = Ledger.captureTradeUndo([id]);
+            Ledger.appendEvent(trade, { kind, date, qty, price, amount, note: 'manual' });
+            // Keep the flat view coherent with the ledger.
+            if (kind === 'Partial') { trade.shares = Math.max(0, (trade.shares || 0) - qty); trade.realizedPnl = (trade.realizedPnl || 0) + (trade.side === 'LONG' ? 1 : -1) * (price - trade.entryPrice) * qty; }
+            if (kind === 'Add') { trade.entryPrice = ((trade.entryPrice * trade.shares) + price * qty) / (trade.shares + qty); trade.shares += qty; trade.totalQty = Math.max(trade.totalQty || 0, trade.shares); }
+            if (kind === 'Split') { trade.shares *= qty; trade.entryPrice /= qty; trade.stopPrice && (trade.stopPrice /= qty); }
+            Ledger.auditPush(kind + ' ' + trade.ticker, reason, undo);
+            Ledger.flagStaleFrom(date);
+            if (!saveActiveTradesLog()) { showErrorToast('Could not save the journal.'); return; }
+            renderActiveTradesPage();
+        }
+        function removeTradeEvent(id, eventId) {
+            if (!ledgerReady()) return;
+            const trade = activeTradesLog.find(t => t.id === id);
+            if (!trade || !Array.isArray(trade.events)) return;
+            const ev = trade.events.find(e => e.id === eventId);
+            if (!ev) return;
+            const reason = ledgerReasonFor(ev.date);
+            if (reason === null) return;
+            const undo = Ledger.captureTradeUndo([id]);
+            trade.events = trade.events.filter(e => e.id !== eventId);
+            Ledger.auditPush('Remove ' + ev.kind + ' event on ' + trade.ticker, reason, undo);
+            Ledger.flagStaleFrom(ev.date);
+            if (!saveActiveTradesLog()) { showErrorToast('Could not save the journal.'); return; }
+            renderActiveTradesPage();
+        }
+
+        function exportEventsCsv() {
+            if (!ledgerReady()) { showErrorToast('Ledger module not loaded.'); return; }
+            downloadText(`Ledger_Events_${nyDateStr()}.csv`, Ledger.exportEventsCsv(csvCell), 'text/csv;charset=utf-8');
+        }
+
+        function ledgerOnBoot() {
+            // Cloud sync pull — applied before the first render when remote is newer.
+            const conf = Ledger.syncConfig();
+            if (!conf.enabled || conf.provider === 'none') return;
+            syncPullAndApply();
+        }
+
+        // ---------- Cloud sync (optional — Settings → Sync) ----------
+        let _syncBusy = false;
+        let _syncPushTimer = null;
+        function notifyLedgerDirty() {
+            if (!ledgerReady()) return;
+            const conf = Ledger.syncConfig();
+            if (!conf.enabled || conf.provider === 'none') return;
+            if (_syncPushTimer) clearTimeout(_syncPushTimer);
+            _syncPushTimer = setTimeout(syncPushNow, 2500);
+        }
+        async function syncPushNow() {
+            if (_syncBusy || !ledgerReady()) return;
+            const conf = Ledger.syncConfig();
+            if (!conf.enabled || conf.provider === 'none') return;
+            _syncBusy = true;
+            try {
+                const r = await Ledger.syncPush((u, i) => fetch(u, i), buildBackupData());
+                if (r.ok) updateSyncStatusLine();
+            } catch (e) {
+                const c = Ledger.syncConfig(); c.lastError = e.message; Ledger.saveSyncConfig(c);
+                updateSyncStatusLine();
+            } finally { _syncBusy = false; }
+        }
+        async function syncPullAndApply() {
+            if (_syncBusy || !ledgerReady()) return;
+            _syncBusy = true;
+            try {
+                const r = await Ledger.syncPull((u, i) => fetch(u, i));
+                if (!r.ok) { updateSyncStatusLine(); return; }
+                const data = r.data;
+                if (!data || typeof data !== 'object' || data.activeTradesLog === undefined) { updateSyncStatusLine('Remote payload is not a backup.'); return; }
+                const localStamp = Number(safeStorageGet('journalSyncedAt') || 0);
+                if ((data.syncedAt || 0) > localStamp) {
+                    const values = prepareBackup(data);
+                    Object.entries(values).forEach(([k, v]) => safeStorageSet(k, v));
+                    safeStorageSet('journalSyncedAt', String(data.syncedAt));
+                    activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
+                    loadSettings();
+                    updateSyncStatusLine('Pulled newer data from cloud.');
+                    renderActiveTradesPage();
+                } else updateSyncStatusLine();
+            } catch (e) {
+                const c = Ledger.syncConfig(); c.lastError = e.message; Ledger.saveSyncConfig(c);
+                updateSyncStatusLine();
+            } finally { _syncBusy = false; }
+        }
+        function updateSyncStatusLine(extra) {
+            const el = document.getElementById('syncStatusLine');
+            if (!el || !ledgerReady()) return;
+            const c = Ledger.syncConfig();
+            const fmt = ts => ts ? new Date(ts).toLocaleString() : 'never';
+            el.innerText = extra || (!c.enabled || c.provider === 'none'
+                ? 'Sync off.'
+                : `${Ledger.PROVIDERS[c.provider].name} · pushed ${fmt(c.lastPushed)} · pulled ${fmt(c.lastPulled)}${c.lastError ? ' · ⚠ ' + c.lastError : ''}`);
+        }
+        function saveSyncSettings() {
+            if (!ledgerReady()) return;
+            const conf = Ledger.syncConfig();
+            conf.provider = document.getElementById('syncProvider').value;
+            conf.url = (document.getElementById('syncUrl') || { value: '' }).value.trim();
+            conf.binId = (document.getElementById('syncBinId') || { value: '' }).value.trim();
+            conf.apiKey = (document.getElementById('syncApiKey') || { value: '' }).value.trim();
+            conf.basket = (document.getElementById('syncBasket') || { value: '' }).value.trim();
+            conf.enabled = conf.provider !== 'none';
+            Ledger.saveSyncConfig(conf);
+            updateSyncStatusLine('Sync settings saved.');
+            if (conf.enabled) syncPullAndApply();
+        }
+        function syncProviderChanged() {
+            if (!ledgerReady()) return;
+            const p = document.getElementById('syncProvider').value;
+            const fields = (Ledger.PROVIDERS[p] || { fields: [] }).fields;
+            const show = { url: 'syncUrlWrap', binId: 'syncBinIdWrap', apiKey: 'syncApiKeyWrap', basket: 'syncBasketWrap' };
+            Object.entries(show).forEach(([f, id]) => document.getElementById(id).classList.toggle('hidden', !fields.includes(f)));
+            document.getElementById('syncProviderHint').innerText = (Ledger.PROVIDERS[p] || {}).hint || '';
+        }
+        function loadSyncSettings() {
+            if (!ledgerReady()) return;
+            const conf = Ledger.syncConfig();
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+            set('syncProvider', conf.provider || 'none');
+            set('syncUrl', conf.url); set('syncBinId', conf.binId);
+            set('syncApiKey', conf.apiKey); set('syncBasket', conf.basket);
+            syncProviderChanged();
+            updateSyncStatusLine();
+        }
+
+        function buildBackupData() {
+            return {
+                version: "4.0.0",
                 exportDate: new Date().toISOString(),
                 customStrategies,
                 regimeStrategyMap,
@@ -8426,10 +9022,23 @@
                 selectedProvider: safeStorageGet('selectedProvider'),
                 collapseAfterCalc: safeStorageGet('collapseAfterCalc'),
                 preferredViewMode: safeStorageGet('preferredViewMode'),
+                ...(ledgerReady() ? {
+                    ledgerConfig: safeStorageGet(Ledger.KEYS.config),
+                    dailyValuations: safeStorageGet(Ledger.KEYS.valuations),
+                    cashRecords: safeStorageGet(Ledger.KEYS.cash),
+                    qldLedgerTxns: safeStorageGet(Ledger.KEYS.qldTxns),
+                    reportSnapshots: safeStorageGet(Ledger.KEYS.snapshots),
+                    journalAudit: safeStorageGet(Ledger.KEYS.audit),
+                    journalSyncedAt: safeStorageGet('journalSyncedAt')
+                } : {}),
                 ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
                 scanner: collectScannerStore(''),
                 scannerStores: collectScannerStores()
             };
+        }
+
+        function exportSettingsJson() {
+            const backupData = buildBackupData();
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
@@ -8444,7 +9053,7 @@
         const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
 
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0', '3.9.0'].includes(data.version)) throw new Error('Unsupported backup version');
+            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0', '3.9.0', '4.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
             const values = {};
             BACKUP_SETTINGS.forEach(key => {
                 if (data[key] === undefined || data[key] === null) return;
@@ -8590,6 +9199,26 @@
                     prepareScannerStore(stores[page], SCANNER_STORE_PREFIXES[page]);
                 }
             }
+            // Ledger stores — additive keys; absent in old backups (default-init ok),
+            // so validate only when present. Stored as JSON strings like other values.
+            if (data.ledgerConfig !== undefined) {
+                const c = data.ledgerConfig;
+                if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('Invalid ledger config');
+                if (c.start !== null && c.start !== undefined && !window.Ledger?.isIsoDate?.(c.start)) throw new Error('Invalid ledger start date');
+                if (c.openingEquity !== null && c.openingEquity !== undefined && !(Number(c.openingEquity) > 0)) throw new Error('Invalid opening equity');
+                values.ledgerConfig = JSON.stringify({ start: c.start || null, openingEquity: Number(c.openingEquity) || null, mode: c.mode === 'model' ? 'model' : 'actual', qldOpeningShares: Number(c.qldOpeningShares) || null, reportNotes: (c.reportNotes && typeof c.reportNotes === 'object') ? c.reportNotes : {} });
+            }
+            const jstore = (key, name) => {
+                if (data[key] === undefined) return;
+                let v; try { v = typeof data[key] === 'string' ? JSON.parse(data[key]) : data[key]; } catch { throw new Error('Invalid ' + name); }
+                values[key] = JSON.stringify(v);
+            };
+            jstore('dailyValuations', 'daily valuations');
+            jstore('cashRecords', 'cash records');
+            jstore('qldLedgerTxns', 'QLD ledger');
+            jstore('reportSnapshots', 'report snapshots');
+            jstore('journalAudit', 'audit log');
+            if (data.journalSyncedAt !== undefined && Number.isFinite(Number(data.journalSyncedAt))) values.journalSyncedAt = String(Number(data.journalSyncedAt));
             // Bridge URL + token are machine-local — a backup from another machine
             // must never overwrite the live bridge config with stale values.
             delete values.twsBridgeUrl;
@@ -8636,7 +9265,12 @@
             const idx = activeTradesLog.findIndex(t => t.id === id);
             if (idx < 0) return;
             const removed = activeTradesLog[idx];
+            const _undo = window.Ledger ? Ledger.captureTradeUndo([id]) : null;
             activeTradesLog.splice(idx, 1);
+            if (window.Ledger) {
+                Ledger.auditPush('Remove ' + removed.ticker + ' record', '', _undo || {});
+                Ledger.flagStaleFrom(removed.entryDate);
+            }
             if (!saveActiveTradesLog()) {
                 activeTradesLog.splice(idx, 0, removed);
                 alert('Could not save the journal. Export a backup and check browser storage.');
@@ -8731,7 +9365,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '3.9.0';
+        const APP_VERSION = '4.0.0';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
@@ -9294,6 +9928,7 @@
             twsLastAccountValue = n;
             accountValue = n;
             safeStorageSet('accountValue', String(n));
+            if (window.Ledger) Ledger.captureEquity(n);
             const el = document.getElementById('accountValueSetting');
             if (el) el.value = n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
             updateTwsAccountTag();
@@ -9554,8 +10189,10 @@
                     // Position already contains this fill (the row was imported/created
                     // from the same position the exec belongs to) — record commission
                     // only; broker qty is the truth. Prevents the import+exec double-count.
+                    // The imported Entry event already covers these shares — no Add event.
                     open.commission = (open.commission || 0) + fees;
                 } else {
+                    if (window.Ledger) Ledger.onTwsFill(open, 'Add', qty, price, key);
                     const tot = post != null && post > open.shares ? post : open.shares + qty;
                     open.entryPrice = (held && Number.isFinite(held.avgCost) && held.avgCost > 0)
                         ? held.avgCost
@@ -9587,10 +10224,13 @@
                     _entryCredits: [{ qty, ts: Date.now() }],
                     _posQty: held ? Math.max(0, Math.abs(held.qty) - qty) : qty
                 });
+                if (window.Ledger) Ledger.onTwsFill(activeTradesLog[0], 'Entry', qty, price, key);
             } else if (isExit && open) {
                 // A fill on a manually-logged row with a live position: adopt it so
                 // position-sync keeps it reconciled from here on.
                 if (open.fillSource !== 'tws' && held) open.fillSource = 'tws';
+                if (window.Ledger) Ledger.ensureEvents(open);   // Entry synth before qty mutates
+                const _preShares = open.shares;
                 const trackByPosition = open.fillSource === 'tws' && twsPositionsEnabled;
                 const dir = open.side === 'LONG' ? 1 : -1;
                 // Entry commission counts once, on the first realized leg.
@@ -9642,6 +10282,10 @@
                     open.exitCommission = (open.exitCommission || 0) + fees;
                     open.pnl = open.realizedPnl;
                 }
+                if (window.Ledger) {
+                    const _evQty = afterQty <= 0 ? Math.min(qty, _preShares) : qty;
+                    Ledger.onTwsFill(open, afterQty <= 0 ? 'Exit' : 'Partial', _evQty, price, key);
+                }
             }
             // isExit without an open row = exit of an unjournaled position — the
             // position reconcile handles the import; nothing to adjust here.
@@ -9687,11 +10331,15 @@
                             tr.realizedPnl = (tr.realizedPnl || 0) + dir * (est - tr.entryPrice) * unexplained;
                             (tr._estExitFills = tr._estExitFills || []).push({ qty: unexplained, price: est });
                             tr.note = (tr.note ? tr.note + ' ' : '') + `-${unexplained} closed in TWS (est)`;
+                            if (window.Ledger) Ledger.onPositionDelta(tr, 'Partial', unexplained, est, 'TWS position delta (est)');
                         }
                     } else {
                         const covered = consumeQtyCredit(tr._entryCredits || (tr._entryCredits = []), delta);
                         const unexplained = delta - covered;
-                        if (unexplained > 0) tr.note = (tr.note ? tr.note + ' ' : '') + `+${unexplained} added in TWS`;
+                        if (unexplained > 0) {
+                            tr.note = (tr.note ? tr.note + ' ' : '') + `+${unexplained} added in TWS`;
+                            if (window.Ledger) Ledger.onPositionDelta(tr, 'Add', unexplained, (p && p.mktPrice) || tr.entryPrice, 'TWS position delta (est)');
+                        }
                     }
                     tr.shares = cur;
                     tr._posQty = cur;
@@ -9722,6 +10370,7 @@
                     tr.pnl = (tr.realizedPnl || 0) + (tr.side === 'LONG' ? 1 : -1) * (tr.exitPrice - tr.entryPrice) * tr.shares - (tr.commission || 0);
                     tr.closedAtMs = Date.now();
                     tr.note = (tr.note ? tr.note + ' ' : '') + 'Closed in TWS — exit fill not seen, exit price estimated.';
+                    if (window.Ledger) Ledger.onPositionDelta(tr, 'Exit', tr.shares, tr.exitPrice, 'Closed in TWS — exit fill not seen (est)');
                     changed = true;
                 }
             }
@@ -9759,6 +10408,7 @@
                     totalQty: Math.abs(p.qty),
                     _posQty: Math.abs(p.qty)
                 });
+                if (window.Ledger) Ledger.onImportedPosition(activeTradesLog[0]);
                 activeByTicker[sym] = true;
                 changed = true;
             }
@@ -10078,6 +10728,25 @@
 
         buildScannerPages();   // clone the scanner markup into the lsv3/pullback pages
         loadSettings();
+        // Ledger engine (ledger.js) — storage + journal + live-data hooks. Guarded:
+        // the app works identically if the file is absent or stale-cached.
+        if (window.Ledger) {
+            Ledger.init({
+                storage: { get: safeStorageGet, set: safeStorageSet },
+                journal: {
+                    get: () => activeTradesLog,
+                    set: (arr) => { activeTradesLog = arr; saveActiveTradesLog(); }
+                },
+                hooks: {
+                    getPrice: (ticker) => getTradePrice(ticker),
+                    twsPositionFor: (t) => twsPositionFor(t),
+                    qldPrice: () => (qldView && Number.isFinite(qldView.qldPrice) ? qldView.qldPrice : null),
+                    nyDate: () => nyDateStr(),
+                    isRTH: () => nyNow().isRTH
+                }
+            });
+            if (typeof ledgerOnBoot === 'function') ledgerOnBoot();
+        }
         initSettingsSections();
         applyPortableSettings();
         const clockInterval = setInterval(updateClock, 1000);

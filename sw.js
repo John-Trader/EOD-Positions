@@ -1,15 +1,17 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v3.9.0`;
+const CACHE_NAME = `${CACHE_PREFIX}v4.0.0`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
+const LEDGER_URL = new URL('./ledger.js', SCOPE_URL).href;
 const TAILWIND_URL = 'https://cdn.tailwindcss.com/';
 const SHELL_ASSETS = new Map([
   [SCOPE_URL.href, { key: HTML_URL, type: 'text/html', html: true }],
   [HTML_URL, { key: HTML_URL, type: 'text/html', html: true }],
   [MANIFEST_URL, { key: MANIFEST_URL, type: 'application/manifest+json' }],
-  [ICON_URL, { key: ICON_URL, type: 'image/svg+xml' }]
+  [ICON_URL, { key: ICON_URL, type: 'image/svg+xml' }],
+  [LEDGER_URL, { key: LEDGER_URL, type: 'text/javascript' }]
 ]);
 const PRIVATE_HEADERS = ['authorization', 'proxy-authorization', 'x-api-key', 'api-key', 'apikey', 'x-auth-token', 'x-finnhub-token'];
 
@@ -51,7 +53,7 @@ async function storeResponse(key, response) {
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const entries = await Promise.all([HTML_URL, MANIFEST_URL, ICON_URL].map(async url => {
+    const entries = await Promise.all([HTML_URL, MANIFEST_URL, ICON_URL, LEDGER_URL].map(async url => {
       const response = await fetch(new Request(url, { cache: 'reload', credentials: 'omit', redirect: 'error' }));
       if (!isSafeShellResponse(response, url, SHELL_ASSETS.get(url))) {
         throw new Error('App shell resource unavailable');

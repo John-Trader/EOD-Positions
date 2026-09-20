@@ -14,7 +14,7 @@
 ## Running and release
 
 - `node _serve.js` serves the release assets at `http://localhost:8080` on loopback only.
-- Release assets: `index.html`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `_serve.js`.
+- Release assets: `index.html`, `ledger.js`, `manifest.webmanifest`, `sw.js`, `icon.svg`, `_serve.js`.
 - Do NOT copy release files to Downloads or anywhere else — the user deploys via git push to GitHub Pages (`levifasten/End-of-day`, `main` branch auto-deploys).
 - PWA needs HTTPS or localhost; opening HTML directly works without service-worker support. Storage is origin-specific.
 - TWS order sending is opt-in via `tws-bridge/` (local Node.js bridge) + Settings → TWS Bridge. When disabled the app is identical to the CSV-only version. CSVs remain the primary export path.
@@ -46,3 +46,11 @@
 - Results carry `kind` ('v3'|'pb'); `selKeyFor`/`twsSendKey` produce `ticker`/`ticker:pb:kind` keys so the same ticker can exist in both strategies. Journal trades carry `sleeve`/`holdUnit`/`holdLimit`; `updateExposureChips` shows booked notional vs the 210% cap (QLD excluded).
 - QLD page (v3.6.0): weekly EMA12/26 on QQQ (completed weeks only — `isCurrentWeekForming`), 35% sleeve target with 30–40% band checked at month-end only. `qldReality()` is broker-authoritative (TWS positions + NetLiq when connected, ledger otherwise, mismatch flag). `qldEvaluatePending` queues a single `qldSleeve.pending` action — weekly ENTER/EXIT on newly completed weeks, month-end ADD/TRIM/CASH when out of band (timing switches carry the reserve, they don't reset to 35%). `qldSendTws` sends MKT adaptive orders via the bridge; `qldExecutePending`/`qldManualSet`/`qldSyncLedger` keep ledger + journal in sync. Live poll (`startQldLive`, RTH only) refreshes quotes at 5s — 20s on twelvedata/stockdata free-tier caps — and updates the forming-week EMA preview.
 - Future option (not built): Node SEA variant — the bridge's `start()`/static-serving/meta-inject work is the shared foundation; SEA would esbuild-bundle server.js + postject into node.exe and auto-open the default browser.
+
+## Event ledger + monthly report (v4.0.0)
+
+- `ledger.js` is a separate classic script (`window.Ledger`) holding the accounting engine: per-trade `events[]` (Entry/Add/Partial/Exit/Income/Split), daily valuations (`dailyValuations`), cash flows/income (`cashRecords`), QLD dollar ledger (`qldLedgerTxns`), TWR + percentage-point attribution, monthly report builder/renderer, snapshots/revisions, audit log + undo, and the cloud-sync adapters. It must stay DOM-free and eval-safe so `_test_ledger.js` can load it via `new Function`.
+- All `index.html` touchpoints are guarded (`if (window.Ledger)` / `ledgerReady()`) — a missing/stale ledger.js degrades to pre-4.0 behavior. The flat `activeTradesLog` record stays authoritative for live trading/TWS; events are additive alongside it.
+- REPORT tab on Active Trades: month picker, report render (`Ledger.reportHtml`), finalize/revise (reason required on revision), HTML + print export, and collapsible editors (setup, daily valuations, deposits/income, interval view, audit/undo). Card `History` buttons expose the per-trade event log.
+- Ledger storage keys: `ledgerConfig`, `dailyValuations`, `cashRecords`, `qldLedgerTxns`, `reportSnapshots`, `journalAudit`, `syncConfig` — all whitelisted in `prepareBackup` and `collectPortableState` (exe persistence).
+- Cloud sync (Settings → Cloud Sync): optional, provider picker (Apps Script/JSONBin/npoint/Pantry/custom), whole-state last-writer-wins by `syncedAt`, pull-on-start + debounced push-on-change. `syncConfig` writes are excluded from dirty-push to avoid loops. Setup docs: `SYNC.md`, `apps-script.gs`.
