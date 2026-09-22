@@ -9,7 +9,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const assert = (c, m) => { if (!c) throw new Error('ASSERT FAIL: ' + m); };
 
 // Canonical public shell — everything the app needs to boot.
-const SHELL = ['index.html', 'ledger.js', 'state-schema.js', 'state-store.js', 'sync.js', 'manifest.webmanifest', 'sw.js', 'icon.svg'];
+const SHELL = ['index.html', 'app.css', 'ledger.js', 'state-schema.js', 'state-store.js', 'sync.js', 'manifest.webmanifest', 'sw.js', 'icon.svg'];
 
 try {
   // ---- index.html: script order (schema → store → sync → ledger) ----
@@ -45,7 +45,7 @@ try {
   // must point at one of the known asset URL constants, nothing else.
   const swMapBlock = /SHELL_ASSETS = new Map\(\[([\s\S]*?)\]\)/.exec(sw)[1];
   const urls = [...swMapBlock.matchAll(/(\w+_URL|SCOPE_URL)\.href/g)].map(m => m[1]);
-  const allowed = new Set(['SCOPE_URL', 'HTML_URL', 'MANIFEST_URL', 'ICON_URL', 'LEDGER_URL', 'STATE_SCHEMA_URL', 'STATE_STORE_URL', 'SYNC_URL']);
+  const allowed = new Set(['SCOPE_URL', 'HTML_URL', 'APP_CSS_URL', 'MANIFEST_URL', 'ICON_URL', 'LEDGER_URL', 'STATE_SCHEMA_URL', 'STATE_STORE_URL', 'SYNC_URL']);
   urls.forEach(u => assert(allowed.has(u), 'sw caches only shell assets — unexpected ' + u));
   // private/bearer requests must bypass the cache entirely
   assert(/PRIVATE_HEADERS\.some/.test(sw), 'sw skips requests carrying auth headers');

@@ -8,7 +8,7 @@
     <title>Position Size Calculator</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./app.css">
     <script src="./state-schema.js"></script>
     <script src="./state-store.js"></script>
     <script src="./sync.js"></script>
@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.6.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -852,8 +852,13 @@
                         <button onclick="toggleBuilderExitPaste(false)" class="text-gray-400">CANCEL</button>
                     </div>
                 </div>
+                <div id="builderOrdersPreview" class="rounded-lg border border-white/10 bg-slate-950/40 px-2 py-1.5">
+                    <div class="text-[9px] font-black uppercase tracking-wider text-gray-500 pb-1">Orders Preview</div>
+                    <div id="builderPreviewBody" class="text-[10px] font-mono-num text-gray-300 space-y-0.5"></div>
+                </div>
                 <div class="flex flex-wrap gap-2">
-                    <button onclick="downloadBuilderCombinedCSV()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
+                    <button onclick="sendTwsBuilderAll()" class="tws-send-btn flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold">⚡ Send All to TWS</button>
+                    <button onclick="downloadBuilderCombinedCSV()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-bold">📥 Download Combined TWS CSV</button>
                     <button onclick="logAllBuilderTrades()" class="bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold">💾 Log All</button>
                 </div>
             </div>
@@ -1024,7 +1029,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.6.0';
+        const PSC_VERSION = '4.7.0';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -1083,7 +1088,10 @@
         function safeStorageSet(key, value) {
             try {
                 if (stateStoreReady()) return window.StateStore.set(key, value);
-                _storage.setItem(key, value);   // legacy fallback — modules absent
+                // Modules absent — degraded mode. Warn once: unregistered-key
+                // enforcement is bypassed on this path.
+                if (!safeStorageSet._warned) { safeStorageSet._warned = true; console.warn('StateStore unavailable — writes fall back to raw localStorage (no schema enforcement).'); }
+                _storage.setItem(key, value);
                 return true;
             } catch (e) {
                 const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
@@ -1876,8 +1884,8 @@
         }
         // True while the current calendar week still has a session to come — the last
         // weekly bar is forming and must be excluded from QLD's completed-week signal.
-        function isCurrentWeekForming(nowDateStr) {
-            const ny = nyNow();
+        function isCurrentWeekForming(nowDateStr, ny) {
+            ny = ny || nyNow();
             const today = nowDateStr || ny.date;
             if (ny.weekday === 0 || ny.weekday === 6) return false;          // weekend: week done
             const lastDay = lastTradingDayOfWeek(today, true);
@@ -3474,11 +3482,17 @@
                 const d = d_res.data[0];
                 const bid = (d.bid && d.bid > 0) ? Number(d.bid) : null;
                 const ask = (d.ask && d.ask > 0) ? Number(d.ask) : null;
-                return { 
-                    c: Number(d.price), 
-                    h: Number(d.day_high ?? d.price), 
-                    l: Number(d.day_low ?? d.price), 
-                    pc: Number(d.previous_close_price ?? d.price),
+                // Never fabricate pc = c — that forces every card SHORT / 0.00%.
+                // Fall back to the last completed daily bar; fail the quote if
+                // neither source yields one (same convention as the TWS branch).
+                let pc = Number(d.previous_close_price);
+                if (!Number.isFinite(pc) || pc <= 0) pc = await fetchStockDataPrevClose(ticker, apiKey, signal);
+                if (!Number.isFinite(pc) || pc <= 0) throw new Error(`No previous close: ${ticker}`);
+                return {
+                    c: Number(d.price),
+                    h: Number(d.day_high ?? d.price),
+                    l: Number(d.day_low ?? d.price),
+                    pc: pc,
                     bid: bid,
                     ask: ask
                 };
@@ -3696,6 +3710,28 @@
             const atrPct = computeAtrPct(sorted, close);
             const adrPct = computeAdrPct(sorted, close);
             return { atrPct, adrPct, latestClose: close, avgVol: computeAvgVol(sorted), bars: sorted.map(({ d, o, h, l, c, v }) => ({ d, o, h, l, c, v })) };
+        }
+
+        // Last completed session's close from stockdata EOD — the reliable
+        // "previous close" when the quote omits previous_close_price.
+        async function fetchStockDataPrevClose(ticker, apiKey, signal) {
+            try {
+                const start = addCalendarDays(nyDateStr(), -14);
+                const res = await fetchWithTimeout(`https://api.stockdata.org/v1/data/eod?symbols=${encodeURIComponent(ticker)}&date_from=${encodeURIComponent(start)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                if (!res.ok) return null;
+                const d = await res.json();
+                if (!d.data || !Array.isArray(d.data)) return null;
+                const sorted = sortBars(d.data);
+                const today = nyNow().date;
+                for (let i = sorted.length - 1; i >= 0; i--) {
+                    const day = sorted[i].date ? String(sorted[i].date).slice(0, 10) : null;
+                    const close = Number(sorted[i].close ?? sorted[i].price);
+                    if (day && day < today && Number.isFinite(close) && close > 0) return close;
+                }
+            } catch (e) {
+                if (e && e.name === 'AbortError') throw e;
+            }
+            return null;
         }
 
         async function fetchStockDataVolatility(ticker, apiKey, signal) {
@@ -4877,7 +4913,13 @@
             const brokerKnown = !!(twsPositionsEnabled && twsConnected
                 && (twsLastPositionsAt > 0 || twsPositionDeltaAt['QLD'] > 0));
             const pos = brokerKnown ? twsPositions['QLD'] : undefined;
-            const brokerShares = brokerKnown ? Math.abs(pos ? pos.qty : 0) : null;
+            // A SHORT broker position is out of model — the sleeve is long-only.
+            // abs() alone would fold it into a phantom long and let an EXIT queue
+            // a SELL that deepens the short. Surface it, floor the count at 0,
+            // and let every auto/execute path refuse until the user resolves it.
+            const brokerQty = brokerKnown ? (pos ? pos.qty : 0) : null;
+            const shortPosition = brokerQty !== null && brokerQty < 0;
+            const brokerShares = brokerQty === null ? null : Math.max(0, brokerQty);
             const avgCost = (pos && Number.isFinite(pos.avgCost) && pos.avgCost > 0) ? pos.avgCost : null;
             const px = (pos && Number.isFinite(pos.mktPrice) && pos.mktPrice > 0) ? pos.mktPrice
                 : (qldView.qldPrice || qldSleeve.entryPrice || 0);
@@ -4885,33 +4927,39 @@
             const posValue = shares * (px || 0);
             const cash = qldSleeve.cashValue || 0;
             return {
-                equity, equitySrc, brokerKnown, brokerShares, avgCost, px, shares,
+                equity, equitySrc, brokerKnown, brokerQty, brokerShares, avgCost, px, shares,
                 posValue, cash,
                 sleeveValue: posValue + cash,
                 mismatch: brokerShares !== null && brokerShares !== qldSleeve.shares,
+                shortPosition,
                 inPos: shares > 0
             };
         }
 
-        let qldView = { loading: false, error: null, signal: null, ema12: null, ema26: null, formEma12: null, formEma26: null, qldPrice: null, liveQqq: null, weeklyN: 0, fetchedAt: 0, liveAt: 0, weekly: [], e12s: [], e26s: [], lastWeekT: null, histProvider: null, quoteProvider: null };
+        let qldView = { loading: false, error: null, signal: null, ema12: null, ema26: null, formEma12: null, formEma26: null, qldPrice: null, liveQqq: null, weeklyN: 0, fetchedAt: 0, liveAt: 0, liveError: null, weekly: [], e12s: [], e26s: [], lastWeekT: null, histProvider: null, quoteProvider: null };
 
         // ---------- Pending-action queue (persisted — weekend review, Monday order) ----------
         // pending = {type:'ENTER'|'EXIT'|'ADD'|'TRIM'|'CASH', reason:'WEEKLY'|'MONTH_END',
         //            month?, queuedAt}. Shares are computed at execution ("values at that open").
-        function qldEvaluatePending() {
+        function qldEvaluatePending(opts) {
+            opts = opts || {};
+            const todayStr = opts.dateStr || nyDateStr();
             if (!qldView.signal || !qldView.lastWeekT) return;
             // An in-flight TWS submission owns the pending action — reevaluation must
             // not erase or replace it before its fills reconcile.
             if (qldSleeve.pendingOrder) return;
             const r = qldReality();
+            // Broker reports a SHORT — the sleeve model is long-only. Freeze all
+            // queued/queued-eval behavior until the user covers it manually.
+            if (r.shortPosition) return;
             const inPos = r.shares > 0;
             let dirty = false;
             // Weekly switch eval — runs once per newly completed week.
             if (qldSleeve.signalWeek !== qldView.lastWeekT) {
                 qldSleeve.signalWeek = qldView.lastWeekT;
                 dirty = true;
-                if (qldView.signal === 'LONG' && !inPos) qldSleeve.pending = { type: 'ENTER', reason: 'WEEKLY', queuedAt: nyDateStr() };
-                else if (qldView.signal === 'FLAT' && inPos) qldSleeve.pending = { type: 'EXIT', reason: 'WEEKLY', queuedAt: nyDateStr() };
+                if (qldView.signal === 'LONG' && !inPos) qldSleeve.pending = { type: 'ENTER', reason: 'WEEKLY', queuedAt: todayStr };
+                else if (qldView.signal === 'FLAT' && inPos) qldSleeve.pending = { type: 'EXIT', reason: 'WEEKLY', queuedAt: todayStr };
                 else if (qldSleeve.pending && qldSleeve.pending.reason === 'WEEKLY') qldSleeve.pending = null; // signal reverted before execution
             }
             // Drop a queued weekly switch whose premise is already satisfied — e.g. the
@@ -4923,24 +4971,33 @@
             }
             // A queued weekly switch resolves first — the month-end band check waits.
             if (qldSleeve.pending && qldSleeve.pending.reason === 'WEEKLY') { if (dirty) qldSaveSleeve(); return; }
-            const monthKey = nyDateStr().slice(0, 7);
-            const monthEnd = isLastTradingDayOfMonth(nyDateStr());
+            const monthKey = todayStr.slice(0, 7);
+            const monthEnd = isLastTradingDayOfMonth(todayStr);
             const staleMonthPending = qldSleeve.pending && qldSleeve.pending.reason === 'MONTH_END';
             if (!monthEnd && !staleMonthPending) { if (dirty) qldSaveSleeve(); return; }
-            if (monthEnd && staleMonthPending && qldSleeve.pending.month === monthKey) { if (dirty) qldSaveSleeve(); return; }
+            // A same-month pending does NOT lock the band check — equity drifts
+            // intraday, so re-evaluate on every refresh: same type keeps the
+            // original queuedAt, a changed type re-queues, back-in-band clears.
             const band = r.equity > 0 ? r.sleeveValue / r.equity * 100 : null;
             if (band === null) { if (dirty) qldSaveSleeve(); return; }
             const lo = qldTargetPct - qldBandPct, hi = qldTargetPct + qldBandPct;
             if (band < lo || band > hi) {
                 const type = inPos ? (band < lo ? 'ADD' : 'TRIM') : 'CASH';
                 if (!staleMonthPending || qldSleeve.pending.month !== monthKey || qldSleeve.pending.type !== type) {
-                    qldSleeve.pending = { type, reason: 'MONTH_END', month: monthKey, queuedAt: nyDateStr() };
+                    qldSleeve.pending = { type, reason: 'MONTH_END', month: monthKey, queuedAt: todayStr };
                     dirty = true;
                 }
             } else if (staleMonthPending) { qldSleeve.pending = null; dirty = true; } // drifted back inside band
             if (dirty) qldSaveSleeve();
         }
         function qldPendingAction() { return qldSleeve.pending ? qldSleeve.pending.type : null; }
+
+        // Timing switches execute at the NEXT session's open, never the session
+        // they were queued in (the weekly/month-end eval runs off just-completed
+        // data). Pendings without queuedAt (older records) stay immediately
+        // executable.
+        function qldPendingExecutableDate(p) { return p && p.queuedAt ? addTradingDays(p.queuedAt, 1) : null; }
+        function qldPendingDue(p) { const d = qldPendingExecutableDate(p); return !d || nyDateStr() >= d; }
 
         // Resolve a pending action into concrete shares/notional at the current price.
         function qldPendingSpec(p, r, px) {
@@ -4966,6 +5023,7 @@
         // ---------- Live poll (RTH only; provider-safe cadence) ----------
         let qldLiveTimer = null;
         let qldLiveGen = 0;
+        let qldLiveBusy = false;
         function qldLiveIntervalMs() {
             const p = resolveProviders().primary;
             // 2 symbols per tick — 20s keeps free-tier ~8 req/min providers under the cap.
@@ -4973,22 +5031,32 @@
         }
         async function qldLiveTick() {
             if (currentPage !== 'qld' || !nyNow().isRTH) return;
+            // A tick that outlasts the interval must not overlap — skip it.
+            if (qldLiveBusy) return;
+            qldLiveBusy = true;
             // Generation guard: a slow tick must not overwrite a newer tick's
             // result, and leaving the page / stopping live kills in-flight writes.
             const gen = ++qldLiveGen;
-            const r = resolveProviders();
-            if (!r.primary) return;
             try {
-                const q = await fetchTickerData('QQQ', r.primary, providerStreamKey(r.primary), null);
-                if (gen !== qldLiveGen || currentPage !== 'qld') return;
-                if (q && Number.isFinite(q.c) && q.c > 0) { qldView.liveQqq = q.c; qldView.quoteProvider = q._provider || r.primary; qldView.liveAt = Date.now(); }
-            } catch (e) { }
-            try {
-                const q2 = await fetchTickerData('QLD', r.primary, providerStreamKey(r.primary), null);
-                if (gen !== qldLiveGen || currentPage !== 'qld') return;
-                if (q2 && Number.isFinite(q2.c) && q2.c > 0) { qldView.qldPrice = q2.c; qldView.liveAt = Date.now(); }
-            } catch (e) { }
-            if (gen === qldLiveGen && currentPage === 'qld') renderQldPage();
+                const r = resolveProviders();
+                if (!r.primary) return;
+                let err = null;
+                try {
+                    const q = await fetchTickerData('QQQ', r.primary, providerStreamKey(r.primary), null);
+                    if (gen !== qldLiveGen || currentPage !== 'qld') return;
+                    if (q && Number.isFinite(q.c) && q.c > 0) { qldView.liveQqq = q.c; qldView.quoteProvider = q._provider || r.primary; qldView.liveAt = Date.now(); }
+                    else err = 'QQQ quote invalid';
+                } catch (e) { err = 'QQQ ' + (e && e.message || 'quote failed'); }
+                try {
+                    const q2 = await fetchTickerData('QLD', r.primary, providerStreamKey(r.primary), null);
+                    if (gen !== qldLiveGen || currentPage !== 'qld') return;
+                    if (q2 && Number.isFinite(q2.c) && q2.c > 0) { qldView.qldPrice = q2.c; qldView.liveAt = Date.now(); }
+                    else err = err || 'QLD quote invalid';
+                } catch (e) { err = err || ('QLD ' + (e && e.message || 'quote failed')); }
+                // Surface feed trouble — stale prices with no marker read as live.
+                qldView.liveError = err;
+                if (gen === qldLiveGen && currentPage === 'qld') renderQldPage();
+            } finally { qldLiveBusy = false; }
         }
         function startQldLive() {
             stopQldLive();
@@ -5182,7 +5250,8 @@
                     <div class="flex items-center justify-between text-[8px] text-gray-600 font-mono-num">
                         <span>As of ${asOf} ET · ${Math.round(qldLiveIntervalMs() / 1000)}s refresh · can change during the week</span>
                         <span>data · ${escapeHtml(v.histProvider || v.quoteProvider || '--')}</span>
-                    </div>`;
+                    </div>
+                    ${v.liveError ? `<div class="text-[9px] font-bold text-amber-300">live feed: ${escapeHtml(v.liveError)} — showing last good prices</div>` : ''}`;
             }
 
             const r = qldReality();
@@ -5192,10 +5261,15 @@
             const targetShares = (px && target > 0) ? Math.floor(target / px) : 0;
             const bandLo = qldTargetPct - qldBandPct, bandHi = qldTargetPct + qldBandPct;
             const inBand = curPct >= bandLo && curPct <= bandHi;
-            const posLabel = r.inPos
+            const posLabel = r.shortPosition
+                ? `SHORT ${Math.abs(r.brokerQty).toLocaleString()} sh`
+                : r.inPos
                 ? `${r.shares.toLocaleString()} sh${qldSleeve.entryPrice ? ' @ $' + qldSleeve.entryPrice.toFixed(2) : ''}`
                 : `FLAT · reserve $${Math.round(r.cash).toLocaleString()}`;
-            const mismatch = r.mismatch
+            const shortWarn = r.shortPosition
+                ? `<div class="text-[9px] font-bold text-rose-300">BROKER POSITION IS SHORT (${Math.abs(r.brokerQty).toLocaleString()} sh) — the sleeve is long-only. Cover it in TWS; queued actions are blocked.</div>`
+                : '';
+            const mismatch = !r.shortPosition && r.mismatch
                 ? `<div class="text-[9px] font-bold text-amber-300">BROKER ${r.brokerShares.toLocaleString()} sh ≠ LEDGER ${qldSleeve.shares.toLocaleString()} sh — <button onclick="qldSyncLedger()" class="underline">sync ledger</button></div>`
                 : '';
             sleeve.innerHTML = `
@@ -5209,6 +5283,7 @@
                     <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Weight</div><div class="text-xs font-mono-num font-black ${inBand ? 'text-emerald-300' : 'text-amber-300'}">${r.equity > 0 ? curPct.toFixed(1) + '%' : '--'}</div></div>
                     <div class="bg-slate-950/60 rounded-lg py-1.5 border border-white/5"><div class="text-[8px] text-gray-500 uppercase font-bold">Target ${qldTargetPct}%</div><div class="text-xs font-mono-num font-black text-teal-300">${targetShares ? targetShares.toLocaleString() + ' sh' : '--'}</div></div>
                 </div>
+                ${shortWarn}
                 ${mismatch}
                 <div class="text-[9px] text-gray-500">Band ${bandLo.toFixed(0)}–${bandHi.toFixed(0)}% · equity $${Math.round(r.equity).toLocaleString()} (${r.equitySrc})${r.cash > 0 ? ' · cash $' + Math.round(r.cash).toLocaleString() : ''} · band checked at month-end only.</div>`;
 
@@ -5222,11 +5297,12 @@
                 else if (pend.type === 'ADD') actHtml = `<div class="text-[11px] font-bold text-amber-300">Below band — add ~${spec.shares.toLocaleString()} QLD to reach ${qldTargetPct}%.</div>`;
                 else if (pend.type === 'TRIM') actHtml = `<div class="text-[11px] font-bold text-amber-300">Above band — trim ~${spec.shares.toLocaleString()} QLD back to ${qldTargetPct}%.</div>`;
                 else if (pend.type === 'CASH') actHtml = `<div class="text-[11px] font-bold text-amber-300">Flat sleeve out of band — set the cash reserve to $${Math.round(target).toLocaleString()} (${qldTargetPct}%).</div>`;
-                actHtml += `<div class="text-[9px] text-gray-500">Queued ${escapeHtml(pend.queuedAt || '')} · ${reason} · executes at the next session's open.</div>`;
+                const execOn = qldPendingExecutableDate(pend);
+                actHtml += `<div class="text-[9px] text-gray-500">Queued ${escapeHtml(pend.queuedAt || '')} · ${reason} · executes ${execOn ? 'on/after ' + execOn + ' open' : 'at the next session\'s open'}.</div>`;
             } else {
                 actHtml = `<div class="text-[11px] font-bold text-gray-400">No pending action — sleeve ${r.inPos ? (inBand ? 'in position, within band' : 'in position — drifted, next check at month-end') : 'flat' + (v.signal === 'LONG' ? ', signal long' : ', signal flat')}.</div>`;
             }
-            const canSend = pend && spec && spec.side && spec.shares > 0 && !qldSleeve.pendingOrder;
+            const canSend = pend && spec && spec.side && spec.shares > 0 && !qldSleeve.pendingOrder && !r.shortPosition && qldPendingDue(pend);
             const po = qldSleeve.pendingOrder;
             const poHtml = po ? `<div class="text-[10px] font-bold text-sky-300">TWS order ${po.orderId != null ? '#' + po.orderId : ''} ${po.status === 'partial' ? 'partially filled ' + (po.filledQty || 0) + '/' + po.requestedQty : po.status} — ledger updates on confirmed fills.</div>
                 <div class="flex flex-wrap gap-1.5"><button onclick="qldReconcilePending()" class="px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg bg-sky-800/80 border border-sky-500/40 text-white">Reconcile order</button></div>` : '';
@@ -5246,8 +5322,8 @@
                 ${editHtml}
                 <div class="flex flex-wrap gap-1.5 pt-1">
                     ${canSend && twsEnabled ? `<button data-action="qld-tws-send" data-tws-key="QLD:qld" data-tws-default-label="SEND TO TWS" onclick="qldSendTws()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg bg-blue-700/80 border border-blue-500/40 text-white"><span class="tws-send-label">SEND TO TWS</span></button>` : ''}
-                    ${pend ? `<button onclick="qldExecutePending()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg ${pend.type === 'EXIT' || pend.type === 'TRIM' ? 'bg-rose-700/80 border-rose-500/40' : 'bg-emerald-700/80 border-emerald-500/40'} text-white border">Log ${pend.type === 'CASH' ? 'reserve adj' : pend.type.toLowerCase()}</button>
-                    <button onclick="qldDismissPending()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Dismiss</button>` : ''}
+                    ${pend && qldPendingDue(pend) && !r.shortPosition ? `<button onclick="qldExecutePending()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg ${pend.type === 'EXIT' || pend.type === 'TRIM' ? 'bg-rose-700/80 border-rose-500/40' : 'bg-emerald-700/80 border-emerald-500/40'} text-white border">Log ${pend.type === 'CASH' ? 'reserve adj' : pend.type.toLowerCase()}</button>` : ''}
+                    ${pend ? `<button onclick="qldDismissPending()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Dismiss</button>` : ''}
                     <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${qldEditOpen ? 'Close editor' : (r.inPos ? 'Edit sleeve' : 'Set sleeve')}</button>
                 </div>`;
             if (editDraft !== null) {
@@ -5325,7 +5401,10 @@
         function qldExecutePending() {
             const pend = qldSleeve.pending;
             if (!pend) return;
-            const spec = qldPendingSpec(pend, qldReality(), qldView.qldPrice || qldReality().px);
+            const r = qldReality();
+            if (r.shortPosition) { showErrorToast('Broker shows a SHORT QLD position — the sleeve is long-only. Cover it in TWS first; queued actions are blocked.', 9000); return; }
+            if (!qldPendingDue(pend)) { showErrorToast('QLD timing actions execute at the next session\'s open (earliest ' + qldPendingExecutableDate(pend) + ').', 7000); return; }
+            const spec = qldPendingSpec(pend, r, qldView.qldPrice || r.px);
             if (!spec) return;
             if (pend.type === 'CASH' || !spec.side) { qldExecute('CASH', 0, 0, 'app'); return; }
             if (!spec.shares) { showErrorToast('Computed 0 shares — check price/equity inputs.'); return; }
@@ -5342,6 +5421,7 @@
         function qldSyncLedger() {
             const r = qldReality();
             if (r.brokerShares === null) return;
+            if (r.shortPosition) { showErrorToast('Broker position is SHORT — the sleeve model is long-only. Cover it in TWS, then sync.', 9000); return; }
             qldSleeve.shares = r.brokerShares;
             qldSleeve.inPos = r.brokerShares > 0;
             if (qldSleeve.inPos) {
@@ -5458,6 +5538,8 @@
             if (qldSleeve.pendingOrder) { showErrorToast('A QLD order is already outstanding — reconcile it before sending again.', 7000); return; }
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const r = qldReality();
+            if (r.shortPosition) { showErrorToast('Broker shows a SHORT QLD position — the sleeve is long-only. Cover it in TWS first; queued actions are blocked.', 9000); return; }
+            if (!qldPendingDue(pend)) { showErrorToast('QLD timing actions execute at the next session\'s open (earliest ' + qldPendingExecutableDate(pend) + ').', 7000); return; }
             const px = qldView.qldPrice || r.px;
             const spec = qldPendingSpec(pend, r, px);
             if (!spec) return;
@@ -6239,7 +6321,9 @@
             const signalSide = item.signalSide || null;
             const sideMismatch = !!(signalSide && signalSide !== setupType);
             const earn = earningsBadgeFor(ticker);
-            const stopWarn = stopVolatilityWarning(ticker, riskPerShare, c, isGreenDay);
+            // Stop-width warning measures the actual stop distance — riskPerShare
+            // includes slippage, which would flag normal stops as "too wide".
+            const stopWarn = stopVolatilityWarning(ticker, Math.abs(c - stopPrice), c, isGreenDay);
             const liqWarn = liquidityWarning(ticker, shares);
             return { c, h, l, pc, bid, ask, ticker, trigger, isGreenDay, setupType, typeColor, stopPrice, shares, changePct, bidText, askText, statusClass, rowClass, isActive,
                      riskPerShare, notional, rangePct, toTriggerPct, hasBidAsk, signalSide, sideMismatch, earn, stopWarn, liqWarn };
@@ -6733,9 +6817,11 @@
                 fillStrategySelect(document.getElementById('modalStrategySelect'), currentModalState.strategyId, currentModalState.isLong);
                 document.getElementById('modalLongStrategySection').classList.remove('hidden');
                 // Pullback timed exits target the strategy's own day-5/week-5 date at 15:55.
-                timedExitDate = currentModalState.kind === 'pb' && currentModalState.pbCat
-                    ? (pbTimedExitDate(currentModalState.pbCat, nyDateStr()) || addTradingDays(nyDateStr(), maxHoldDays))
-                    : addTradingDays(nyDateStr(), maxHoldDays);
+                // opts.timedExitDate wins — journaled trades derive it from their entry date.
+                timedExitDate = opts.timedExitDate
+                    || (currentModalState.kind === 'pb' && currentModalState.pbCat
+                        ? (pbTimedExitDate(currentModalState.pbCat, nyDateStr()) || addTradingDays(nyDateStr(), maxHoldDays))
+                        : addTradingDays(nyDateStr(), maxHoldDays));
                 syncTimedExitInputs();
                 recalcModalOrders();
             } catch (err) {
@@ -6766,7 +6852,7 @@
             document.querySelectorAll('.timed-exit-box').forEach(box => {
                 toggleCls(box, 'hidden', !timedExitEnabled);
                 const d = box.querySelector('.timed-exit-days'); if (d) d.textContent = maxHoldDays;
-                const t = box.querySelector('.timed-exit-time'); if (t) t.textContent = timedExitDate && NYSE_EARLY_CLOSE.has(timedExitDate) ? '12:50 (early close)' : (timedExitTime === 'MOC' ? 'MOC' : timedExitTime);
+                const t = box.querySelector('.timed-exit-time'); if (t) t.textContent = timedExitDate && NYSE_EARLY_CLOSE.has(timedExitDate) ? '12:50 (early close)' : timedExitTime;
                 const inp = box.querySelector('.timed-exit-date'); if (inp && timedExitDate && inp.value !== timedExitDate) inp.value = timedExitDate;
             });
         }
@@ -6782,7 +6868,7 @@
         function timedExitSummaryHtml(built) {
             if (!built || !built.ok || !built.timedExit) return '';
             const t = built.timedExit;
-            return `<div class="text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1">⏱ ${t.time === 'MOC' ? 'MOC' : 'MKT @ ' + t.time + ' ET'} on ${t.date}: scheduled exit for each exported leg. Verify partial-fill reduction in TWS; not linked to your live position.</div>`;
+            return `<div class="text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/20 rounded-lg px-2 py-1">⏱ MKT @ ${t.time} ET on ${t.date}: scheduled exit for each exported leg. Verify partial-fill reduction in TWS; not linked to your live position.</div>`;
         }
 
         function buildNotesHtml(built) {
@@ -7071,9 +7157,8 @@
                     if (entry > 0 && (isLong ? tp <= entry : tp >= entry)) notes.push(`Leg ${i + 1}: target is not on the profitable side of entry. Check your override.`);
                 }
                 if (timedEnabled) {
-                    const isMoc = timed.time === 'MOC';
-                    const exitRow = [action, qty, ticker, "STK", "SMART", "USD", isMoc ? "DAY" : "GTC", isMoc ? "MOC" : "MKT", '', '', ticker, oca];
-                    exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, isMoc ? '09:35' : timedTime);
+                    const exitRow = [action, qty, ticker, "STK", "SMART", "USD", "GTC", "MKT", '', '', ticker, oca];
+                    exitRow[TWS_COL.GAT] = goodAfterTimeStr(timed.date, timedTime);
                     rows.push(exitRow);
                 }
                 preview.push({ ticker, action, qty, stop: stp, tp: stopOnly ? 0 : tp, rr: stopOnly ? 0 : rr, trueRr: stopOnly ? 0 : trueRr, oca, stopMode, adjStop, adjTrigger, legIndex: i, label: explicit && explicit[i] ? explicit[i].label : null, stopOnly });
@@ -7400,6 +7485,15 @@
             }
         }
 
+        // Broker-authoritative exit quantity: a same-direction broker position
+        // wins over a stale typed/frozen value — same rule as the exit modal's
+        // position auto-fill. Returns the DOM value when the feed can't help.
+        // (via window — lets tests stub the positions feed)
+        function brokerExitShares(ticker, isLong, domShares) {
+            const bpos = typeof window.twsPositionFor === 'function' ? window.twsPositionFor(ticker) : null;
+            return (bpos && ((isLong && bpos.qty > 0) || (!isLong && bpos.qty < 0))) ? Math.abs(bpos.qty) : domShares;
+        }
+
         function collectBatchTradesFromDom() {
             const trades = [];
             const errors = [];
@@ -7411,8 +7505,17 @@
                 const sideEl = el.querySelector('.batch-side');
                 const isLong = sideEl ? (sideEl.value === 'long') : (el.dataset.long === 'true');
                 const entry = parseFloat(el.querySelector('.batch-entry').value) || 0;
-                const shares = parseInt(el.querySelector('.batch-shares').value) || 0;
+                let shares = parseInt(el.querySelector('.batch-shares').value) || 0;
                 const stop = parseFloat(el.querySelector('.batch-stop').value) || 0;
+                // Broker-authoritative quantity: the row froze when the drawer opened,
+                // so a position that changed since (partial fill, manual trade) would
+                // send stale-sized exits.
+                const bsh = brokerExitShares(ticker, isLong, shares);
+                if (bsh !== shares) {
+                    shares = bsh;
+                    const sharesInput = el.querySelector('.batch-shares');
+                    if (sharesInput) sharesInput.value = shares;
+                }
                 const sanity = exitStopSanityError(ticker, isLong, stop, entry);
                 if (sanity) { errors.push(sanity); return; }
                 const tpKey = kind === 'pb' ? ticker + '|pb' : ticker;
@@ -7714,10 +7817,12 @@
             const id = row.dataset.id;
             delete builderExplicitLegs[id];
             row.remove();
+            renderBuilderOrdersPreview();
         }
 
         function refreshBuilderPreview(el) {
             syncBuilderPbExit(el);
+            renderBuilderOrdersPreview();
             const id = el.dataset.id;
             const isLong = el.querySelector('.b-side').value === 'long';
             const ticker = sanitizeTicker(el.querySelector('.b-ticker').value) || '';
@@ -7745,7 +7850,7 @@
             const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, null, { explicitLegs: explicit, timedExit: pbTimed && pbTimed.timedExit ? pbTimed.timedExit : undefined });
             if (!built.ok) { box.innerText = built.error; return; }
             box.innerHTML = built.preview.map(p => `${p.action} ${p.qty} ${stopLabelHtml(p)}${p.stopOnly ? '' : ' / LMT $' + p.tp.toFixed(2) + (p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : '')}${p.label ? ' ' + escapeHtml(p.label) : ''}`).join(' <span class="text-gray-600">|</span> ')
-                + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time === 'MOC' ? 'MOC' : built.timedExit.time} ${built.timedExit.date}</span>` : '')
+                + (built.timedExit ? ` <span class="text-amber-300">| ⏱ ${built.timedExit.time} ${built.timedExit.date}</span>` : '')
                 + buildNotesHtml(built);
         }
 
@@ -7763,7 +7868,7 @@
                 const pb = builderPbTimed(el);
                 const isPb = strategyId === 'lspb';
                 if (ticker && shares > 0 && stop > 0 && (entry > 0 || explicitLegs)) out.push({
-                    ticker, isLong, entry, shares, stop, strategyId, explicitLegs,
+                    rowId: id, ticker, isLong, entry, shares, stop, strategyId, explicitLegs,
                     timedExit: pb && pb.timedExit ? pb.timedExit : undefined,
                     sleeve: isPb ? 'LS Pullback' : undefined,
                     holdUnit: pb ? pb.holdUnit : undefined,
@@ -7771,6 +7876,78 @@
                 });
             });
             return out;
+        }
+
+        // Combined legs preview — same buildExitLegs/payload path the batch
+        // drawer and exits modal use, so "what you see is what gets sent".
+        function renderBuilderOrdersPreview() {
+            const body = document.getElementById('builderPreviewBody');
+            if (!body) return;
+            const trades = collectBuilderTrades();
+            if (!trades.length) {
+                body.innerHTML = '<div class="text-[10px] text-gray-500 text-center py-1">Add complete rows to preview exit orders.</div>';
+                return;
+            }
+            const builds = trades.map(t => ({ t, built: buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, null, { explicitLegs: t.explicitLegs, timedExit: t.timedExit }) }));
+            body.innerHTML = builds.map(({ t, built }) => {
+                if (!built.ok) return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-1.5 text-[10px] font-mono-num"><span class="text-white font-bold">${escapeHtml(t.ticker)}</span> <span class="text-rose-300">${escapeHtml(built.error)}</span></div>`;
+                const rows = built.preview.map(p => `
+                <div class="flex items-center justify-between gap-1.5 text-[10px] font-mono-num">
+                    <span class="text-white font-bold w-14 truncate">${escapeHtml(p.ticker)}</span>
+                    <span class="w-14 text-center">${p.action} ${p.qty}</span>
+                    <span class="text-red-300 w-16 text-center" title="${p.adjStop !== null && p.adjStop !== undefined ? `moves to ${p.adjStop.toFixed(2)} once ${p.adjTrigger.toFixed(2)} prints` : ''}">STP ${p.stop.toFixed(2)}${p.adjStop !== null && p.adjStop !== undefined ? '<span class="text-amber-300">→' + p.adjStop.toFixed(2) + '</span>' : ''}</span>
+                    ${p.stopOnly ? '<span class="text-gray-500">stop only</span>' : `<span class="text-emerald-300">LMT ${p.tp.toFixed(2)}${p.trueRr > 0 ? ' (' + p.trueRr + 'R)' : ''}${p.label ? ` <span class="text-gray-500">${escapeHtml(p.label)}</span>` : ''}</span>`}
+                    <span class="text-gray-500 w-20 text-right truncate">${escapeHtml(p.oca)}</span>
+                </div>`).join('');
+                const riskPerShare = Math.abs(t.entry - t.stop);
+                const warn = stopVolatilityWarning(t.ticker, riskPerShare, t.entry, t.isLong);
+                const warnHtml = warn ? `<div class="text-[10px] text-rose-300 font-bold mb-1">⚠ ${escapeHtml(warn.text)} — stop is wider than ${t.isLong ? '2.5' : '1.5'}× 20-day ATR/ADR</div>` : '';
+                return `<div class="bg-slate-900/50 border border-white/10 rounded-lg p-1.5 mb-1.5">${warnHtml}${rows}</div>`;
+            }).join('')
+            + [...new Map(builds.filter(b => b.built.ok && b.built.timedExit).map(b => [b.built.timedExit.date + '|' + b.built.timedExit.time, b.built])).values()].map(timedExitSummaryHtml).join('');
+        }
+
+        async function sendTwsBuilderAll() {
+            if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings → TWS Bridge, or use Download CSV.'); return; }
+            if (batchSending) { showInfoToast('A batch send is already in progress'); return; }
+            const trades = collectBuilderTrades().map(t => {
+                // Broker-authoritative quantity — same rule as the modal/batch:
+                // a same-direction broker position wins over the typed shares.
+                const bsh = brokerExitShares(t.ticker, t.isLong, t.shares);
+                if (bsh !== t.shares) {
+                    t.shares = bsh;
+                    document.querySelectorAll('#builderRows .builder-row').forEach(el => {
+                        if (el.dataset.id !== t.rowId) return;
+                        const inp = el.querySelector('.b-shares');
+                        if (inp) inp.value = bsh;
+                    });
+                }
+                return { ...t, kind: t.strategyId === 'lspb' ? 'pb' : 'v3', customTps: null,
+                    built: buildExitLegs(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, null, { explicitLegs: t.explicitLegs, timedExit: t.timedExit }) };
+            });
+            // Inputs may have been overridden by broker qty — repaint the preview
+            // before the "exactly as previewed" confirm.
+            renderBuilderOrdersPreview();
+            const errors = trades.filter(t => !t.built.ok).map(t => `${t.ticker}: ${t.built.error}`);
+            if (errors.length) { showErrorToast(errors.join(' · '), 8000); return; }
+            if (!trades.length) { showErrorToast('Add at least one complete trade (ticker, entry, shares, stop).'); return; }
+            // Incomplete rows are silently dropped by collect — name them so a
+            // partial send is never a surprise.
+            const rowEls = document.querySelectorAll('#builderRows .builder-row');
+            if (rowEls.length > trades.length) {
+                const sent = new Set(trades.map(t => t.rowId));
+                const skipped = [];
+                rowEls.forEach(el => {
+                    if (sent.has(el.dataset.id)) return;
+                    skipped.push((sanitizeTicker(el.querySelector('.b-ticker')?.value) || '') || 'row ' + el.dataset.id);
+                });
+                if (!confirm(`${skipped.length} incomplete row(s) will NOT be sent: ${skipped.join(', ')}\n\nSend the remaining ${trades.length} anyway?`)) return;
+            }
+            const totalLegs = trades.reduce((n, t) => n + t.built.rows.filter(r => r[7]).length, 0);
+            if (!confirm(`Send ${totalLegs} exit order(s) for ${trades.length} ticker(s) to TWS exactly as previewed?`)) return;
+            batchSending = true;
+            try { await sendExitOrderBatch(trades); } finally { batchSending = false; }
+            renderBuilderOrdersPreview();
         }
 
         function downloadBuilderCombinedCSV() {
@@ -8524,9 +8701,11 @@
                     </div>
                     ${detailGrid}
                     <div data-trade-progress="${trade.id}">${progressHtml}</div>
+                    <div data-trade-orders="${trade.id}">${tradeOrdersHtml(trade)}</div>
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
                         <div class="flex gap-2 text-[11px] font-bold">
+                            <button onclick="openTradeExitModal('${trade.id}')" data-tws-key="${escapeHtml(twsSendKey(trade.ticker, 'exits', trade.sleeve === 'LS Pullback' ? 'pb' : 'v3'))}" class="tws-send-btn text-purple-300 px-2 py-1"><span class="tws-send-label">Exits</span></button>
                             <button onclick="toggleTxnEditor('${trade.id}')" class="text-cyan-300 px-2 py-1">History</button>
                             <button onclick="toggleTradeClose('${trade.id}')" class="text-emerald-300 px-2 py-1">Record close</button>
                             <button onclick="deleteTrade('${trade.id}')" class="text-red-400 px-2 py-1">Remove</button>
@@ -8536,6 +8715,60 @@
                     ${tradeCloseForm(trade)}
                 </div>
             `;
+        }
+
+        // Compact working-orders strip on an active-trade card — every open order
+        // on the symbol (stops, targets, bracket/OCA legs, manual TWS orders), not
+        // just PSC-generated ones. Click a chip to open the full orders drawer.
+        function tradeOrdersHtml(trade, orders) {
+            orders = orders || (twsOrdersEnabled ? twsOrdersFor(trade.ticker) : []);
+            if (!orders.length) return '';
+            const chip = o => {
+                const px = o.lmtPrice ? ' @' + o.lmtPrice : (o.auxPrice ? ' stp@' + o.auxPrice : '');
+                const rel = [o.parentId ? 'child of #' + o.parentId : '', o.ocaGroup ? 'OCA ' + o.ocaGroup : ''].filter(Boolean).join(' · ');
+                return `<button data-action="open-tws-orders" title="${escapeHtml((o.orderRef || ('#' + o.orderId)) + (rel ? ' — ' + rel : ''))}" class="px-1.5 py-0.5 rounded border border-white/10 bg-slate-800/60 text-gray-300 hover:bg-slate-700">${escapeHtml(o.action || '')} ${escapeHtml(o.qty ?? '')} ${escapeHtml(o.type || '')}${escapeHtml(px)} <span class="text-gray-500">${escapeHtml(o.status || '')}</span></button>`;
+            };
+            return `<div class="flex flex-wrap items-center gap-1 pt-1 text-[9px] font-mono-num">
+                <span class="text-gray-500 font-black uppercase tracking-wider">Orders</span>
+                ${orders.map(chip).join('')}
+            </div>`;
+        }
+
+        // Order polls update twsOpenOrders mid-session — repaint just the per-card
+        // strips (a full page re-render would stomp in-progress close/history forms).
+        function refreshTradeOrderLines() {
+            if (currentPage !== 'active-trades') return;
+            document.querySelectorAll('[data-trade-orders]').forEach(el => {
+                const tr = (activeTradesLog || []).find(t => String(t.id) === el.dataset.tradeOrders);
+                if (tr) el.innerHTML = tradeOrdersHtml(tr);
+            });
+        }
+
+        function tradeExitStrategyId(tr, kind, isLong) {
+            const id = tr && tr.strategyId;
+            if (id && allStrategies().some(s => s.id === id)) return id;
+            return kind === 'pb' ? 'lspb' : twsAutoSendStrategyId(isLong);
+        }
+
+        // Send/build exit orders for a journaled position through the SAME shared
+        // modal the scanner uses — broker qty/cost auto-fill happens inside
+        // openStrategyModal; journal values (incl. remaining qty via the ledger)
+        // are the fallback. Nothing is sent until the modal's own send button.
+        function openTradeExitModal(tradeId) {
+            const tr = (activeTradesLog || []).find(t => String(t.id) === String(tradeId));
+            if (!tr) return;
+            const isLong = tr.side === 'LONG';
+            const kind = tr.sleeve === 'LS Pullback' ? 'pb' : 'v3';
+            const shares = (window.Ledger && typeof window.Ledger.inventory === 'function')
+                ? (Math.round(window.Ledger.inventory(tr, nyDateStr())) || Number(tr.shares) || 0)
+                : (Number(tr.shares) || 0);
+            // Pullback trades carry holdUnit (day-5/week-5) — derive the real timed
+            // exit from the entry date rather than the modal's maxHoldDays fallback.
+            const timedExitDate = kind === 'pb' && tr.entryDate
+                ? pbTimedExitDate(tr.holdUnit === 'week' ? 'etf_w' : 'etf_d', tr.entryDate)
+                : null;
+            openStrategyModal(tr.ticker, isLong, Number(tr.entryPrice) || 0, shares, Number(tr.stopPrice) || 0, 0,
+                { kind, strategyId: tradeExitStrategyId(tr, kind, isLong), timedExitDate: timedExitDate || undefined });
         }
 
         // Broker fills/position syncs rerender this page without warning — snapshot
@@ -8601,6 +8834,8 @@
             }
             container.innerHTML = activeTrades.map(tradeCardHtml).join('');
             restoreFormDrafts(container, drafts);
+            syncTwsSendButtons();
+            refreshTradeOrderLines();
         }
 
         function updateActiveTradeCards() {
@@ -9167,7 +9402,7 @@
             if (!data || (typeof data === 'object' && !Object.keys(data).length)) return { ok: true, empty: true };
             const isEnvelope = window.StateSchema && data.format === window.StateSchema.FORMAT;
             if (!isEnvelope) return { ok: false, error: 'Remote payload is not a schema-v1 state.' };
-            const dec = window.StateSchema.decode(data, { purpose: 'sync' });
+            const dec = window.StateSchema.decode(data, { purpose: 'sync', remote: true });
             if (!dec.ok) return { ok: false, error: 'Remote rejected: ' + dec.error };
             if (!stateStoreReady() || !window.SyncEngine) return { ok: false, error: 'State store not initialized' };
             const m = window.SyncEngine.mergeEnvelopes(window.StateStore.raw(), dec.value);
@@ -9176,7 +9411,7 @@
                 const res = window.StateStore.applySnapshot({ data: m.data, mergeMeta: m.mergeMeta }, { source: 'sync' });
                 if (!res.ok) return { ok: false, error: res.error };
             }
-            return { ok: true, merged: m, remoteSavedAt: dec.value.savedAt || 0 };
+            return { ok: true, merged: m, remoteSavedAt: dec.value.savedAt || 0, remoteRev: dec.value.srvRev || 0 };
         }
         function _applyMergedToUi(m) {
             if (m && m.changed) {
@@ -9194,15 +9429,21 @@
             try {
                 // Merge before writing: a blind whole-document PUT would clobber
                 // records another device wrote since our last pull.
-                let remoteSavedAt = 0;
+                let remoteSavedAt = 0, remoteRev = 0;
                 if (stateStoreReady() && window.SyncEngine) {
                     const m = await _syncPullMerge();
                     if (!m.ok) { updateSyncStatusLine('Push skipped — pull failed: ' + (m.error || '')); return; }
-                    if (!m.empty) { remoteSavedAt = m.remoteSavedAt; _applyMergedToUi(m.merged); }
+                    if (!m.empty) { remoteSavedAt = m.remoteSavedAt; remoteRev = m.remoteRev || 0; _applyMergedToUi(m.merged); }
                 }
                 const payload = stateStoreReady() ? window.StateStore.exportFor('sync') : buildBackupData();
-                // CAS only when we merged against a known remote savedAt.
-                const casOpts = (conf.provider === 'appscript' && remoteSavedAt > 0) ? { cas: remoteSavedAt } : undefined;
+                // CAS always for appscript — a bare push would bypass compare-and-
+                // swap entirely. savedAt:0 means "I expect an empty remote". The
+                // composite {savedAt, rev} form is used only when the remote
+                // exposed srvRev (new script); a legacy remote gets the numeric
+                // cas an old deployment understands.
+                const casOpts = (conf.provider === 'appscript')
+                    ? { cas: remoteRev > 0 ? { savedAt: remoteSavedAt, rev: remoteRev } : remoteSavedAt }
+                    : undefined;
                 let r = await Ledger.syncPush((u, i) => fetch(u, i), payload, casOpts);
                 if (r && r.conflict) {
                     // Remote moved between our merge and write — re-merge + retry once.
@@ -9210,7 +9451,7 @@
                     if (!m2.ok) throw new Error(m2.error || 'conflict re-merge failed');
                     _applyMergedToUi(m2.merged);
                     r = await Ledger.syncPush((u, i) => fetch(u, i),
-                        window.StateStore.exportFor('sync'), { cas: m2.remoteSavedAt || 0 });
+                        window.StateStore.exportFor('sync'), { cas: m2.remoteRev > 0 ? { savedAt: m2.remoteSavedAt || 0, rev: m2.remoteRev } : (m2.remoteSavedAt || 0) });
                     if (r && r.conflict) throw new Error('Remote is changing too fast — retrying on next push.');
                 }
                 if (r.ok) {
@@ -9417,22 +9658,32 @@
             const blocked = isHttpsPageToLocalBridge() && e instanceof TypeError;
             return { ok: false, error: blocked ? 'Browser blocked local-network access' : (e.message || 'Network error'), blocked: blocked ? 'local-network' : undefined };
         }
+        // One retry on a dead pooled socket: Node's keep-alive race kills the fetch
+        // with a TypeError before the request ever arrives. orderRef dedupe makes
+        // the POST retry safe — a duplicate attempt returns the original result.
+        function isDeadSocket(e) { return e instanceof TypeError; }
         async function bridgeRequest(path, body) {
             if (!twsReady()) return { ok: false, error: 'TWS bridge not configured' };
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = { 'Content-Type': 'application/json' };
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            try {
-                const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
-                return await res.json();
-            } catch (e) {
-                const err = bridgeNetError(e);
-                // A lost POST to an order-mutating endpoint is UNKNOWN, not a definite
-                // failure — the request may have reached TWS before the connection died.
-                // Callers must treat it like a TWS timeout: keep pending state, gate
-                // resends behind the "check TWS first" confirmation.
-                if (path === '/order' || path === '/orders') err.unknown = true;
-                return err;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
+                    return await res.json();
+                } catch (e) {
+                    const err = bridgeNetError(e);
+                    // A lost POST to an order-mutating endpoint is UNKNOWN, not a definite
+                    // failure — the request may have reached TWS before the connection died.
+                    // Callers must treat it like a TWS timeout: keep pending state, gate
+                    // resends behind the "check TWS first" confirmation.
+                    if (path === '/order' || path === '/orders') err.unknown = true;
+                    if (isDeadSocket(e) && !err.blocked && attempt === 0) {
+                        await new Promise(r => setTimeout(r, 300));
+                        continue;
+                    }
+                    return err;
+                }
             }
         }
         async function bridgeGet(path, signal) {
@@ -9440,8 +9691,18 @@
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = {};
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
-            return await res.json();
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
+                    return await res.json();
+                } catch (e) {
+                    if (isDeadSocket(e) && attempt === 0 && !(signal && signal.aborted)) {
+                        await new Promise(r => setTimeout(r, 300));
+                        continue;
+                    }
+                    throw e;
+                }
+            }
         }
         // Returns {status, json} so callers can tell "endpoint missing" (404) from "symbol not found".
         async function bridgeGetRaw(path, signal) {
@@ -9449,23 +9710,40 @@
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = {};
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
-            let json = null;
-            try { json = await res.json(); } catch (e) {}
-            return { status: res.status, json };
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
+                    let json = null;
+                    try { json = await res.json(); } catch (e) {}
+                    return { status: res.status, json };
+                } catch (e) {
+                    if (isDeadSocket(e) && attempt === 0 && !(signal && signal.aborted)) {
+                        await new Promise(r => setTimeout(r, 300));
+                        continue;
+                    }
+                    throw e;
+                }
+            }
         }
-        const APP_VERSION = '4.6.0';
+        const APP_VERSION = '4.7.0';
         let _bridgeVersionWarned = false;
+        let _livePortWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
             try {
-                const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET' }, 4000);
+                const headers = {};
+                if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+                const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET', headers }, 4000);
                 const data = await res.json();
                 twsBridgeUp = true;
                 const wasConnected = twsConnected;
                 twsConnected = !!(data && data.connected);
                 if (twsConnected && !wasConnected && twsOrdersEnabled) refreshTwsOrders();
                 if (data && data.account) twsAccount = data.account;
+                if (data && data.liveTradingPort && !_livePortWarned) {
+                    _livePortWarned = true;
+                    showErrorToast('Bridge targets a LIVE TWS port (' + data.twsPort + ') — switch to 7497/4002 for paper trading', 15000);
+                }
                 if (data && data.version && data.version !== APP_VERSION && !_bridgeVersionWarned) {
                     // Another (older/newer) bridge instance is on this port — e.g. a stale
                     // standalone server.js still running. The app would hit its old API.
@@ -9617,6 +9895,7 @@
             updateTwsPnlChip();
             renderProviderPriorityList();
             refreshTwsBadges();
+            refreshTradeOrderLines();
         }
         function loadTwsSettings() {
             // Re-read storage so a restored backup takes effect in this session —
@@ -9917,10 +10196,14 @@
             const dupFor = deps.dupOrdersFor || findDuplicatePscOrders;
             const sendState = deps.sendState || twsSendState;
             const ordersOn = deps.ordersEnabled !== undefined ? deps.ordersEnabled : twsOrdersEnabled;
+            // Weekly pullback entries fire only on the week's last trading day —
+            // injectable so tests aren't calendar-dependent.
+            const isWeeklyEntryDay = deps.isWeeklyEntryDay || function () { return nyDateStr() === lastTradingDayOfWeek(nyDateStr(), true); };
             return results.map(item => {
                 const kind = item.kind === 'pb' ? 'pb' : 'v3';
                 const out = { ticker: item.ticker, kind, send: false, reason: '' };
                 if (!item.success || !item.data) { out.reason = 'quote failed'; return out; }
+                if (kind === 'pb' && item.tf === 'weekly' && !isWeeklyEntryDay()) { out.reason = 'not week end'; return out; }
                 if (kind === 'v3') {
                     const f = getRealtimeFields(item, risk, slippage);
                     if (!f.isActive) { out.reason = 'trigger not met'; return out; }
@@ -10382,11 +10665,11 @@
             let entryFill = null;   // {filled, avgFillPrice} — set once an attached entry is confirmed
             try {
                 let built = opts.built || buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
-                if (!built.ok) { showErrorToast(built.error); return; }
+                if (!built.ok) { showErrorToast(built.error); return { ok: false, error: built.error }; }
                 const sanity = exitStopSanityError(ticker, isLong, stop, entry);
-                if (sanity) { showErrorToast(sanity + ' — not sending', 8000); return; }
+                if (sanity) { showErrorToast(sanity + ' — not sending', 8000); return { ok: false, error: sanity }; }
                 const pf = await preflightContract(ticker);
-                if (!pf.ok) { showErrorToast(pf.error, 6000); return; }
+                if (!pf.ok) { showErrorToast(pf.error, 6000); return { ok: false, error: pf.error }; }
                 if (attachEntry) {
                     const snapItem = entryItem || (lastRenderedSnapshot || []).find(r => r.ticker === ticker && r.success);
                     if (!snapItem) { showErrorToast('No snapshot data for ticker; cannot build bracket'); return; }
@@ -10420,7 +10703,7 @@
                 if (!payload.ok) {
                     showErrorToast(payload.error);
                     if (entryFill) return { ok: false, error: payload.error, entryFilled: entryFill.filled, entryAvg: entryFill.avgFillPrice };
-                    return;
+                    return { ok: false, error: payload.error };
                 }
                 const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
                 const firstFail = result.results ? result.results.find(r => !r.ok) : null;
@@ -10463,23 +10746,64 @@
             const totalLegs = trades.reduce((n, t) => n + t.built.rows.filter(r => r[7]).length, 0);
             if (!confirm(`Send ${totalLegs} exit orders for ${trades.length} ticker(s) to TWS exactly as previewed?`)) return;
             batchSending = true;
-            try {
-            // One bad ticker must never abort the rest of the batch, and a skipped or
-            // failed ticker must never be silent — count results and report at the end.
+            try { await sendExitOrderBatch(trades); } finally { batchSending = false; }
+        }
+        // Sequential exit-order sends shared by the batch drawer and the order
+        // builder. One bad ticker must never abort the rest, and a skipped or
+        // failed ticker must never be silent — per-ticker reasons in the summary.
+        // items: {ticker, kind, isLong, entry, shares, stop, strategyId, customTps, built, timedExit}
+        async function sendExitOrderBatch(trades) {
             let sent = 0, missed = 0;
+            const fails = [];
+            const sentLegs = [];   // {ticker, key, ids[]} — for the post-send verify
             for (const t of trades) {
+                const key = twsSendKey(t.ticker, 'exits', t.kind);
                 try {
-                    const r = await sendTwsExits(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, t.customTps, false, null, { built: t.built, stratKind: t.kind });
-                    if (r && r.ok && !r.unknown) sent++; else missed++;
+                    const r = await sendTwsExits(t.ticker, t.isLong, t.entry, t.shares, t.stop, t.strategyId, t.customTps, false, null, { built: t.built, stratKind: t.kind, timedExit: t.timedExit });
+                    if (r && r.ok && !r.unknown) {
+                        sent++;
+                        sentLegs.push({ ticker: t.ticker, key, ids: (r.results || []).map(x => x && x.orderId).filter(Boolean) });
+                    } else {
+                        missed++;
+                        const why = (r && (r.error || r.message))
+                            || (r && r.unknown ? 'no TWS confirmation — check TWS' : '')
+                            || (twsSendState[key] === 'sending' ? 'send already in progress' : 'skipped (declined or no result)');
+                        fails.push(t.ticker + ': ' + why);
+                    }
                 } catch (e) {
                     missed++;
+                    fails.push(t.ticker + ': ' + ((e && e.message) || e));
                     showErrorToast(`${t.ticker}: send failed — ${e && e.message ? e.message : e}`, 8000);
                 }
                 await new Promise(r => setTimeout(r, 250));
             }
-            if (missed) showErrorToast(`Batch send done: ${sent} sent, ${missed} skipped/failed — retry those from the drawer or card`, 10000);
-            else showSuccessToast(`Batch send done: ${sent} ticker(s) sent to TWS`);
-            } finally { batchSending = false; }
+            // Post-send verify: the bridge ack can precede an async IB rejection
+            // (a stop whose trigger is already crossed dies right after acking).
+            // One fresh orders snapshot catches phantoms the per-leg ack missed.
+            const phantoms = [];
+            if (sentLegs.some(s => s.ids.length) && twsConnected) {
+                await new Promise(r => setTimeout(r, 1500));
+                try {
+                    const d = await bridgeGet('/orders');
+                    if (d && d.ok && Array.isArray(d.orders) && d.complete !== false) {
+                        batchVerifySent(sentLegs, d.orders).forEach(v => {
+                            phantoms.push(v.ticker);
+                            setTwsSendState(v.key, 'unknown', 'order(s) ' + v.dead.join(', ') + ' not resting in TWS — filled or rejected?');
+                        });
+                    }
+                } catch (e) { /* verification is best-effort — don't fail the batch report */ }
+            }
+            if (phantoms.length) showErrorToast(`VERIFY: ${phantoms.join(', ')} — order(s) not resting in TWS (filled or rejected?). Check TWS before retrying.`, 12000);
+            if (missed) showErrorToast(`Batch send done: ${sent} sent, ${missed} skipped/failed — ${fails.slice(0, 5).join(' · ')}`, 12000);
+            else if (!phantoms.length) showSuccessToast(`Batch send done: ${sent} ticker(s) sent to TWS`);
+        }
+        // Which sent orderIds are not resting in the fresh /orders snapshot.
+        // Pure — the snapshot fetch lives in sendTwsBatchAll.
+        function batchVerifySent(sentLegs, orders) {
+            const working = new Set((orders || []).map(o => o.orderId));
+            return (sentLegs || [])
+                .map(s => ({ ticker: s.ticker, key: s.key, dead: (s.ids || []).filter(id => !working.has(id)) }))
+                .filter(v => v.dead.length);
         }
         function syncTwsSendButtons() {
             // If TWS is disabled, hide the send buttons entirely. If TWS is enabled, show them
@@ -10595,6 +10919,7 @@
                 twsOpenOrders = d.orders;
                 refreshTwsBadges();
                 renderTwsOrdersDrawer();
+                refreshTradeOrderLines();
             } catch (e) {}
         }
         function twsOrdersFor(ticker) {
@@ -10625,6 +10950,7 @@
                 }
                 refreshTwsBadges();
                 renderTwsOrdersDrawer();
+                refreshTradeOrderLines();
             };
             if (r && r.ok && r.pending) {
                 // Cancel transmitted but TWS hasn't confirmed — the /orders snapshot is the
@@ -11153,14 +11479,14 @@
                 const canCancel = o.canCancel !== false;
                 return `
                 <div class="flex items-center gap-2 ${indent ? 'pl-4 pr-2' : 'px-2'} py-1.5 border-b border-white/5 text-[10px] font-mono-num whitespace-nowrap ${cancelling ? 'opacity-40' : ''}">
-                    <span class="font-black shrink-0 ${o.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${o.action}</span>
+                    <span class="font-black shrink-0 ${o.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}">${escapeHtml(o.action || '')}</span>
                     <span class="text-white font-bold shrink-0">${escapeHtml(o.symbol || '')}</span>
-                    <span class="text-gray-300 shrink-0">${o.qty ?? ''} ${o.type || ''}${o.lmtPrice ? ' @' + o.lmtPrice : ''}${o.auxPrice ? ' stp@' + o.auxPrice : ''}</span>
+                    <span class="text-gray-300 shrink-0">${escapeHtml(o.qty ?? '')} ${escapeHtml(o.type || '')}${o.lmtPrice ? ' @' + escapeHtml(o.lmtPrice) : ''}${o.auxPrice ? ' stp@' + escapeHtml(o.auxPrice) : ''}</span>
                     <span class="shrink-0 px-1 rounded border ${o.outsideRth ? 'text-cyan-300 border-cyan-500/30 bg-cyan-950/40' : 'text-gray-500 border-white/10'}" title="${o.outsideRth ? 'Eligible outside regular trading hours' : 'Regular trading hours only'}">${o.outsideRth ? 'RTH+EXT' : 'RTH'}</span>
                     <span class="text-gray-500 truncate flex-1 min-w-0" title="${escapeHtml(o.orderRef || '')}">${escapeHtml(o.orderRef || '')}</span>
                     <span class="shrink-0 ${cancelling ? 'text-amber-300 font-bold' : 'text-gray-500'}">${cancelling ? 'CXL…' : escapeHtml(o.status || '')}</span>
                     ${canCancel
-                        ? `<button data-action="cancel-tws-order" data-order-id="${o.orderId}" ${cancelling ? 'disabled' : ''} class="text-red-300 hover:text-red-200 font-bold px-1 ${cancelling ? 'cursor-wait' : ''}">✕</button>`
+                        ? `<button data-action="cancel-tws-order" data-order-id="${escapeHtml(o.orderId)}" ${cancelling ? 'disabled' : ''} class="text-red-300 hover:text-red-200 font-bold px-1 ${cancelling ? 'cursor-wait' : ''}">✕</button>`
                         : `<button disabled title="Not managed by this session — cancel it in TWS directly" class="text-gray-600 font-bold px-1 cursor-not-allowed">✕</button>`}
                 </div>`;
             };
@@ -11304,16 +11630,23 @@
             const pbTimed = currentModalState.kind === 'pb'
                 ? (timedExitDate ? { enabled: true, date: timedExitDate, time: '15:55' } : null)
                 : null;
+            const sendTicker = currentModalState.ticker, sendKind = currentModalState.kind;
             sendTwsExits(
-                currentModalState.ticker,
+                sendTicker,
                 currentModalState.isLong,
                 entry, shares, stop,
                 strategyId,
                 customTps,
                 false,
                 null,
-                { stratKind: currentModalState.kind, timedExit: pbTimed || undefined }
-            );
+                { stratKind: sendKind, timedExit: pbTimed || undefined }
+            ).catch(e => {
+                // Fire-and-forget path — a throw must not end as an orphaned
+                // unhandledrejection toast; mark the button so resend confirms.
+                const key = twsSendKey(sendTicker, 'exits', sendKind);
+                if (twsSendState[key] === 'sending') setTwsSendState(key, 'error', (e && e.message) || String(e));
+                showErrorToast('Exit send failed: ' + ((e && e.message) || e), 8000);
+            });
         }
 
         let installPrompt = null;

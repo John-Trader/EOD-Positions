@@ -21,6 +21,9 @@ try {
 // ---------- Config ----------
 const TWS_HOST = process.env.TWS_HOST || '127.0.0.1';
 const TWS_PORT = parseInt(process.env.TWS_PORT || '7496', 10);
+// Known LIVE ports: 7496 (TWS live), 4001 (Gateway live). Paper: 7497 / 4002.
+const LIVE_TWS_PORTS = new Set([7496, 4001]);
+const liveTradingPort = LIVE_TWS_PORTS.has(TWS_PORT);
 const CLIENT_ID = parseInt(process.env.IBKR_CLIENT_ID || '7', 10);
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '8787', 10);
 const TOKEN_FILE = process.env.PSC_TOKEN_FILE || path.join(__dirname, '.bridge-token');
@@ -63,6 +66,7 @@ let stopping = false;                // set by stop() — suppresses reconnects
 const STATIC_FILES = {
     '/': 'index.html',
     '/index.html': 'index.html',
+    '/app.css': 'app.css',
     '/ledger.js': 'ledger.js',
     '/state-schema.js': 'state-schema.js',
     '/state-store.js': 'state-store.js',
@@ -190,7 +194,7 @@ let lastError = '';
 let clientIdConflict = false;
 let reconnectTimer = null;
 
-const pending = new Map();             // orderId -> {resolve, reject, timer, order}
+const pending = new Map();             // orderId -> {resolve, reject, timer, order, settleTimer, ack}
 const pendingCancel = new Map();       // orderId -> {resolve, reject, timer}
 const unownedOrders = new Set();       // orderIds TWS refused to cancel for this client (manual/other-session orders)
 const refDedupe = new Map();           // orderRef -> {result, ts}
@@ -388,6 +392,7 @@ function connect() {
     if (ib) { try { ib.disconnect(); } catch (_) {} }
     clientIdConflict = false;
     lastError = '';
+    nextOrderId = 0;   // stale ids from a dead session must never be reused
 
     ib = new IBApi({ host: TWS_HOST, port: TWS_PORT, clientId: CLIENT_ID });
 
@@ -437,16 +442,22 @@ function connect() {
         }
 
         const p = pending.get(orderId);
-        if (p && (status === 'Filled' || status === 'Cancelled' || status === 'Inactive')) {
-            clearTimeout(p.timer);
-            pending.delete(orderId);
-            p.resolve({ orderId, status, filled, remaining, avgFillPrice });
+        if (p && (status === 'Filled' || status === 'Cancelled' || status === 'ApiCancelled')) {
+            // Terminal — resolve immediately. A cancel that lands after an ack still
+            // wins over the settle window (the acked order is dead — report that).
+            resolvePendingNow(orderId, p, { orderId, status, filled, remaining, avgFillPrice });
+        } else if (p && status === 'Inactive' && (p.order && p.order.transmit !== false)) {
+            // For transmitted orders Inactive = not working. Don't report ok — the
+            // order may or may not exist, so answer unknown ('check TWS').
+            resolvePendingNow(orderId, p, { orderId, status: 'Inactive', unknown: true, message: 'Order went Inactive — check TWS before retrying' });
         } else if (p && (status === 'PreSubmitted' || status === 'Submitted' || status === 'PendingSubmit')) {
-            // Resolve on first non-terminal status so the caller knows it was accepted.
-            clearTimeout(p.timer);
-            pending.delete(orderId);
-            p.resolve({ orderId, status, filled, remaining });
+            // Non-terminal ack — hold a settle window: IB can kill a just-acked
+            // order (e.g. a stop whose trigger is already crossed) a few hundred
+            // ms later. Report the terminal status instead of a phantom ok.
+            armOrderSettle(orderId, p, { orderId, status, filled, remaining });
         }
+        // 'Inactive' on a staged (transmit:false) order is expected — its 2.5s
+        // fallback resolves it; nothing else resolves on ambiguous statuses.
     });
 
     ib.on(EventName.openOrder, (orderId, contract, order, orderState) => {
@@ -461,12 +472,12 @@ function connect() {
         // openOrder is the earliest acknowledgement that TWS has the order.
         // For non-transmitted (pre-staged) orders it may or may not fire; if it does, we can continue immediately.
         const isRejected = status === 'Rejected' || status === 'Cancelled';
-        clearTimeout(p.timer);
-        pending.delete(orderId);
         if (isRejected) {
-            p.resolve({ orderId, status: 'Rejected', message: orderState && orderState.warningText ? String(orderState.warningText) : status });
+            resolvePendingNow(orderId, p, { orderId, status: 'Rejected', message: orderState && orderState.warningText ? String(orderState.warningText) : status });
         } else {
-            p.resolve({ orderId, status: status || 'PreSubmitted', filled: 0, remaining: (p.order && p.order.totalQuantity) || 0 });
+            // Non-terminal ack — same settle window as orderStatus acks: a fast
+            // post-ack kill must report as failure, not phantom success.
+            armOrderSettle(orderId, p, { orderId, status: status || 'PreSubmitted', filled: 0, remaining: (p.order && p.order.totalQuantity) || 0 });
         }
     });
 
@@ -535,9 +546,7 @@ function connect() {
         // Only fail a pending order if the error's reqId matches it.
         if (reqId > 0 && pending.has(reqId)) {
             const p = pending.get(reqId);
-            clearTimeout(p.timer);
-            pending.delete(reqId);
-            p.resolve({ orderId: reqId, status: 'Rejected', message: msg, code });
+            resolvePendingNow(reqId, p, { orderId: reqId, status: 'Rejected', message: msg, code });
         }
         const pc = pendingCancel.get(reqId);
         if (pc) {
@@ -718,6 +727,7 @@ function connect() {
     ib.on(EventName.disconnected, () => {
         if (connected) console.warn('[bridge] Disconnected from TWS');
         connected = false;
+        nextOrderId = 0;
         unownedOrders.clear();   // ownership may change on the next session's binding
         releaseSnapshots();
         streamBroadcast({ type: 'status', connected: false });
@@ -727,6 +737,7 @@ function connect() {
     ib.on(EventName.connectionClosed, () => {
         if (connected) console.warn('[bridge] Connection closed');
         connected = false;
+        nextOrderId = 0;
         releaseSnapshots();
         streamBroadcast({ type: 'status', connected: false });
         scheduleReconnect();
@@ -741,10 +752,13 @@ function connect() {
 
 function scheduleReconnect() {
     if (stopping || reconnectTimer) return;
+    // A clientId conflict is permanent until the other session frees the id —
+    // retry slowly instead of hammering TWS every 5s. Transient drops reconnect fast.
+    const delay = clientIdConflict ? 60000 : 5000;
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         connect();
-    }, 5000);
+    }, delay);
 }
 
 // ---------- Symbol normalization ----------
@@ -770,23 +784,25 @@ function buildOrder(spec, id) {
     const order = {
         orderId: id,
         action: spec.action === 'BUY' ? 'BUY' : 'SELL',
-        orderType: spec.orderType || 'MKT',
+        orderType: String(spec.orderType || 'MKT').toUpperCase(),
         totalQuantity: spec.quantity,
-        tif: spec.tif || 'DAY',
+        tif: String(spec.tif || 'DAY').toUpperCase(),
         outsideRth: spec.outsideRth === true,
         transmit: spec.transmit !== false,
     };
     if (spec.lmtPrice != null) order.lmtPrice = Number(spec.lmtPrice);
     if (spec.auxPrice != null) order.auxPrice = Number(spec.auxPrice);
     if (spec.ocaGroup) order.ocaGroup = spec.ocaGroup;
-    if (spec.ocaType != null) order.ocaType = spec.ocaType;
+    if (spec.ocaType != null) order.ocaType = Number(spec.ocaType);
     if (spec.parentId != null) order.parentId = spec.parentId;
     if (spec.orderRef) order.orderRef = spec.orderRef;
     if (spec.goodAfterTime) order.goodAfterTime = spec.goodAfterTime;
     if (spec.adjustedOrderType) order.adjustedOrderType = spec.adjustedOrderType;
     if (spec.triggerPrice != null) order.triggerPrice = Number(spec.triggerPrice);
     if (spec.adjustedStopPrice != null) order.adjustedStopPrice = Number(spec.adjustedStopPrice);
-    if (spec.adaptive !== false) {
+    // Adaptive is opt-in per order: IB rejects the algo on STP/MOC/TRAIL legs, so
+    // the renderer sets adaptive:true only where it is legal (entry MKT/LMT).
+    if (spec.adaptive === true) {
         order.algoStrategy = 'Adaptive';
         order.algoParams = [{ tag: 'adaptivePriority', value: spec.adaptivePriority || 'Normal' }];
     }
@@ -805,7 +821,9 @@ function validateOrderSpec(spec) {
     if (!ORDER_SYMBOL_RE.test(String(spec.symbol || '').trim())) return 'invalid symbol';
     if (spec.action !== 'BUY' && spec.action !== 'SELL') return 'action must be BUY or SELL';
     const qty = Number(spec.quantity);
-    if (!Number.isFinite(qty) || qty <= 0 || qty > 1e7) return 'invalid quantity';
+    // PSC sizes in whole shares — a fractional qty means the caller's math broke;
+    // reject loudly rather than handing TWS a quantity it may round unexpectedly.
+    if (!Number.isInteger(qty) || qty <= 0 || qty > 1e7) return 'invalid quantity';
     if (spec.orderType != null && !ORDER_TYPES.has(String(spec.orderType).toUpperCase())) return 'invalid orderType';
     if (spec.tif != null && !ORDER_TIFS.has(String(spec.tif).toUpperCase())) return 'invalid tif';
     for (const k of ['lmtPrice', 'auxPrice', 'triggerPrice', 'adjustedStopPrice']) {
@@ -813,6 +831,7 @@ function validateOrderSpec(spec) {
     }
     if (spec.orderRef != null && String(spec.orderRef).length > 64) return 'orderRef too long';
     if (spec.ocaGroup != null && String(spec.ocaGroup).length > 64) return 'ocaGroup too long';
+    if (spec.ocaType != null && ![1, 2, 3].includes(Number(spec.ocaType))) return 'invalid ocaType';
     if (spec.parentId != null && !Number.isInteger(Number(spec.parentId))) return 'invalid parentId';
     if (spec.goodAfterTime != null && !GAT_RE.test(String(spec.goodAfterTime))) return 'invalid goodAfterTime';
     if (spec.ref != null && String(spec.ref).length > 64) return 'ref too long';
@@ -835,15 +854,44 @@ function dedupeInflight(orderRef, sig, work) {
     });
 }
 
+// Terminal-dead statuses must never report ok — an order whose fastest callback
+// is orderStatus('Cancelled')/'ApiCancelled' (e.g. IB kills an already-crossed
+// stop) would otherwise count as sent while nothing rests in TWS.
+const ORDER_FAIL_STATUSES = new Set(['Rejected', 'Cancelled', 'ApiCancelled']);
+function orderAckOk(result) {
+    return !!result && !result.unknown && !ORDER_FAIL_STATUSES.has(result.status);
+}
 function orderResult(spec) {
     return placeOrder(spec).then((result) => ({
         // unknown (timeout) is NOT ok — the order may exist in TWS.
-        ok: result.status !== 'Rejected' && !result.unknown,
+        ok: orderAckOk(result),
         ...result,
     })).catch((e) => ({ ok: false, error: e.message || String(e) }));
 }
 
 // ---------- Place order ----------
+// Non-terminal acks (openOrder / Submitted / PreSubmitted) settle for this long
+// before reporting success — IB can kill a just-acked order within a few hundred
+// ms (e.g. a stop whose trigger is already crossed) and that kill must surface
+// as a failure, not a phantom ok.
+const ORDER_SETTLE_MS = 600;
+function armOrderSettle(orderId, p, ackResult) {
+    if (p.settleTimer) return;   // first ack wins; terminal status can still pre-empt
+    p.ack = ackResult;
+    p.settleTimer = setTimeout(() => {
+        const cur = pending.get(orderId);
+        if (!cur) return;
+        clearTimeout(cur.timer);
+        pending.delete(orderId);
+        cur.resolve(cur.ack);
+    }, ORDER_SETTLE_MS);
+}
+function resolvePendingNow(orderId, p, result) {
+    if (p.settleTimer) clearTimeout(p.settleTimer);
+    clearTimeout(p.timer);
+    pending.delete(orderId);
+    p.resolve(result);
+}
 function placeOrder(spec) {
     return new Promise((resolve, reject) => {
         if (!connected) return reject(new Error('Not connected to TWS'));
@@ -852,18 +900,22 @@ function placeOrder(spec) {
         const order = buildOrder(spec, orderId);
         const contract = buildContract(spec.symbol);
         const timer = setTimeout(() => {
+            const p = pending.get(orderId);
+            if (p && p.settleTimer) clearTimeout(p.settleTimer);
             pending.delete(orderId);
             resolve({ orderId, status: 'Timeout', unknown: true, message: 'No confirmation from TWS — check TWS before retrying' });
         }, 5000);
-        pending.set(orderId, { resolve, reject, timer, order });
+        pending.set(orderId, { resolve, reject, timer, order, settleTimer: null, ack: null });
         try {
             ib.placeOrder(orderId, contract, order);
             if (order.transmit === false) {
                 // Pre-staged (non-transmitted) orders won't return an orderStatus until a transmitted order releases them.
                 // Wait for an openOrder callback, or long enough for TWS to register the order, before the batch continues.
                 setTimeout(() => {
-                    if (pending.has(orderId)) {
+                    const p = pending.get(orderId);
+                    if (p) {
                         clearTimeout(timer);
+                        if (p.settleTimer) clearTimeout(p.settleTimer);
                         pending.delete(orderId);
                         resolve({ orderId, status: 'PreSubmitted' });
                     }
@@ -956,7 +1008,20 @@ function fetchContract(symbol) {
     });
 }
 
+// Concurrent identical /history requests share one TWS request — duplicate
+// bursts (auto-entry + a manual refresh) would otherwise trip IB pacing limits.
+const historyInflight = new Map();   // 'symbol|duration' -> Promise
 function fetchHistory(symbol, duration) {
+    const key = symbol + '|' + String(duration || '');
+    const hit = historyInflight.get(key);
+    if (hit) return hit;
+    const work = fetchHistoryOnce(symbol, duration);
+    historyInflight.set(key, work);
+    const cleanup = () => { if (historyInflight.get(key) === work) historyInflight.delete(key); };
+    work.then(cleanup, cleanup);
+    return work;
+}
+function fetchHistoryOnce(symbol, duration) {
     return new Promise((resolve) => {
         if (!connected || !ib) return resolve(null);
         // Duration whitelist: '<n> <unit>' e.g. '430 D', '1 M', '2 Y' (IB duration format).
@@ -1072,15 +1137,18 @@ const server = http.createServer(async (req, res) => {
         }
     }
 
-    // GET /health — token-free status probe
+    // GET /health — token-free probe returns connectivity status only. Account
+    // number, order ids and P&L are account data → gated on the bridge token.
     if (req.method === 'GET' && url.pathname === '/health') {
-        const body = {
-            ok: connected, connected, account, nextOrderId, twsPort: TWS_PORT, version: appVersion,
-            netLiq: accountValues['NetLiquidation'] != null ? Number(accountValues['NetLiquidation']) : null,
-            dailyPnL: pnlCache.dailyPnL != null ? pnlCache.dailyPnL : null,
-        };
+        const body = { ok: connected, connected, twsPort: TWS_PORT, version: appVersion, liveTradingPort };
         if (clientIdConflict) body.error = lastError;
         else if (lastError && !connected) body.error = lastError;
+        if (authed) {
+            body.account = account;
+            body.nextOrderId = nextOrderId;
+            body.netLiq = accountValues['NetLiquidation'] != null ? Number(accountValues['NetLiquidation']) : null;
+            body.dailyPnL = pnlCache.dailyPnL != null ? pnlCache.dailyPnL : null;
+        }
         res.writeHead(200, corsHeaders);
         return res.end(JSON.stringify(body));
     }
@@ -1433,8 +1501,16 @@ async function start(opts = {}) {
         });
         server.listen(port, '127.0.0.1');
     });
+    // Node's 5s keepAliveTimeout default races Chromium's ~60s idle socket reuse:
+    // the client sends on a socket the server just closed → ECONNRESET → fetch
+    // TypeError ("Failed to fetch"). The modal send-then-wait flow hits this
+    // constantly. Keep sockets alive longer than the client's idle window.
+    // (headersTimeout must exceed keepAliveTimeout.)
+    server.keepAliveTimeout = 62_000;
+    server.headersTimeout = 65_000;
     console.log(`[bridge] HTTP listening on http://127.0.0.1:${actualPort} (app v${appVersion}, streaming-quote + cancel-ack build)`);
     console.log(`[bridge] TWS target: ${TWS_HOST}:${TWS_PORT} (clientId=${CLIENT_ID})`);
+    if (liveTradingPort) console.warn(`[bridge] WARNING: ${TWS_HOST}:${TWS_PORT} is a LIVE trading port — use 7497 (TWS paper) or 4002 (Gateway paper) for paper trading.`);
     if (opts.connectTws === false) console.log('[bridge] TWS connect skipped (connectTws:false)');
     else connect();
     if (require.main === module) {
@@ -1451,7 +1527,7 @@ async function stop() {
     if (execPollTimer) { clearInterval(execPollTimer); execPollTimer = null; }
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     for (const m of [pending, pendingCancel, pendingSnapshot, pendingContract, pendingHistory, pendingExec]) {
-        for (const p of m.values()) { clearTimeout(p.timer); if (p.earlyTimer) clearTimeout(p.earlyTimer); }
+        for (const p of m.values()) { clearTimeout(p.timer); if (p.earlyTimer) clearTimeout(p.earlyTimer); if (p.settleTimer) clearTimeout(p.settleTimer); }
         m.clear();
     }
     // Release snapshot waiters without pruning on partial data.
@@ -1477,7 +1553,7 @@ module.exports = {
     validateOrderSpec, requestHostOk,
     TICK_PRICE_MAP, TICK_PRICE_DELAYED, DELAYED_NOTICE_CODES, SYMBOL_ERROR_CODES,
     shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe, pruneToSeen,
-    isAllowedStaticFile, resolveWebFile, start, stop,
+    isAllowedStaticFile, resolveWebFile, start, stop, orderAckOk,
     flexRequest: flex.flexRequest, parseFlexCsv: flex.parseFlexCsv,
     flexTradeToExec: flex.flexTradeToExec, flexTradesFromCsv: flex.flexTradesFromCsv,
 };

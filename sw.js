@@ -1,17 +1,18 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v4.6.0`;
+const CACHE_NAME = `${CACHE_PREFIX}v4.7.0-tailwind`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
+const APP_CSS_URL = new URL('./app.css', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
 const LEDGER_URL = new URL('./ledger.js', SCOPE_URL).href;
 const STATE_SCHEMA_URL = new URL('./state-schema.js', SCOPE_URL).href;
 const STATE_STORE_URL = new URL('./state-store.js', SCOPE_URL).href;
 const SYNC_URL = new URL('./sync.js', SCOPE_URL).href;
-const TAILWIND_URL = 'https://cdn.tailwindcss.com/';
 const SHELL_ASSETS = new Map([
   [SCOPE_URL.href, { key: HTML_URL, type: 'text/html', html: true }],
   [HTML_URL, { key: HTML_URL, type: 'text/html', html: true }],
+  [APP_CSS_URL, { key: APP_CSS_URL, type: 'text/css' }],
   [MANIFEST_URL, { key: MANIFEST_URL, type: 'application/manifest+json' }],
   [ICON_URL, { key: ICON_URL, type: 'image/svg+xml' }],
   [LEDGER_URL, { key: LEDGER_URL, type: 'text/javascript' }],
@@ -26,18 +27,6 @@ function isSafeShellResponse(response, url, asset) {
   // The bridge marks token-injected HTML — a private-shell response must never enter the cache.
   if (response.headers.get('x-psc-bridge')) return false;
   return response.ok && !response.redirected && response.url === url && type === asset.type;
-}
-
-async function fetchTailwind() {
-  const response = await fetch(new Request(TAILWIND_URL, {
-    mode: 'no-cors',
-    credentials: 'omit',
-    cache: 'reload'
-  }));
-  if (response.type !== 'opaque' && !(response.ok && response.url === TAILWIND_URL && !response.redirected)) {
-    throw new Error('Tailwind shell resource unavailable');
-  }
-  return response;
 }
 
 async function cachedResponse(key) {
@@ -59,13 +48,13 @@ async function storeResponse(key, response) {
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const entries = await Promise.all([HTML_URL, MANIFEST_URL, ICON_URL, LEDGER_URL, STATE_SCHEMA_URL, STATE_STORE_URL, SYNC_URL].map(async url => {
+    const entries = await Promise.all([HTML_URL, APP_CSS_URL, MANIFEST_URL, ICON_URL, LEDGER_URL, STATE_SCHEMA_URL, STATE_STORE_URL, SYNC_URL].map(async url => {
       const response = await fetch(new Request(url, { cache: 'reload', credentials: 'omit', redirect: 'error' }));
       if (!isSafeShellResponse(response, url, SHELL_ASSETS.get(url))) {
         throw new Error('App shell resource unavailable');
       }
       return [url, response];
-    }).concat([fetchTailwind().then(response => [TAILWIND_URL, response])]));
+    }));
     const cache = await caches.open(CACHE_NAME);
     await Promise.all(entries.map(([url, response]) => cache.put(url, response)));
   })());
@@ -103,26 +92,10 @@ async function networkFirstShell(request, asset) {
   });
 }
 
-async function cachedTailwind() {
-  const cached = await cachedResponse(TAILWIND_URL);
-  if (cached) return cached;
-  try {
-    const response = await fetchTailwind();
-    await storeResponse(TAILWIND_URL, response);
-    return response;
-  } catch {
-    return Response.error();
-  }
-}
-
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.search || url.hash || url.username || url.password || PRIVATE_HEADERS.some(header => request.headers.has(header))) return;
-  if (url.href === TAILWIND_URL && request.destination === 'script') {
-    event.respondWith(cachedTailwind());
-    return;
-  }
   if (url.origin !== SCOPE_URL.origin) return;
   const asset = SHELL_ASSETS.get(url.href);
   if (!asset || (asset.html && request.mode !== 'navigate')) return;

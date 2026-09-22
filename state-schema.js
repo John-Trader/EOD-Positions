@@ -14,7 +14,6 @@
     'use strict';
 
     var FORMAT = 'positioncalc-state';
-    var SYNC_FORMAT = 'positioncalc-sync';
     var SCHEMA_VERSION = 1;
     var STORAGE_KEY = 'psc:state:v1';
     var INSTALL_KEY = 'psc:installation:v1';
@@ -271,11 +270,28 @@
         if (l.syncConfig !== undefined && !isObj(l.syncConfig)) errs.push(path + '.syncConfig: not an object');
         if (l.autoEntryRun !== undefined && l.autoEntryRun !== null && !isObj(l.autoEntryRun)) errs.push(path + '.autoEntryRun: not an object');
     }
-    function checkMergeMeta(mm, errs, path) {
+    function checkMergeMeta(mm, errs, path, opts) {
+        opts = opts || {};
         if (!isObj(mm)) { errs.push(path + ': not an object'); return; }
-        if (mm.clock !== undefined && !isObj(mm.clock)) errs.push(path + '.clock: invalid');
-        if (mm.versions !== undefined && !isObj(mm.versions)) errs.push(path + '.versions: not an object');
-        if (mm.tombstones !== undefined && !isObj(mm.tombstones)) errs.push(path + '.tombstones: not an object');
+        // Stamps must be well-formed — a garbage stamp would poison LWW merges.
+        // opts.remote only: reject wallMs more than ~1 day ahead of the local clock
+        // (never on local hydrate — a backward clock correction must not brick boot).
+        var farFuture = (opts.now || Date.now()) + 24 * 3600 * 1000;
+        function chk(s, p) {
+            if (!isObj(s)) { errs.push(p + ': not an object'); return; }
+            if (!isNum(s.wallMs) || s.wallMs < 0 || (opts.remote && s.wallMs > farFuture)) errs.push(p + '.wallMs: invalid');
+            if (s.logical !== undefined && (!isNum(s.logical) || s.logical < 0 || Math.floor(s.logical) !== s.logical)) errs.push(p + '.logical: invalid');
+            if (s.deviceId !== undefined && !isStr(s.deviceId, 80)) errs.push(p + '.deviceId: invalid');
+        }
+        if (mm.clock !== undefined) { if (!isObj(mm.clock)) errs.push(path + '.clock: invalid'); else chk(mm.clock, path + '.clock'); }
+        if (mm.versions !== undefined) {
+            if (!isObj(mm.versions)) errs.push(path + '.versions: not an object');
+            else for (var k in mm.versions) chk(mm.versions[k], path + '.versions.' + k);
+        }
+        if (mm.tombstones !== undefined) {
+            if (!isObj(mm.tombstones)) errs.push(path + '.tombstones: not an object');
+            else for (var t in mm.tombstones) chk(mm.tombstones[t], path + '.tombstones.' + t);
+        }
     }
 
     // validate a decoded envelope object. Returns {ok, errors[]}.
@@ -310,7 +326,7 @@
         checkLedger(d.ledger, errs, 'data.ledger');
         if (state.local !== undefined) checkLocal(state.local, errs, 'local');
         if (state.cache !== undefined && !isObj(state.cache)) errs.push('cache: not an object');
-        checkMergeMeta(state.mergeMeta, errs, 'mergeMeta');
+        checkMergeMeta(state.mergeMeta, errs, 'mergeMeta', opts);
         return { ok: errs.length === 0, errors: errs.slice(0, 40) };
     }
 
@@ -537,7 +553,10 @@
             var seg = rkey.split('/');
             var v = clone(r.value);
             if (seg[0] === 'setting') d.settings[seg.slice(1).join('/')] = v;
-            else if (seg[0] === 'scanner' && d.scannerStores[seg[1]]) d.scannerStores[seg[1]] = v;
+            // scanner/<page>: accept any page id — forward-compat for pages added
+            // after this build; validate() only shape-checks the known three and
+            // does not reject extras, so unknown pages round-trip intact.
+            else if (seg[0] === 'scanner' && seg[1]) { if (isObj(v)) d.scannerStores[seg[1]] = v; }
             else if (seg[0] === 'strategy') { if (isObj(v)) d.customStrategies.push(v); }
             else if (rkey === 'regimeMap') d.regimeStrategyMap = isObj(v) ? v : d.regimeStrategyMap;
             else if (seg[0] === 'trade') { if (isObj(v)) { v.events = v.events || []; d.trades.push(v); tradeIds.push(seg[1]); } }
@@ -587,14 +606,20 @@
                     pick = L;   // identical stamp+diff content is invalid; keep local, flag it
                 } else pick = cmp >= 0 ? L : R;
             }
-            if (pick.deleted) tombstones[rkey] = pick.stamp;
-            else { out[rkey] = { id: pick.id, kind: pick.kind, value: clone(pick.value), stamp: pick.stamp }; versions[rkey] = pick.stamp; }
+            // Never emit null stamps: unversioned records get no versions entry at
+            // all (absence = unversioned). A tombstone with no stamp keeps a zero
+            // stamp so the delete still propagates (it loses to any stamped write).
+            if (pick.deleted) tombstones[rkey] = pick.stamp || { wallMs: 0, logical: 0, deviceId: '' };
+            else {
+                out[rkey] = { id: pick.id, kind: pick.kind, value: clone(pick.value), stamp: pick.stamp };
+                if (pick.stamp) versions[rkey] = pick.stamp;
+            }
         }
         return { records: out, versions: versions, tombstones: tombstones, conflicts: conflicts };
     }
 
     return {
-        FORMAT: FORMAT, SYNC_FORMAT: SYNC_FORMAT, SCHEMA_VERSION: SCHEMA_VERSION,
+        FORMAT: FORMAT, SCHEMA_VERSION: SCHEMA_VERSION,
         STORAGE_KEY: STORAGE_KEY, INSTALL_KEY: INSTALL_KEY,
         PORTABLE_FILE: PORTABLE_FILE, INSTALL_FILE: INSTALL_FILE,
         MAX_STATE_BYTES: MAX_STATE_BYTES,

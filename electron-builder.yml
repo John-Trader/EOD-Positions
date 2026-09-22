@@ -8,6 +8,7 @@ files:
   - tws-bridge/server.js
   - tws-bridge/flex.js
   - index.html
+  - app.css
   - ledger.js
   - state-schema.js
   - state-store.js
@@ -23,6 +24,8 @@ files:
   - "!_smoke_browser.js"
   - "!_golden_fixtures.json"
   - "!tools/**"
+  - "!src/**"
+  - "!tailwind.config.js"
   - "!.git/**"
   - "!.devin/**"
 win:

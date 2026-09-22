@@ -28,8 +28,9 @@ const window = { speechSynthesis: { speak: () => {}, cancel: () => {} }, addEven
 const navigator = { clipboard: { writeText: () => Promise.resolve() } };
 const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval, alert: () => {}, confirm: () => true, prompt: () => null };
 const fn = new Function(...Object.keys(sandbox), code + `
-  return { buildExitLegs, csvTextForRows, csvHeaderForRows, TWS_CSV_HEADERS, TWS_EXTRA_HEADERS, customStrategies, strategyLegsError, splitSharesByPct, collectBatchTradesFromDom, AUTO_STRATEGY, ocaSuffix, addTradingDays, nyDateStr, parseSignalText, journalResult, prepareBackup, setTradesTab, navigateTo, toggleSignalPaste, saveFeatureSettings, csvCell,
-           setRegime: (r) => { globalMarketRegime = r; } };`);
+  return { buildExitLegs, csvTextForRows, csvHeaderForRows, TWS_CSV_HEADERS, TWS_EXTRA_HEADERS, customStrategies, strategyLegsError, splitSharesByPct, collectBatchTradesFromDom, AUTO_STRATEGY, ocaSuffix, addTradingDays, nyDateStr, parseSignalText, journalResult, prepareBackup, setTradesTab, navigateTo, toggleSignalPaste, saveFeatureSettings, csvCell, NYSE_EARLY_CLOSE,
+           setRegime: (r) => { globalMarketRegime = r; },
+           get currentPage() { return currentPage; }, get tradesTab() { return tradesTab; } };`);
 const api = fn(...Object.values(sandbox));
 const assert = (c, m) => { if (!c) throw new Error('ASSERT FAIL: ' + m); };
 
@@ -52,7 +53,11 @@ try {
   }
 
   // Timed exit (explicit override, as the setting would provide): one MKT GAT row per leg, header gains GoodAfterTime only
-  const exitDate = api.addTradingDays(api.nyDateStr(), 5);
+  let exitDate = api.addTradingDays(api.nyDateStr(), 5);
+  // Early-close days emit 12:50, not the configured time — walk forward so the
+  // '15:45' assertion below is always against a normal-close session.
+  while (api.NYSE_EARLY_CLOSE.has(exitDate)) exitDate = api.addTradingDays(exitDate, 1);
+  assert(!api.NYSE_EARLY_CLOSE.has(exitDate), 'test date is a normal-close day');
   const t = api.buildExitLegs('PLTR', true, 100, 100, 95, 'opt2', undefined, { timedExit: { enabled: true, date: exitDate, time: '15:45' } });
   assert(t.ok && t.rows.length === 6, 'opt2 + timed exit = 6 rows (STP, LMT, MKT per leg), got ' + t.rows.length);
   const mkts = t.rows.filter(r => r[7] === 'MKT');
@@ -145,6 +150,8 @@ try {
   api.toggleSignalPaste(false);
   api.setTradesTab('history');
   api.saveFeatureSettings();
+  assert(api.currentPage === 'settings', 'navigateTo switches currentPage');
+  assert(api.tradesTab === 'history', 'setTradesTab switches tradesTab');
   assert(elements['activeTradesPageList'].innerHTML.includes('No closed trades'), 'history and Settings handlers run');
   console.log('Export and feature checks passed!');
   process.exit(0);

@@ -67,7 +67,8 @@ try {
     posFor: () => null,
     dupOrdersFor: () => [],
     sendState: {},
-    ordersEnabled: true
+    ordersEnabled: true,
+    isWeeklyEntryDay: () => true
   }, over || {});
   const v3 = (ticker, trigger, data, extra) => Object.assign({ ticker, kind: 'v3', trigger, signalSide: null, data, success: true }, extra || {});
   const decide = (items, d) => api.autoEntryEvaluate(items, deps(d));
@@ -121,6 +122,11 @@ try {
   // Pullback missing ATR entirely -> no shares -> skip
   r = decide([Object.assign(pb('RRR'), { atrOverride: null })]);
   assert(r[0].send === false, 'pb without ATR skipped');
+  // Weekly pullback entries fire only on the week's last trading day
+  r = decide([pb('SSS')], { isWeeklyEntryDay: () => false });
+  assert(r[0].send === false && r[0].reason === 'not week end', 'weekly pb blocked off week-end');
+  r = decide([pb('TTT', { tf: 'daily', cat: 'etf_d' })], { isWeeklyEntryDay: () => false });
+  assert(r[0].reason !== 'not week end', 'daily pb unaffected by week-end gate');
 
   // ---------- buildAutoEntryTasks (store-driven, per-page union) ----------
   api.signalSyncMode = 'perPage';

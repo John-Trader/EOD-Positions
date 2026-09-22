@@ -28,7 +28,7 @@ const sandbox = {
 };
 const fn = new Function(...Object.keys(sandbox), code + `
 return {
-  parseEodSignalText, parseSignalText, parsePbLine, pbCatOf, PB_CATS,
+  parseEodSignalText, parseSignalText, parsePbLine, pbCatOf, PB_CATS, PB_DEFAULT_ETFS,
   pineAtr, resampleDailyToWeekly, pullbackAtrs, pbTimedExitDate, isCurrentWeekForming,
   emaLast, weeksElapsedSince, getPbFields, buildExitLegs, twsSendKey,
   setPbSignals, loadPbSignals, mondayOf, lastTradingDayOfWeek, addCalendarDays,
@@ -154,6 +154,21 @@ $XLE - Daily
   assert(wf.atr > 0 && wf.shares > 0, 'weekly ATR sizing produced shares');
   assert(Math.abs(wf.riskDollars - 750) < 1e-6, 'etf_w risks 0.75% = $750 on 100k');
   assert(wf.shares === Math.floor(750 / wf.atr), 'weekly shares = floor(risk/atr)');
+
+  // nas_w: 0.25% weekly risk bucket on non-ETF tickers.
+  api.volatilityCache['GOOG'] = { status: 'ok', checkedAt: Date.now(), bars: wide.map(b => ({ ...b })), atrPct: null, adrPct: null, latestClose: px, avgVol: null };
+  const nItem = { ticker: 'GOOG', tf: 'weekly', cat: 'auto', data: { c: px, h: px + 1, l: px - 1, pc: px - 1 } };
+  const nf = api.getPbFields(nItem, 0);
+  assert(nf.catId === 'nas_w', 'GOOG weekly -> nas_w');
+  assert(Math.abs(nf.riskDollars - 250) < 1e-6, 'nas_w risks 0.25% = $250 on 100k');
+  assert(nf.shares === Math.floor(250 / nf.atr), 'nas_w shares = floor(risk/atr)');
+
+  // The 19-ETF universe is a spec constant — pin membership so an accidental
+  // edit surfaces here instead of silently changing auto-category resolution.
+  const etfs = api.PB_DEFAULT_ETFS.split(',');
+  assert(etfs.length === 19, 'ETF universe has 19 members (got ' + etfs.length + ')');
+  ['SPY', 'QQQ', 'IWM', 'DIA', 'MDY', 'XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLC', 'SMH', 'SOXX', 'IBB', 'XRT', 'ITB']
+    .forEach(t => assert(etfs.includes(t), 'universe includes ' + t));
 
   // ---------- 9. lspb bracket legs via buildExitLegs ----------
   api.timedExitEnabled = false; // lspb carries its own timed override; global toggle irrelevant

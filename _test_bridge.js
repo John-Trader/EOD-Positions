@@ -65,6 +65,34 @@ assertTrue(stp.algoStrategy === undefined, 'adaptive:false -> no algo');
 const adj = bridge.buildOrder({ action: 'SELL', quantity: 10, orderType: 'STP', auxPrice: 9, adjustedOrderType: 'TRAIL', triggerPrice: 9.5, adjustedStopPrice: 8.9 }, 44);
 assertEq(adj.adjustedOrderType, 'TRAIL', 'adjustedOrderType');
 assertEq(adj.adjustedStopPrice, 8.9, 'adjustedStopPrice');
+assertTrue(adj.algoStrategy === undefined, 'no adaptive field -> algo opt-in (not attached by default)');
+
+const noAlgo = bridge.buildOrder({ action: 'SELL', quantity: 10, orderType: 'MOC' }, 45);
+assertTrue(noAlgo.algoStrategy === undefined, 'MOC without adaptive:true -> no algo attached');
+const lower = bridge.buildOrder({ action: 'BUY', quantity: 10, orderType: 'mkt', tif: 'day' }, 46);
+assertEq(lower.orderType, 'MKT', 'orderType normalized to uppercase');
+assertEq(lower.tif, 'DAY', 'tif normalized to uppercase');
+
+// ---- validateOrderSpec hardening ----
+assertEq(bridge.validateOrderSpec({ symbol: 'AAPL', action: 'BUY', quantity: 10.5 }), 'invalid quantity', 'fractional qty rejected');
+assertEq(bridge.validateOrderSpec({ symbol: 'AAPL', action: 'BUY', quantity: 100 }), null, 'integer qty ok');
+assertEq(bridge.validateOrderSpec({ symbol: 'AAPL', action: 'BUY', quantity: 10, ocaType: 9 }), 'invalid ocaType', 'ocaType out of range rejected');
+assertEq(bridge.validateOrderSpec({ symbol: 'AAPL', action: 'BUY', quantity: 10, ocaType: 2 }), null, 'ocaType 2 ok');
+assertEq(bridge.validateOrderSpec({ symbol: 'AAPL', action: 'BUY', quantity: 10, orderType: 'mkt' }), null, 'lowercase orderType validates (buildOrder uppercases)');
+
+// ---- orderAckOk: terminal-dead statuses must not report ok ----
+// Regression: a leg whose fastest callback was orderStatus('Cancelled') resolved
+// {status:'Cancelled'} which passed the old ok-check -> batch counted it sent
+// while nothing rested in TWS.
+assertTrue(bridge.orderAckOk({ status: 'Submitted' }), 'Submitted ok');
+assertTrue(bridge.orderAckOk({ status: 'PreSubmitted' }), 'PreSubmitted ok');
+assertTrue(bridge.orderAckOk({ status: 'Filled' }), 'Filled ok');
+assertTrue(!bridge.orderAckOk({ status: 'Cancelled' }), 'Cancelled NOT ok — order is dead');
+assertTrue(!bridge.orderAckOk({ status: 'ApiCancelled' }), 'ApiCancelled NOT ok');
+assertTrue(!bridge.orderAckOk({ status: 'Rejected' }), 'Rejected NOT ok');
+assertTrue(!bridge.orderAckOk({ status: 'Timeout', unknown: true }), 'unknown NOT ok');
+assertTrue(!bridge.orderAckOk({ status: 'Inactive', unknown: true }), 'Inactive+unknown NOT ok');
+assertTrue(!bridge.orderAckOk(null), 'null NOT ok');
 
 // ---- shapes ----
 const q = bridge.shapeQuote({ last: 10, high: 11, low: 9, close: 9.5, bid: 9.9, ask: 10.1 }, true, 1700000000000);
@@ -146,7 +174,11 @@ function req(pathname, { method = 'GET', headers = {}, body } = {}, base) {
   assertTrue(page.text.includes('name="psc-bridge"'), 'served page carries injected bridge token meta');
 
   const health = await req('/health', { headers: { Origin: base } }, base);
-  assertTrue(JSON.parse(health.text).twsPort !== undefined, 'GET /health responds with status json');
+  const healthJson = JSON.parse(health.text);
+  assertTrue(healthJson.twsPort !== undefined, 'GET /health responds with status json');
+  assertTrue(healthJson.liveTradingPort !== undefined, 'GET /health exposes liveTradingPort flag');
+  assertTrue(healthJson.account === undefined && healthJson.netLiq === undefined && healthJson.dailyPnL === undefined && healthJson.nextOrderId === undefined,
+    'unauthed /health hides account/PnL/order-id fields');
 
   const denied = await req('/orders', { headers: { Origin: base } }, base);
   assertEq(denied.status, 401, 'authed GET requires token');
@@ -158,6 +190,11 @@ function req(pathname, { method = 'GET', headers = {}, body } = {}, base) {
   assertTrue(!!token, 'bridge token extracted from served meta');
   const flexBadReq = await req('/flex/report?q=1', { headers: { Origin: base, 'X-Bridge-Token': token } }, base);
   assertEq(flexBadReq.status, 400, 'flex report without X-Flex-Token -> 400 (not 503 — TWS not required)');
+
+  const healthAuthed = await req('/health', { headers: { Origin: base, 'X-Bridge-Token': token } }, base);
+  const healthAuthedJson = JSON.parse(healthAuthed.text);
+  assertTrue(healthAuthedJson.account !== undefined && healthAuthedJson.nextOrderId !== undefined,
+    'authed /health exposes account fields');
 
   const deniedPost = await req('/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: '{}' }, base);
   assertEq(deniedPost.status, 401, 'unauthed POST rejected');

@@ -35,9 +35,9 @@ All endpoints bind to `127.0.0.1` only. `GET /health` is token-free; every other
 | `GET /health` | `{connected, account, nextOrderId, netLiq, dailyPnL, twsPort}` — status probe |
 | `POST /order` | Single order `{symbol, action, orderType, quantity, ...}` |
 | `POST /orders` | Batch `{orders:[...]}` — `parentRef` resolves to `parentId` for brackets/OCA |
-| `POST /cancel` | `{orderId}` — cancel one order, resolves on `Cancelled` status |
+| `POST /cancel` | `{orderId}` — cancel one order; resolves on `Cancelled`/`ApiCancelled`, reports `PendingCancel`/`Inactive` as sent, and resolves `CancelSent` after a 2.5 s ack timeout |
 | `POST /cancel-all` | `{scope:'psc'}` (default) cancels only `PSC-*` orderRef orders; `{scope:'all'}` cancels everything the client can see — one-by-one, never `reqGlobalCancel` |
-| `GET /quote?symbol=` | Snapshot quote `{c,h,l,pc,bid,ask,delayed,t}` via `reqMktData(snapshot)` |
+| `GET /quote?symbol=` | Quote `{c,h,l,pc,bid,ask,delayed,t}` built from a short-lived streaming `reqMktData` subscription (not snapshot mode) |
 | `GET /account` | `{account, values:{NetLiquidation,...}, asOf}` |
 | `GET /positions` | `[{symbol,qty,avgCost,mktPrice,mktValue,unrealizedPNL}]` |
 | `GET /orders` | `[{orderId,permId,symbol,action,qty,type,lmtPrice,auxPrice,status,orderRef,parentId,ocaGroup}]` — includes manual TWS orders via `reqAutoOpenOrders` |

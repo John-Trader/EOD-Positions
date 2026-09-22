@@ -169,7 +169,9 @@ try {
   assert(/@ 55.00/.test(aaa.partial), 'partial fill string has price');
   assert(/@ 58.00/.test(aaa.exit_fill), 'exit fill string has price');
   assert(L.publicFills(aaa.partial) === '55.00 (2026-09-08)', 'publicFills strips qty');
-  assert(rep.statusLabel !== undefined || true, 'labels via statusLabel');
+  const lbl = L.statusLabel(aaa, false);
+  assert(lbl && typeof lbl.kind === 'string' && typeof lbl.label === 'string', 'labels via statusLabel');
+  assert(lbl.kind === 'Closed', 'closed trade labeled Closed');
   assert(Number.isFinite(rep.returnPct), 'return pct numeric');
   assert(rep.sleeves['LS v3 Breakout'] > 0, 'v3 sleeve pp positive');
 
@@ -201,10 +203,18 @@ try {
   assert(L.canFinalize(badMonth) !== null, 'partial month cannot finalize');
   const repOk = L.buildMonthReport('2026-09', '2026-09-30');
   const finErr = L.canFinalize(repOk);
-  // residual likely nonzero (our synthetic numbers don't reconcile) → expect an error string
-  assert(finErr === null || typeof finErr === 'string', 'canFinalize returns null or reason');
+  // The synthetic report has missing close prices — canFinalize must block it
+  // with a reason (incompleteReason is checked before the residual gate).
+  assert(typeof finErr === 'string' && finErr.length > 0, 'incomplete month blocked: ' + finErr);
   const fin = L.finalizeMonth('2026-09', repOk, '');
-  if (finErr) assert(fin.ok === false, 'finalize blocked: ' + finErr);
+  assert(fin.ok === false, 'finalize blocked: ' + finErr);
+  // Residual gate specifically: an otherwise-clean report over the tolerance
+  // is unfreezable and the reason names reconciliation.
+  const residRep = { ok: true, month: '2026-09', end: '2026-09-30', incompleteReason: '', residualMagnitude: 5, unreconciledPp: 0.1, closingEquity: 100000, returnPct: 1 };
+  assert(/[Rr]econcile/.test(L.canFinalize(residRep)), 'residual reason names reconciliation');
+  assert(L.finalizeMonth('2026-09', residRep, '').ok === false, 'residual blocks finalizeMonth');
+  const cleanRep = { ok: true, month: '2026-09', end: '2026-09-30', incompleteReason: '', residualMagnitude: 0.005, unreconciledPp: 0, closingEquity: 100000, returnPct: 1 };
+  assert(L.canFinalize(cleanRep) === null, 'sub-tolerance residual does not block');
 
   // force a clean month to test finalize: craft residual-free by zeroing valuations diff
   // (residual exists in synthetic data; test revision-reason path via manual snapshot push)
@@ -258,6 +268,28 @@ try {
   const ic = L.intervalContribution('2026-08-31', '2026-09-30');
   assert(ic.rows.length >= 3, 'interval rows');
   assert(ic.delta === 13000, 'equity delta 113000-100000=13000');
+
+  // ---------- regression: intervalContribution must not double-count QLD ----------
+  // Dollar ledger has data (qldValue marks + txn at :155) → journal QLD trades
+  // must not also appear as per-trade rows; only the 'QLD (ledger)' row counts.
+  const qldTrade = trade(60, 'QLD', [
+    ev('Entry', '2026-09-01', 100, 50, 1),
+    ev('Exit', '2026-09-15', 100, 55, 2)
+  ], { sleeve: 'QLD' });
+  J = [t1, t2, t3, t4, qldTrade];
+  const ic2 = L.intervalContribution('2026-08-31', '2026-09-30');
+  const qldRows = ic2.rows.filter(r => r.sleeve === 'QLD Trend Following');
+  assert(qldRows.length === 1 && qldRows[0].symbol === 'QLD (ledger)', 'QLD counted once via ledger row — no per-trade double-count');
+  near(qldRows[0].pnl, 1400, 'QLD ledger row pnl = 1400');
+  // Fallback: with no dollar-ledger data, the journal QLD trade rows through.
+  const savedVals = L.valuations(), savedTxns = L.qldTxns ? L.qldTxns() : null;
+  L.saveValuations({ '2026-08-31': { equity: 100000, marks: {}, kind: 'close' }, '2026-09-30': { equity: 113000, marks: { '20': 110 }, kind: 'close' } });
+  L.saveQldTxns([]);
+  const ic3 = L.intervalContribution('2026-08-31', '2026-09-30');
+  assert(ic3.rows.some(r => r.symbol === 'QLD' && r.sleeve === 'QLD Trend Following') && !ic3.rows.some(r => r.symbol === 'QLD (ledger)'),
+    'no dollar ledger → QLD journal trade rows through (fallback preserved)');
+  L.saveValuations(savedVals); L.saveQldTxns(savedTxns);
+  J = [t1, t2, t3, t4];
 
   // ---------- regression: Entry fill must not double-count ----------
   // A fresh TWS-imported row has flat fields but no events; onTwsFill('Entry')

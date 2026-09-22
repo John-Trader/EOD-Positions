@@ -20,10 +20,19 @@
     // pending QLD order or in-flight fill bookkeeping on this device.
     function restoreIntentFields(mergedData, localData) {
         var strip = S.SYNC_STRIP || { qld: ['pending', 'pendingOrder'], trade: ['_entryCredits', '_exitCredits', '_estExitFills', '_posQty', 'fillSource'] };
-        if (localData && localData.qldAllocation && mergedData.qldAllocation) {
-            strip.qld.forEach(function (f) {
-                if (localData.qldAllocation[f] !== undefined) mergedData.qldAllocation[f] = clone(localData.qldAllocation[f]);
-            });
+        if (localData && localData.qldAllocation) {
+            var lq = localData.qldAllocation;
+            // Remote tombstoned the whole qldAlloc record: merged is null. Intent is
+            // machine-local state — preserve it on a fresh object so an in-flight
+            // pending order on THIS device is not blanked by the merge. (Pushed
+            // envelopes strip intent, so the remote only ever sees an empty record.)
+            var hasIntent = strip.qld.some(function (f) { return lq[f] !== undefined && lq[f] !== null; });
+            if (mergedData.qldAllocation || hasIntent) {
+                if (!mergedData.qldAllocation) mergedData.qldAllocation = {};
+                strip.qld.forEach(function (f) {
+                    if (lq[f] !== undefined) mergedData.qldAllocation[f] = clone(lq[f]);
+                });
+            }
         }
         var byId = {};
         ((localData && localData.trades) || []).forEach(function (t) { if (t && t.id !== undefined) byId[String(t.id)] = t; });
@@ -71,6 +80,11 @@
         var wall = Math.max(lc.wallMs || 0, rc.wallMs || 0);
         for (var k in merged.versions) { var s = merged.versions[k]; if (s && (s.wallMs || 0) > wall) wall = s.wallMs; }
         for (var t in merged.tombstones) { var s2 = merged.tombstones[t]; if (s2 && (s2.wallMs || 0) > wall) wall = s2.wallMs; }
+        // Clamp the adopted clock: a far-future stamp (peer's skewed clock) must not
+        // drag this device's clock forward forever — stamps are validated on inbound
+        // decode, but the clock still inherits their max defensively.
+        var wallCap = Date.now() + 24 * 3600 * 1000;
+        if (wall > wallCap) wall = wallCap;
         var mergeMeta = { clock: { wallMs: wall, logical: 0 }, versions: merged.versions, tombstones: merged.tombstones };
 
         // changed: merged outcome differs from local anywhere

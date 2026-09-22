@@ -31,6 +31,7 @@ const fn = new Function(...Object.keys(sandbox), code + `
 return {
   emaLast, emaSeries, resampleDailyToWeekly, qldPendingAction, qldEvaluatePending,
   qldPendingSpec, qldReality, qldExecute, qldChartSvg, weeksElapsedSince,
+  qldPendingDue, qldPendingExecutableDate, lastTradingDayOfWeek, addTradingDays, nyNow,
   mondayOf, addCalendarDays, isCurrentWeekForming, isLastTradingDayOfMonth, nyDateStr,
   set qldView(v) { qldView = v; },
   get qldView() { return qldView; },
@@ -100,26 +101,36 @@ try {
   api.qldEvaluatePending();
   assert(api.qldPendingAction() === null, 'signal reverted -> weekly pending cleared');
 
-  // ---------- 3. Month-end band gating ----------
-  // Mid-month: out-of-band drift queues NOTHING (month-end-only check).
+  // ---------- 3. Month-end band gating (deterministic via opts.dateStr) ----------
   api.qldView = { signal: 'LONG', qldPrice: 80, lastWeekT: '2026-10-05', weekly: [] };
   api.qldSleeve = flatSleeve({ inPos: true, shares: 100, entryPrice: 80, entryDate: '2026-08-01', signalWeek: '2026-10-05' });
-  const todayMonthEnd = api.isLastTradingDayOfMonth(api.nyDateStr());
-  api.qldEvaluatePending();
-  if (!todayMonthEnd) {
-    assert(api.qldPendingAction() === null, 'mid-month drift -> no rebalance queued');
-  } else {
-    // 100*80=$8k of $100k = 8% << 30% -> ADD queued.
-    assert(api.qldPendingAction() === 'ADD', 'month-end + below band -> ADD');
-    assert(api.qldSleeve.pending.reason === 'MONTH_END', 'ADD reason = month_end');
-  }
+  // Mid-month: out-of-band drift queues NOTHING (month-end-only check).
+  api.qldEvaluatePending({ dateStr: '2026-09-15' });   // a Tuesday mid-month
+  assert(api.qldPendingAction() === null, 'mid-month drift -> no rebalance queued');
+  // Real month-end: 2026-09-30 (Wed) is Sep's last session.
+  // 100*80=$8k of $100k = 8% << 30% -> ADD queued.
+  api.qldEvaluatePending({ dateStr: '2026-09-30' });
+  assert(api.qldPendingAction() === 'ADD', 'month-end + below band -> ADD');
+  assert(api.qldSleeve.pending.reason === 'MONTH_END', 'ADD reason = month_end');
+  assert(api.qldSleeve.pending.month === '2026-09', 'pending stamped with the eval month');
+  assert(api.qldSleeve.pending.queuedAt === '2026-09-30', 'queuedAt uses the eval date');
+  // Same-month pending does NOT lock the band check — back-in-band clears it.
+  api.qldSleeve = flatSleeve({ inPos: true, shares: 437, entryPrice: 80, entryDate: '2026-08-01', signalWeek: '2026-10-12',
+    pending: { type: 'TRIM', reason: 'MONTH_END', month: '2026-09', queuedAt: '2026-09-29' } });
+  api.qldView = { ...api.qldView, lastWeekT: '2026-10-12' };
+  api.qldEvaluatePending({ dateStr: '2026-09-30' });   // 437*80/100k = 34.96% -> in band
+  assert(api.qldPendingAction() === null, 'same-month pending re-evaluated + cleared when back in band');
+  // And a changed computed action re-queues with a fresh queuedAt.
+  api.qldSleeve = flatSleeve({ inPos: true, shares: 100, entryPrice: 80, entryDate: '2026-08-01', signalWeek: '2026-10-12',
+    pending: { type: 'TRIM', reason: 'MONTH_END', month: '2026-09', queuedAt: '2026-09-29' } });
+  api.qldEvaluatePending({ dateStr: '2026-09-30' });   // 8% -> ADD replaces TRIM
+  assert(api.qldPendingAction() === 'ADD' && api.qldSleeve.pending.queuedAt === '2026-09-30', 'changed month-end action re-queues fresh');
 
   // Stale month-end pending + sleeve back in band -> cleared on next eval.
   api.qldSleeve = flatSleeve({ inPos: true, shares: 437, entryPrice: 80, entryDate: '2026-08-01', signalWeek: '2026-10-12',
     pending: { type: 'TRIM', reason: 'MONTH_END', month: '2020-01', queuedAt: '2020-01-31' } });
-  api.qldView = { ...api.qldView, lastWeekT: '2026-10-12' };
-  api.qldEvaluatePending();
-  if (!todayMonthEnd) assert(api.qldPendingAction() === null, 'stale month-end pending cleared when back in band');
+  api.qldEvaluatePending({ dateStr: '2026-10-14' });
+  assert(api.qldPendingAction() === null, 'stale month-end pending cleared when back in band');
 
   // ---------- 4. qldPendingSpec sizing (sleeve value incl. cash) ----------
   api.qldSleeve = flatSleeve({ cashValue: 40000 });
@@ -161,6 +172,18 @@ try {
   assert(r.shares === 400 && r.brokerKnown === false, 'disconnected bridge -> ledger, not stale broker');
   assert(r.equity === 100000 && r.equitySrc === 'manual', 'disconnected bridge -> manual equity');
   api.twsConnected = true;
+  // SHORT broker position: out of model — reality floors the count at 0, flags
+  // shortPosition, and pending evaluation freezes (a queued EXIT's SELL would
+  // deepen the short instead of covering it).
+  api.twsPositions = { QLD: { qty: -200, avgCost: 79, mktPrice: 81 } };
+  api.qldSleeve = flatSleeve({ inPos: true, shares: 400, entryPrice: 78 });
+  r = api.qldReality();
+  assert(r.shortPosition === true, 'negative broker qty -> shortPosition');
+  assert(r.shares === 0 && r.inPos === false, 'short floors to 0 — no phantom long');
+  api.qldView = { signal: 'FLAT', qldPrice: 80, lastWeekT: '2026-11-02', weekly: [] };
+  api.qldSleeve = flatSleeve({ inPos: true, shares: 400, entryPrice: 78, signalWeek: '2026-10-26' });
+  api.qldEvaluatePending({ dateStr: '2026-11-03' });
+  assert(api.qldPendingAction() === null, 'short broker blocks pending queueing');
   api.twsPositionsEnabled = false; api.twsSyncAccount = false; api.twsLastAccountValue = 0; api.twsLastPositionsAt = 0; api.twsPositions = {};
 
   // ---------- 6. qldExecute cash carry-over ----------
@@ -219,6 +242,20 @@ try {
   assert((svg.match(/<path/g) || []).length === 2, 'two EMA polylines');
   assert(svg.includes('<rect'), 'candles drawn as rects');
   if (api.isCurrentWeekForming(api.nyDateStr())) assert(svg.includes('LIVE WEEK'), 'forming week tagged when mid-week');
+  // Deterministic forming-week asserts (injected ny — calendar-independent):
+  const nyWed = api.nyNow(new Date('2026-09-16T15:00:00Z'));   // Wed 11:00 ET
+  assert(api.isCurrentWeekForming(undefined, nyWed) === true, 'mid-week -> forming week');
+  const nySun = api.nyNow(new Date('2026-09-20T15:00:00Z'));   // Sunday
+  assert(api.isCurrentWeekForming(undefined, nySun) === false, 'weekend -> week complete');
+  const nySat = api.nyNow(new Date('2026-09-19T15:00:00Z'));   // Saturday
+  assert(api.isCurrentWeekForming(undefined, nySat) === false, 'Saturday -> week complete');
+  assert(api.lastTradingDayOfWeek('2026-09-16', true) === '2026-09-18', 'week of Sep 16 ends Friday Sep 18');
+  // Pending-due gate: timing switches run at the NEXT session's open.
+  assert(api.qldPendingExecutableDate({ queuedAt: '2026-09-30' }) === api.addTradingDays('2026-09-30', 1), 'exec date = next trading day');
+  assert(api.qldPendingExecutableDate({}) === null, 'no queuedAt -> no exec gate');
+  assert(api.qldPendingDue({ queuedAt: '2020-01-01' }) === true, 'old queuedAt is due');
+  assert(api.qldPendingDue({}) === true, 'no queuedAt -> immediately executable');
+  assert(api.qldPendingDue({ queuedAt: api.addCalendarDays(api.nyDateStr(), 5) }) === false, 'future queuedAt not yet due');
 
   // EMA overlay must seed from the FULL weekly series, not the 30-bar slice —
   // a 200→100 regime break 10 bars before the window makes the difference obvious.

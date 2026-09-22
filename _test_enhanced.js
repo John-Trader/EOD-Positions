@@ -164,10 +164,10 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.activeSockets.tiingo = new MockWebSocket('wss://api.tiingo.com/iex');
     api.activeSockets.finnhub.readyState = WebSocket.OPEN;
     api.activeSockets.tiingo.readyState = WebSocket.OPEN;
-    api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
-    api.reconnectTimeoutByProvider.tiingo = setTimeout(() => {}, 999999);
-    api.connectionTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
-    api.connectionTimeoutByProvider.tiingo = setTimeout(() => {}, 999999);
+    api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999).unref();
+    api.reconnectTimeoutByProvider.tiingo = setTimeout(() => {}, 999999).unref();
+    api.connectionTimeoutByProvider.finnhub = setTimeout(() => {}, 999999).unref();
+    api.connectionTimeoutByProvider.tiingo = setTimeout(() => {}, 999999).unref();
     api.reconnectAttemptsByProvider.finnhub = 3;
     api.reconnectAttemptsByProvider.tiingo = 2;
 
@@ -220,7 +220,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     api.updateTopStatus();
     assert(statusEl.innerText === 'STANDBY', 'no open sockets and no activity shows standby');
 
-    api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999);
+    api.reconnectTimeoutByProvider.finnhub = setTimeout(() => {}, 999999).unref();
     api.updateTopStatus();
     assert(statusEl.innerText === 'RECONNECTING (FINNHUB)', 'reconnect timer produces named reconnecting status');
 

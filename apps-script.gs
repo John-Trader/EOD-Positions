@@ -42,17 +42,26 @@ function doPost(e) {
       return json({ ok: false, error: 'invalid JSON' });
     }
     if (msg && msg.state !== undefined) {
-      // CAS write — reject when the stored envelope moved since the client's merge base.
+      // CAS write — reject when the stored envelope moved since the client's
+      // merge base. cas may be a bare savedAt (legacy clients) or
+      // {savedAt, rev}: rev is a server-stamped monotonic counter, so two
+      // writes sharing the same savedAt millisecond still conflict correctly.
       const cur = file ? safeParse(file.getBlob().getDataAsString()) : null;
       const curSaved = (cur && cur.savedAt) || 0;
-      if (cur && curSaved !== (msg.cas || 0)) {
+      const curRev = (cur && cur.srvRev) || 0;
+      const casSaved = (msg.cas && typeof msg.cas === 'object') ? (msg.cas.savedAt || 0) : (msg.cas || 0);
+      const casRev = (msg.cas && typeof msg.cas === 'object') ? (msg.cas.rev || 0) : null;
+      if (cur && (curSaved !== casSaved || (casRev !== null && curRev !== casRev))) {
         return json({ ok: false, conflict: true, currentSavedAt: curSaved });
       }
       writeBody(file, JSON.stringify(msg.state));
       return json({ ok: true, savedAt: msg.state.savedAt });
     }
-    // Unwrapped push (no CAS) — accepted; the client only sends this when it
-    // has merged immediately beforehand.
+    // Unwrapped push (no CAS wrapper) — accepted ONLY onto an empty remote.
+    // On an existing file it would bypass compare-and-swap entirely; the app
+    // always sends the wrapped form, so a bare push here means an old or
+    // foreign client.
+    if (file) return json({ ok: false, conflict: true, currentSavedAt: (safeParse(file.getBlob().getDataAsString()) || {}).savedAt || 0 });
     writeBody(file, body);
     return json({ ok: true });
   } finally {
@@ -65,8 +74,22 @@ function getFile() {
   return it.hasNext() ? it.next() : null;
 }
 function writeBody(file, body) {
+  // Stamp a monotonic server revision into the stored envelope — schema
+  // validation tolerates unknown top-level fields, and clients echo it back
+  // as cas.rev on the next CAS push.
+  try {
+    const o = JSON.parse(body);
+    o.srvRev = nextRev();
+    body = JSON.stringify(o);
+  } catch (e) { /* non-JSON body — store verbatim */ }
   if (file) file.setContent(body);
   else DriveApp.createFile(FILE_NAME, body, MimeType.PLAIN_TEXT);
+}
+function nextRev() {
+  const p = PropertiesService.getScriptProperties();
+  const r = (Number(p.getProperty('srvRev')) || 0) + 1;
+  p.setProperty('srvRev', String(r));
+  return r;
 }
 function safeParse(s) { try { return JSON.parse(s); } catch (e) { return null; } }
 function json(o) {

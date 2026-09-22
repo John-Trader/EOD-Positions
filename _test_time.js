@@ -48,6 +48,16 @@ try {
   n = at('2026-09-02T02:30:00Z'); assert(n.date === '2026-09-01' && n.h === 22, '02:30Z is still Sep 1 22:30 ET');
   n = at('2026-09-07T15:00:00Z'); assert(!n.isTradingDay && !n.isRTH, 'Labor Day not trading day');
 
+  // DST boundaries: the same UTC instant maps to a different ET clock across the
+  // transition — 20:00Z is 15:00 ET under EST (RTH) but 16:00 ET under EDT (closed).
+  n = at('2026-03-06T20:00:00Z'); assert(n.isRTH && n.h === 15, 'Fri Mar 6 (EST) 20:00Z = 15:00 ET — RTH');
+  n = at('2026-03-09T20:00:00Z'); assert(!n.isRTH && n.h === 16, 'Mon Mar 9 (EDT) 20:00Z = 16:00 ET — closed');
+  n = at('2026-10-30T20:00:00Z'); assert(!n.isRTH && n.h === 16, 'Fri Oct 30 (EDT) 20:00Z = 16:00 ET — closed');
+  n = at('2026-11-02T20:00:00Z'); assert(n.isRTH && n.h === 15, 'Mon Nov 2 (EST) 20:00Z = 15:00 ET — RTH');
+  // Sunday transition mornings resolve to the correct session date.
+  n = at('2026-03-08T12:00:00Z'); assert(n.date === '2026-03-08' && !n.isTradingDay, 'spring-forward Sunday resolves, no session');
+  n = at('2026-11-01T12:00:00Z'); assert(n.date === '2026-11-01' && !n.isTradingDay, 'fall-back Sunday resolves, no session');
+
   // Clock renders without throwing
   api.updateClock();
   assert(typeof elements['countdown'].innerText === 'string' && elements['countdown'].innerText.length > 0, 'clock text set');

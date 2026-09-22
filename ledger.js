@@ -233,6 +233,9 @@ var Ledger = (function () {
         tradeEvents(t, when).forEach(function (e) {
             if (e.kind === 'Entry' || e.kind === 'Add') { qty += e.qty; cash -= sign * e.qty * e.price; }
             else if (e.kind === 'Partial' || e.kind === 'Exit') { qty -= e.qty; cash += sign * e.qty * e.price; }
+            // Income sign convention: positive `amount` is cash the position pays
+            // out or receives in proportion to holding it — multiplied by side sign,
+            // so a long's dividend adds P&L and a short's dividend subtracts it.
             else if (e.kind === 'Income') { cash += sign * e.amount; }
             else if (e.kind === 'Split') { qty *= e.qty; }
         });
@@ -284,7 +287,8 @@ var Ledger = (function () {
         var conf = config();
         var qty = num(conf.qldOpeningShares);
         if (qty === null) return null;
-        var txns = qldTxns().slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+        // Stable sort on date — equal dates keep insertion order (sort is stable).
+        var txns = qldTxns().slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
         for (var i = 0; i < txns.length; i++) {
             var t = txns[i];
             if (t.date > day || t.kind === 'Distribution') continue;
@@ -552,16 +556,20 @@ var Ledger = (function () {
         };
     }
     // "Since previous valuation" — per-position P&L + pp between two valuation dates.
+    // QLD-sleeve journal trades are excluded while the dollar ledger has data —
+    // same rule as pnlComponents, otherwise they'd double-count.
     function intervalContribution(dateA, dateB) {
         var eq0 = equityAt(dateA), eq1 = equityAt(dateB);
+        var qp = qldPnl(dateA, dateB);
         var rows = [];
         journal().forEach(function (t) {
             var d = cumPnl(t, dateB).pnl - cumPnl(t, dateA).pnl;
-            if (Math.abs(d) < 1e-8 && sleeveBucket(t) === SLEEVES[2]) return;
-            if (Math.abs(d) < 1e-8 && inventory(t, dateB) < 1e-8 && inventory(t, dateA) < 1e-8) return;
+            if (sleeveBucket(t) === SLEEVES[2]) {
+                if (qp.pnl !== null || Math.abs(d) < 1e-8) return;
+            } else if (Math.abs(d) < 1e-8 && inventory(t, dateB) < 1e-8 && inventory(t, dateA) < 1e-8) return;
             rows.push({ symbol: t.ticker, sleeve: sleeveBucket(t), pnl: d });
         });
-        rows.push({ symbol: 'QLD (ledger)', sleeve: SLEEVES[2], pnl: (qldPnl(dateA, dateB).pnl || 0) });
+        if (qp.pnl !== null) rows.push({ symbol: 'QLD (ledger)', sleeve: SLEEVES[2], pnl: qp.pnl });
         var cap = eq0.value;
         rows.forEach(function (r) { r.pp = cap ? r.pnl / cap * 100 : null; });
         return { rows: rows, equity0: eq0, equity1: eq1, delta: (eq0.value !== null && eq1.value !== null) ? eq1.value - eq0.value : null };
@@ -646,7 +654,10 @@ var Ledger = (function () {
         if (report.incompleteReason) return report.incompleteReason;
         var bounds = monthBounds(report.month);
         if (report.end !== bounds[1]) return 'Only a complete calendar month can be frozen — the current view is month-to-date.';
-        if (Math.abs(report.residualMagnitude) > 0.01) return 'Reconcile the account difference (unreconciled ' + pct(report.unreconciledPp, ' pp') + ') before freezing.';
+        // Tolerance scales with account size — sub-cent rounding on a large account
+        // must not make a month unfreezable; 1¢ floor covers small accounts.
+        var residTol = Math.max(0.01, (num(report.closingEquity) || 0) * 1e-5);
+        if (Math.abs(report.residualMagnitude) > residTol) return 'Reconcile the account difference (unreconciled ' + pct(report.unreconciledPp, ' pp') + ') before freezing.';
         if (report.returnPct === null) return 'Total return is pending — valuations are missing.';
         return null;
     }
@@ -656,11 +667,14 @@ var Ledger = (function () {
         var snaps = snapshots();
         var list = snaps[month] || [];
         if (list.length && !String(reason || '').trim()) return { ok: false, error: 'Enter a reason to revise an existing month.' };
-        list.push({ revision: list.length + 1, time: new Date().toISOString(), reason: String(reason || '').trim() || 'Initial month-end snapshot', report: report, stale: false });
+        // Revisions are capped (full report objects — the audit log keeps the
+        // revision history's reasons even when the oldest snapshot drops off).
+        while (list.length >= 20) list.shift();
+        list.push({ revision: list.length ? list[list.length - 1].revision + 1 : 1, time: new Date().toISOString(), reason: String(reason || '').trim() || 'Initial month-end snapshot', report: report, stale: false });
         snaps[month] = list;
         saveSnapshots(snaps);
         auditPush('Finalize report ' + month, reason || 'Initial month-end snapshot', {});
-        return { ok: true, revision: list.length };
+        return { ok: true, revision: list[list.length - 1].revision };
     }
     function snapshotList(month) { return (snapshots()[month] || []).slice(); }
     function allSnapshots() { return snapshots(); }
@@ -823,9 +837,10 @@ var Ledger = (function () {
         // Exit qty = what events still hold — closedQty/totalQty are lifetime
         // totals (never decremented by partials) and would overstate the exit.
         var held = inventory(t, '9999-12-31');
-        // If stored events already sum to flat, the broker path recorded it.
-        if (held <= 1e-8 && tradeEvents(t).some(function (e) { return e.kind === 'Exit'; })) return;
-        appendEvent(t, { kind: 'Exit', qty: Math.max(0, held), price: num(exitPrice) || 0, date: exitDate || today(), note: 'Manual close' });
+        // Nothing held → nothing to exit (covers both "broker already recorded it"
+        // and "never had inventory" — a zero-qty Exit event would be noise).
+        if (held <= 1e-8) return;
+        appendEvent(t, { kind: 'Exit', qty: held, price: num(exitPrice) || 0, date: exitDate || today(), note: 'Manual close' });
     }
     function onImportedPosition(t) {
         if (!t) return;
@@ -848,14 +863,16 @@ var Ledger = (function () {
         if (!t || !eventId || !patch) return null;
         var e = (t.events || []).find(function (x) { return x.id === eventId; });
         if (!e) return null;
-        if (patch.qty !== undefined) e.qty = num(patch.qty);
-        if (patch.price !== undefined) e.price = num(patch.price);
-        if (patch.amount !== undefined) e.amount = num(patch.amount);
+        // Numeric patches assign only when they parse — a malformed value must not
+        // clobber a confirmed fill's fields with null/0.
+        if (patch.qty !== undefined && num(patch.qty) !== null) e.qty = num(patch.qty);
+        if (patch.price !== undefined && num(patch.price) !== null) e.price = num(patch.price);
+        if (patch.amount !== undefined && num(patch.amount) !== null) e.amount = num(patch.amount);
         if (patch.kind !== undefined && KINDS.includes(patch.kind)) e.kind = patch.kind;
         if (patch.execId !== undefined) e.execId = String(patch.execId);
         if (patch.note !== undefined) e.note = String(patch.note);
         if (patch.date !== undefined && isIsoDate(patch.date)) e.date = patch.date;
-        if (patch.commission !== undefined) e.commission = Math.abs(num(patch.commission)) || 0;
+        if (patch.commission !== undefined && num(patch.commission) !== null) e.commission = Math.abs(num(patch.commission));
         return e;
     }
     // Locate the event carrying a composite exec key ('yyyymmdd|ibExecId').

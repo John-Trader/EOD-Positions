@@ -64,7 +64,8 @@ new Function('window', 'console', 'Date', 'Math', 'Number', 'JSON', 'Object', 'A
 const Ledger = window.Ledger;
 const navigator = { serviceWorker: {}, clipboard: { writeText: () => Promise.resolve() } };
 const URL = { createObjectURL: (x) => x, revokeObjectURL: () => {} };
-const crypto = { randomUUID: () => 'test-uuid-1234' };
+let uuidSeq = 0;
+const crypto = { randomUUID: () => 'test-uuid-' + (++uuidSeq) };
 const fetchCalls = [];
 let cancelResponse = { ok: true, orderId: 0, status: 'Cancelled' };
 let ordersResponse = { ok: true, orders: [] };
@@ -498,10 +499,13 @@ function assertTrue(cond, label) {
   assertEq(api.qldSleeve.pendingOrder.status, 'unknown', 'pendingOrder marked unknown');
   assertEq(api.qldSleeve.shares, 10, 'no ledger mutation on unknown outcome');
   // The outstanding pendingOrder blocks resend outright — no confirm, no post.
+  // (bridgeRequest may legitimately retry the FIRST post once on a dead socket —
+  // same orderRef, server-deduped — so count posts before vs after the resend.)
+  const orderPostsBefore = fetchCalls.filter(c => c.url.endsWith('/order') && !c.url.endsWith('/orders') && c.opts && c.opts.method === 'POST').length;
   confirmResponse = false; confirmCalls = 0;
   await api.qldSendTws();
   assertEq(confirmCalls, 0, 'outstanding pendingOrder blocks resend outright');
-  assertEq(fetchCalls.filter(c => c.url.endsWith('/order') && !c.url.endsWith('/orders') && c.opts && c.opts.method === 'POST').length, 1, 'no second /order post while pendingOrder outstanding');
+  assertEq(fetchCalls.filter(c => c.url.endsWith('/order') && !c.url.endsWith('/orders') && c.opts && c.opts.method === 'POST').length, orderPostsBefore, 'no second /order post while pendingOrder outstanding');
   fetchThrowOn = null;
 
   // ---- entry filled + exits POST lost -> entry key UNKNOWN (no free resend) ----

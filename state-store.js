@@ -214,20 +214,46 @@
         return _status;
     }
 
+    // The previous writer released the lock (its tab closed). Re-read storage —
+    // that tab may have committed newer state while this one sat read-only —
+    // then promote this tab to writer. A corrupt/absent record keeps the current
+    // in-memory state rather than wiping it.
+    function promoteToWriter() {
+        var raw = null;
+        try { raw = _storage.getItem(S.STORAGE_KEY); } catch (e) {}
+        if (raw !== null && raw !== undefined) {
+            var d = S.decode(raw, { purpose: 'local' });
+            if (d.ok) {
+                _state = d.value;
+                _state.local = _state.local || S.defaultLocal();
+                _state.cache = _state.cache || {};
+            }
+        }
+        _writable = 'yes';
+        _status.writable = true;
+        notify({ revision: _state.revision, source: 'ownership', promoted: true });
+    }
+
     function acquireOwnership(locks) {
         if (!locks || typeof locks.request !== 'function') return;   // single-tab assumption documented
         var name = 'psc-state-write';
         try {
             locks.request(name, { ifAvailable: true }, function (lock) {
-                if (lock === null) {
-                    _writable = 'readonly';
-                    _status.writable = false;
-                    emitError('Another tab holds this app\'s data — this window is read-only.');
-                    notify({ revision: _state.revision, source: 'ownership', readonly: true });
-                    return;
-                }
-                // held: keep it for the session
-                return new Promise(function () {});
+                if (lock !== null) return new Promise(function () {});   // held for session
+                _writable = 'readonly';
+                _status.writable = false;
+                emitError('Another tab holds this app\'s data — this window is read-only.');
+                notify({ revision: _state.revision, source: 'ownership', readonly: true });
+                // Queue for the lock normally: when the holder releases it (tab
+                // close), this tab promotes instead of staying read-only forever.
+                try {
+                    locks.request(name, function (lock2) {
+                        if (!lock2) return;
+                        promoteToWriter();
+                        return new Promise(function () {});
+                    }).catch(function () {});
+                } catch (e) {}
+                return;
             }).catch(function () {});
         } catch (e) {}
     }

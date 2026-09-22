@@ -293,6 +293,77 @@ async function main() {
         'local-only commit reports empty changedKeys');
     unsub();
 
+    // ---------- 10. Stamp validation / clock clamp / intent-on-tombstone ----------
+    // Remote decode rejects far-future stamps; local decode tolerates them (a
+    // backward clock correction must not brick boot).
+    const poison = S.createEmpty({ datasetId: 'ds_p', now: 100 });
+    poison.mergeMeta.versions['setting/riskValue'] = { wallMs: 9e15, logical: 0, deviceId: 'E' };
+    const encP = S.encode(poison, { purpose: 'sync' });
+    assert(!S.decode(encP, { purpose: 'sync', remote: true }).ok, 'remote decode rejects far-future stamp');
+    assert(S.decode(encP, { purpose: 'local' }).ok, 'local decode tolerates skewed stamp (no boot-brick)');
+    // malformed stamp shapes rejected everywhere
+    const bad = S.createEmpty({ datasetId: 'ds_b2', now: 100 });
+    bad.mergeMeta.tombstones['trade/x'] = { wallMs: 'soon' };
+    assert(!S.decode(S.encode(bad, { purpose: 'local' }), { purpose: 'local' }).ok, 'non-numeric wallMs rejected even locally');
+
+    // mergeEnvelopes clamps the adopted clock — a skewed remote cannot inflate us
+    const locC = S.createEmpty({ datasetId: 'ds_c', now: 500 });
+    const remC = S.createEmpty({ datasetId: 'ds_c', now: 800 });
+    remC.mergeMeta.clock = { wallMs: 9e15, logical: 0 };
+    const meC = Sync.mergeEnvelopes(locC, remC);
+    assert(meC.ok && meC.mergeMeta.clock.wallMs <= Date.now() + 24 * 3600 * 1000, 'merged clock clamped near now');
+    assert(meC.mergeMeta.clock.wallMs >= Date.now(), 'merged clock not dragged below now');
+
+    // remote tombstone of qldAlloc + local intent → intent preserved on fresh object
+    const locT = S.createEmpty({ datasetId: 'ds_t', now: 500 });
+    S.setByKey(locT, 'qldSleeve', JSON.stringify({ inPos: true, shares: 10, pending: { type: 'EXIT' }, pendingOrder: { key: 'QLD' } }));
+    locT.mergeMeta.versions['qldAlloc'] = { wallMs: 500, logical: 0, deviceId: 'L' };
+    const remT = S.createEmpty({ datasetId: 'ds_t', now: 700 });
+    remT.mergeMeta.tombstones['qldAlloc'] = { wallMs: 700, logical: 0, deviceId: 'R' };
+    const meT = Sync.mergeEnvelopes(locT, remT);
+    assert(meT.ok && meT.data.qldAllocation, 'tombstoned qldAlloc + local intent → record survives locally');
+    assert(meT.data.qldAllocation.pending && meT.data.qldAllocation.pending.type === 'EXIT', 'pending intent preserved on tombstoned record');
+    assert(meT.data.qldAllocation.pendingOrder && meT.data.qldAllocation.pendingOrder.key === 'QLD', 'pendingOrder preserved on tombstoned record');
+    // no intent → tombstone stays deleted (no pointless resurrection)
+    const locT2 = S.createEmpty({ datasetId: 'ds_t2', now: 500 });
+    S.setByKey(locT2, 'qldSleeve', JSON.stringify({ inPos: true, shares: 10 }));
+    locT2.mergeMeta.versions['qldAlloc'] = { wallMs: 500, logical: 0, deviceId: 'L' };
+    const meT2 = Sync.mergeEnvelopes(locT2, remT);
+    assert(meT2.ok && meT2.data.qldAllocation === null, 'no intent → remote tombstone stands');
+
+    // projectRecords accepts unknown scanner pages (forward-compat)
+    const proj2 = S.projectRecords({ 'scanner/newpage': { id: 'newpage', kind: 'scanner', value: { tickers: ['X'], custom: 1 }, stamp: null } });
+    assert(proj2.scannerStores.newpage && proj2.scannerStores.newpage.custom === 1, 'unknown scanner page survives projection');
+
+    // unversioned records emit no null versions entries (strict validate relies on it)
+    const bare = S.createEmpty({ datasetId: 'ds_b', now: 100 });
+    S.setByKey(bare, 'riskValue', '3');
+    const bareM = S.mergeRecords(S.recordIndex(bare), S.recordIndex(S.createEmpty({ datasetId: 'ds_b' })), {});
+    assert(!('setting/riskValue' in bareM.versions), 'unversioned record emits no null versions entry');
+    assert(bareM.records['setting/riskValue'], 'unversioned record still merges');
+
+    // Web Lock promotion: denied ifAvailable → read-only; queued grant → promoted
+    const lockQ = [];
+    const mockLocks = {
+        request: (name, optsOrCb, maybeCb) => {
+            const cb = typeof optsOrCb === 'function' ? optsOrCb : maybeCb;
+            const ifAvail = !!(optsOrCb && optsOrCb.ifAvailable);
+            if (ifAvail) { cb(null); return Promise.resolve(); }
+            lockQ.push(cb); return Promise.resolve();
+        }
+    };
+    const memL = mockStorage();
+    freshStore(memL, { locks: mockLocks });
+    assert(Store.status().writable === false, 'denied ifAvailable → read-only');
+    assert(lockQ.length === 1, 'queued a real lock request for promotion');
+    // the "other tab" writes newer state while we sat read-only
+    const winner = S.createEmpty({ datasetId: 'ds_l2', now: 900 });
+    S.setByKey(winner, 'riskValue', '42');
+    memL.setItem(S.STORAGE_KEY, JSON.stringify(S.encode(winner, { purpose: 'local' })));
+    lockQ.shift()({ name: 'psc-state-write' });   // holder released → our queued request grants
+    assert(Store.isWritable(), 'lock grant promotes read-only tab to writer');
+    assert(Store.get('riskValue') === '42', 'promotion re-reads storage (adopts other tab writes)');
+
     console.log('app-state schema+store tests passed!');
  } catch (e) {
     console.error('app-state test failed:', e);

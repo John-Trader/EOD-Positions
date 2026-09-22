@@ -174,7 +174,11 @@ for (const level of ['log', 'warn', 'error']) {
     const orig = console[level].bind(console);
     console[level] = (...args) => {
         orig(...args);
-        const line = args.map(a => typeof a === 'string' ? a : (a instanceof Error ? (a.stack || a.message) : JSON.stringify(a))).join(' ');
+        const line = args.map(a => {
+            if (typeof a === 'string') return a;
+            if (a instanceof Error) return a.stack || a.message;
+            try { return JSON.stringify(a); } catch (_) { return String(a); }   // circular objects must not crash the tee
+        }).join(' ');
         logBuffer.push(line);
         if (logBuffer.length > LOG_MAX) logBuffer.shift();
         if (logSink) { try { logSink.send('psc:log-line', line); } catch (_) {} }

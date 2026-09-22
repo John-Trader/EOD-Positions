@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const root = fs.realpathSync(__dirname);
-const publicFiles = new Set(['index.html', 'ledger.js', 'state-schema.js', 'state-store.js', 'sync.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
+const publicFiles = new Set(['index.html', 'app.css', 'ledger.js', 'state-schema.js', 'state-store.js', 'sync.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
 const allowedHosts = new Set(['localhost:8080', '127.0.0.1:8080']);
 const types = {
   '.html': 'text/html; charset=utf-8',
@@ -50,7 +50,7 @@ http.createServer((req, res) => {
     if (!isWithinRoot(realFile)) return fail(403, 'Forbidden');
     fs.stat(realFile, (statError, stat) => {
       if (statError || !stat.isFile()) return fail(404, 'Not Found');
-      const headers = { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream' };
+      const headers = { 'Content-Type': types[path.extname(realFile).toLowerCase()] || 'application/octet-stream' };
       if (req.method === 'HEAD') {
         res.writeHead(200, { ...headers, 'Content-Length': stat.size });
         return res.end();

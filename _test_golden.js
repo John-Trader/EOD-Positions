@@ -91,6 +91,13 @@ for (const [qi, q] of quotes.entries()) for (const risk of [500, 850]) for (cons
 for (const total of [1, 7, 67, 333, 1000]) for (const pcts of [[100], [40, 60], [33, 33, 34]]) out.split[`${total}|${pcts.join('-')}`] = api.splitSharesByPct(total, pcts);
 
 if (process.argv.includes('--record')) {
+  // Re-recording overwrites the fixtures a regression test exists to protect —
+  // require an explicit second opt-in so it can never happen by accident or
+  // be used to conceal a regression.
+  if (!process.argv.includes('--yes')) {
+    console.error('--record rewrites _golden_fixtures.json. If the code change is intentional, re-run: node _test_golden.js --record --yes');
+    process.exit(1);
+  }
   fs.writeFileSync(FIX, JSON.stringify(out, null, 1));
   console.log(`Recorded ${Object.keys(out.legs).length} leg cases, ${Object.keys(out.fields).length} field cases -> ${FIX}`);
   process.exit(0);
