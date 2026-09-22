@@ -185,6 +185,10 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     assert(res.tradeGroupKey({ sleeve: 'QLD' }) === 'qld', 'QLD sleeve -> qld');
     assert(res.tradeGroupKey({ sleeve: 'LS Pullback' }) === 'pb', 'pb sleeve -> pb');
     assert(res.tradeGroupKey({ strategyId: 'lspb' }) === 'pb', 'lspb strategyId -> pb');
+    assert(res.tradeGroupKey({ kind: 'pb' }) === 'pb', 'kind pb -> pb');
+    assert(res.tradeGroupKey({ holdUnit: 'week' }) === 'pb', 'weekly hold -> pb');
+    assert(res.tradeGroupKey({ regime: 'LS Pullback · 25% @1R + 75% timed' }) === 'pb', 'old pb regime name -> pb');
+    assert(res.tradeGroupKey({ sleeve: 'QLD', holdUnit: 'week' }) === 'qld', 'QLD weekly stays qld');
     assert(res.tradeGroupKey({ sleeve: 'LS v3', strategyId: 'opt1' }) === 'v3', 'opt1 -> v3');
     assert(res.tradeGroupKey({}) === 'v3', 'no markers -> v3');
     const grp = res.tradeGroups([

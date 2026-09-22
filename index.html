@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.1</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.2</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1029,7 +1029,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.1';
+        const PSC_VERSION = '4.7.2';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -8660,7 +8660,12 @@
         const TRADE_GROUP_ORDER = ['qld', 'v3', 'pb'];
         function tradeGroupKey(t) {
             if (t.sleeve === 'QLD') return 'qld';
-            if (t.sleeve === 'LS Pullback' || t.strategyId === 'lspb') return 'pb';
+            // Pullback markers, strongest first: the sleeve stamp, the lspb
+            // strategy id, then fallbacks for rows logged before sleeve existed —
+            // regime holds the strategy name and only pb/QLD trades hold weekly.
+            if (t.sleeve === 'LS Pullback' || t.strategyId === 'lspb' || t.kind === 'pb'
+                || t.holdUnit === 'week'
+                || (typeof t.regime === 'string' && t.regime.startsWith('LS Pullback'))) return 'pb';
             return 'v3';
         }
         function tradeGroups(trades) {
@@ -8733,8 +8738,13 @@
                     <div data-trade-orders="${trade.id}">${tradeOrdersHtml(trade)}</div>
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
-                        <div class="flex gap-2 text-[11px] font-bold">
-                            <button onclick="openTradeExitModal('${trade.id}')" data-tws-key="${escapeHtml(twsSendKey(trade.ticker, 'exits', trade.sleeve === 'LS Pullback' ? 'pb' : 'v3'))}" class="tws-send-btn text-purple-300 px-2 py-1"><span class="tws-send-label">Exits</span></button>
+                        <div class="flex gap-2 text-[11px] font-bold items-center">
+                            ${!isQld ? `<select onchange="setTradeGroup('${trade.id}', this.value)" title="Strategy group" class="bg-slate-800 text-gray-400 border border-slate-700 rounded px-1 py-1 text-[10px] font-bold">
+                                <option value="v3" ${tradeGroupKey(trade) === 'v3' ? 'selected' : ''}>LS v3</option>
+                                <option value="pb_d" ${tradeGroupKey(trade) === 'pb' && trade.holdUnit !== 'week' ? 'selected' : ''}>Pullback · day-5</option>
+                                <option value="pb_w" ${tradeGroupKey(trade) === 'pb' && trade.holdUnit === 'week' ? 'selected' : ''}>Pullback · wk-5</option>
+                            </select>` : ''}
+                            <button onclick="openTradeExitModal('${trade.id}')" data-tws-key="${escapeHtml(twsSendKey(trade.ticker, 'exits', tradeGroupKey(trade) === 'pb' ? 'pb' : 'v3'))}" class="tws-send-btn text-purple-300 px-2 py-1"><span class="tws-send-label">Exits</span></button>
                             <button onclick="toggleTxnEditor('${trade.id}')" class="text-cyan-300 px-2 py-1">History</button>
                             <button onclick="toggleTradeClose('${trade.id}')" class="text-emerald-300 px-2 py-1">Record close</button>
                             <button onclick="deleteTrade('${trade.id}')" class="text-red-400 px-2 py-1">Remove</button>
@@ -8787,7 +8797,7 @@
             const tr = (activeTradesLog || []).find(t => String(t.id) === String(tradeId));
             if (!tr) return;
             const isLong = tr.side === 'LONG';
-            const kind = tr.sleeve === 'LS Pullback' ? 'pb' : 'v3';
+            const kind = tradeGroupKey(tr) === 'pb' ? 'pb' : 'v3';
             const shares = (window.Ledger && typeof window.Ledger.inventory === 'function')
                 ? (Math.round(window.Ledger.inventory(tr, nyDateStr())) || Number(tr.shares) || 0)
                 : (Number(tr.shares) || 0);
@@ -9613,6 +9623,27 @@
         }
 
         // Remove a trade record without journaling it (with Undo).
+        // Re-tag a position's strategy group — needed for TWS-imported rows that
+        // carry no strategy markers. Pullback picks also fix holdUnit/holdLimit
+        // (day-5 vs week-5) and the exit strategy so Exits open the right modal.
+        function setTradeGroup(tradeId, group) {
+            const tr = activeTradesLog.find(t => String(t.id) === String(tradeId));
+            if (!tr || tr.sleeve === 'QLD') return;
+            if (group === 'pb_w' || group === 'pb_d') {
+                tr.sleeve = 'LS Pullback';
+                tr.strategyId = 'lspb';
+                tr.holdUnit = group === 'pb_w' ? 'week' : 'day';
+                tr.holdLimit = 5;
+            } else {
+                tr.sleeve = 'LS v3';
+                if (tr.strategyId === 'lspb') tr.strategyId = null; // fall back to auto
+                tr.holdUnit = 'day';
+                tr.holdLimit = maxHoldDays;
+            }
+            saveActiveTradesLog();
+            renderActiveTradesPage();
+        }
+
         function deleteTrade(id) {
             const idx = activeTradesLog.findIndex(t => t.id === id);
             if (idx < 0) return;
@@ -9753,7 +9784,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.1';
+        const APP_VERSION = '4.7.2';
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
         async function bridgeHealth() {
