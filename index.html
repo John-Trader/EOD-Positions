@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.1</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1029,7 +1029,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.0';
+        const PSC_VERSION = '4.7.1';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -8651,6 +8651,35 @@
             downloadText(`Trade_Journal_${nyDateStr()}.csv`, [header, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
         }
 
+        // ---------- strategy grouping ----------
+        const TRADE_GROUP_META = {
+            qld: { label: 'QLD Trend Sleeve', chip: 'bg-amber-500/15 text-amber-300 border-amber-500/30', ring: 'border-amber-500/25', bg: 'bg-amber-950/10' },
+            v3:  { label: 'LS v3',            chip: 'bg-blue-500/15 text-blue-300 border-blue-500/30',   ring: 'border-blue-500/25',  bg: 'bg-blue-950/10' },
+            pb:  { label: 'LS Pullback',      chip: 'bg-teal-500/15 text-teal-300 border-teal-500/30',   ring: 'border-teal-500/25',  bg: 'bg-teal-950/10' },
+        };
+        const TRADE_GROUP_ORDER = ['qld', 'v3', 'pb'];
+        function tradeGroupKey(t) {
+            if (t.sleeve === 'QLD') return 'qld';
+            if (t.sleeve === 'LS Pullback' || t.strategyId === 'lspb') return 'pb';
+            return 'v3';
+        }
+        function tradeGroups(trades) {
+            const groups = {};
+            trades.forEach(t => { const k = tradeGroupKey(t); (groups[k] || (groups[k] = [])).push(t); });
+            return TRADE_GROUP_ORDER.filter(k => groups[k]).map(k => ({ key: k, trades: groups[k] }));
+        }
+        function tradeGroupHtml(key, trades) {
+            const meta = TRADE_GROUP_META[key];
+            const invested = trades.reduce((s, t) => s + (Number(t.shares) || 0) * (Number(t.entryPrice) || 0), 0);
+            return `<div class="rounded-2xl border ${meta.ring} ${meta.bg} p-2 space-y-2">
+                <div class="flex justify-between items-center px-1.5 pt-0.5">
+                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${meta.chip}">${meta.label}</span>
+                    <span class="text-[10px] text-gray-500">${trades.length} position${trades.length === 1 ? '' : 's'}${invested > 0 ? ` · $${Math.round(invested).toLocaleString()} invested` : ''}</span>
+                </div>
+                ${trades.map(tradeCardHtml).join('')}
+            </div>`;
+        }
+
         function tradeCardHtml(trade) {
             const dayCount = calculateMarketDaysElapsed(trade.entryDate);
             const isLong = trade.side === 'LONG';
@@ -8823,7 +8852,6 @@
                 return;
             }
             const activeTrades = activeTradesLog.filter(t => t.status === 'ACTIVE');
-            activeTrades.sort((a, b) => ((b.sleeve === 'QLD') ? 1 : 0) - ((a.sleeve === 'QLD') ? 1 : 0)); // QLD sleeve pins on top
             if (!activeTrades.length) {
                 container.innerHTML = `<div class="p-8 text-center text-gray-400 space-y-2">
                     <div class="font-bold text-white">No active logged trades</div>
@@ -8832,7 +8860,7 @@
                 restoreFormDrafts(container, drafts);
                 return;
             }
-            container.innerHTML = activeTrades.map(tradeCardHtml).join('');
+            container.innerHTML = tradeGroups(activeTrades).map(g => tradeGroupHtml(g.key, g.trades)).join('');
             restoreFormDrafts(container, drafts);
             syncTwsSendButtons();
             refreshTradeOrderLines();
@@ -9725,7 +9753,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.0';
+        const APP_VERSION = '4.7.1';
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
         async function bridgeHealth() {

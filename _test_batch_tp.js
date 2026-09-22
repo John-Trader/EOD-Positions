@@ -82,7 +82,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 (async () => {
   try {
     const sandbox = { elements, document, localStorage, window, console, setTimeout, clearTimeout, setInterval, clearInterval, parseFloat, parseInt, Number, Array, Math, Date, String };
-    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { onBatchPreviewTpInput, renderBatchPreview, collectBatchTradesFromDom, buildExitLegs, batchVerifySent, collectBuilderTrades, renderBuilderOrdersPreview, sendTwsBuilderAll, brokerExitShares, tradeOrdersHtml, tradeExitStrategyId };');
+    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { onBatchPreviewTpInput, renderBatchPreview, collectBatchTradesFromDom, buildExitLegs, batchVerifySent, collectBuilderTrades, renderBuilderOrdersPreview, sendTwsBuilderAll, brokerExitShares, tradeOrdersHtml, tradeExitStrategyId, tradeGroupKey, tradeGroups };');
     const res = fn(...Object.values(sandbox));
 
     // Set the global batch strategy to opt1 and give it a custom LMT.
@@ -178,6 +178,24 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     assert(res.tradeExitStrategyId({ strategyId: 'pasted' }, 'pb', true) === 'lspb', 'pasted/non-strategy id -> lspb for pb');
     const autoId = res.tradeExitStrategyId({ strategyId: 'does-not-exist' }, 'v3', true);
     assert(typeof autoId === 'string' && autoId.length > 0 && autoId !== 'does-not-exist', 'stale id -> resolved default');
+
+    // Test 11: tradeGroupKey/tradeGroups — QLD sleeve, LS Pullback (sleeve or
+    // strategyId lspb), everything else falls into the LS v3 bucket; group
+    // order pins QLD first, then v3, then pb.
+    assert(res.tradeGroupKey({ sleeve: 'QLD' }) === 'qld', 'QLD sleeve -> qld');
+    assert(res.tradeGroupKey({ sleeve: 'LS Pullback' }) === 'pb', 'pb sleeve -> pb');
+    assert(res.tradeGroupKey({ strategyId: 'lspb' }) === 'pb', 'lspb strategyId -> pb');
+    assert(res.tradeGroupKey({ sleeve: 'LS v3', strategyId: 'opt1' }) === 'v3', 'opt1 -> v3');
+    assert(res.tradeGroupKey({}) === 'v3', 'no markers -> v3');
+    const grp = res.tradeGroups([
+      { ticker: 'A', sleeve: 'LS Pullback' },
+      { ticker: 'B' },
+      { ticker: 'QLD', sleeve: 'QLD' },
+      { ticker: 'C', strategyId: 'short16' },
+    ]);
+    assert(grp.map(g => g.key).join(',') === 'qld,v3,pb', 'group order qld,v3,pb — got ' + grp.map(g => g.key).join(','));
+    assert(grp[1].trades.map(t => t.ticker).join(',') === 'B,C', 'v3 bucket keeps log order');
+    assert(res.tradeGroups([]).length === 0, 'empty -> no groups');
 
     console.log('Batch TP tests passed!');
     process.exit(0);
