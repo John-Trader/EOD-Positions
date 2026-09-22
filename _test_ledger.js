@@ -236,6 +236,29 @@ try {
   assert(ic.rows.length >= 3, 'interval rows');
   assert(ic.delta === 13000, 'equity delta 113000-100000=13000');
 
+  // ---------- regression: Entry fill must not double-count ----------
+  // A fresh TWS-imported row has flat fields but no events; onTwsFill('Entry')
+  // must create exactly one Entry, not synth-Entry + real-Entry.
+  const fresh = trade(50, 'ENT', [], { status: 'ACTIVE', entryDate: '2026-09-01', entryPrice: 10, shares: 100, totalQty: 100 });
+  J = [fresh];
+  L.onTwsFill(fresh, 'Entry', 100, 10, 'exec-1');
+  assert(fresh.events.filter(e => e.kind === 'Entry').length === 1, 'Entry fill → exactly one Entry event');
+  assert(L.inventory(fresh) === 100, 'inventory 100 not 200');
+  L.onTwsFill(fresh, 'Entry', 100, 10, 'exec-1');   // replay
+  assert(L.inventory(fresh) === 100, 'execId dedupe: replay ignored');
+
+  // ---------- regression: Exit qty = remaining, not lifetime total ----------
+  const part = trade(51, 'PRT', [ev('Entry', '2026-09-01', 100, 10, 1), ev('Partial', '2026-09-10', 30, 12, 2)], { status: 'ACTIVE', entryDate: '2026-09-01', entryPrice: 10, shares: 70, totalQty: 100 });
+  J = [part];
+  L.onTradeClosed(part, 11, '2026-09-20');
+  const lastEv = part.events[part.events.length - 1];
+  assert(lastEv.kind === 'Exit' && lastEv.qty === 70, 'Exit qty = 70 remaining (not 100 totalQty)');
+  assert(Math.abs(L.inventory(part)) < 1e-8, 'post-Exit inventory is flat, not negative');
+
+  // ---------- regression: undo removes a key that did not exist ----------
+  const missingUndo = L.captureStoreUndo(['dailyValuations']);   // key absent? → raw null
+  assert(missingUndo.stores.dailyValuations !== undefined, 'captureStoreUndo records absent key');
+
   console.log('_test_ledger OK');
 } catch (e) {
   console.error(e.stack || e);

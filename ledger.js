@@ -15,7 +15,7 @@ var Ledger = (function () {
     var AUDIT_CAP = 300;
 
     // ---------- bindings (wired by Ledger.init from index.html) ----------
-    var _get = null, _set = null;                       // storage get/set
+    var _get = null, _set = null, _remove = null;       // storage get/set/remove
     var _journalGet = function () { return []; };       // () => activeTradesLog
     var _journalSet = null;                             // (arr) => persist
     var _hooks = {
@@ -48,7 +48,7 @@ var Ledger = (function () {
 
     function init(opts) {
         opts = opts || {};
-        if (opts.storage) { _get = opts.storage.get; _set = opts.storage.set; }
+        if (opts.storage) { _get = opts.storage.get; _set = opts.storage.set; _remove = opts.storage.remove || null; }
         if (opts.journal) { _journalGet = opts.journal.get; _journalSet = opts.journal.set; }
         if (opts.hooks) for (var k in opts.hooks) if (typeof opts.hooks[k] === 'function') _hooks[k] = opts.hooks[k];
     }
@@ -147,7 +147,10 @@ var Ledger = (function () {
     }
     // Append a ledger event to a trade. Advisory validation only — never blocks.
     function appendEvent(t, ev) {
-        ensureEvents(t);
+        // An incoming Entry IS the genesis — materializing synthesized events
+        // first would create a second Entry and double the inventory.
+        if (ev.kind === 'Entry') { if (!Array.isArray(t.events)) t.events = []; }
+        else ensureEvents(t);
         var e = {
             id: ev.id || uid(), kind: ev.kind, date: ev.date || today(),
             qty: num(ev.qty) || 0, price: num(ev.price) || 0,
@@ -523,7 +526,6 @@ var Ledger = (function () {
         rows.push({ symbol: 'QLD (ledger)', sleeve: SLEEVES[2], pnl: (qldPnl(dateA, dateB).pnl || 0) });
         var cap = eq0.value;
         rows.forEach(function (r) { r.pp = cap ? r.pnl / cap * 100 : null; });
-        var mtd = performance(monthOf(dateB) > monthOf(dateA) ? dateB.slice(0, 8) + '01' : dateA.slice(0, 8) + '01', dateB);
         return { rows: rows, equity0: eq0, equity1: eq1, delta: (eq0.value !== null && eq1.value !== null) ? eq1.value - eq0.value : null };
     }
 
@@ -669,7 +671,10 @@ var Ledger = (function () {
         var u = entry.undo || {};
         if (u.stores) {
             for (var k in u.stores) {
-                if (u.stores[k] === null || u.stores[k] === undefined) { /* nothing to restore */ }
+                if (u.stores[k] === null || u.stores[k] === undefined) {
+                    // Key did not exist before the change — undo must remove it.
+                    if (_remove) _remove(k); else delete _mem[k];
+                }
                 else if (_set) _set(k, u.stores[k]); else _mem[k] = u.stores[k];
             }
         }
@@ -685,6 +690,7 @@ var Ledger = (function () {
         }
         // The undo itself is audited (without an undo payload of its own).
         auditPush('Undo: ' + entry.action, reason || '', {});
+        if (typeof window !== 'undefined' && typeof window.notifyLedgerDirty === 'function') window.notifyLedgerDirty();
         return { ok: true, entry: entry };
     }
 
@@ -733,7 +739,7 @@ var Ledger = (function () {
             var sh = qldSharesAt(date || today());
             if (sh !== null && px) v = sh * px;
         }
-        if (v === null) return false;
+        if (v === null || !Number.isFinite(v)) return false;
         return captureValuation(date || today(), { qldValue: v });
     }
     // One-click "Save today's close" — marks + equity + QLD in one write.
@@ -763,15 +769,16 @@ var Ledger = (function () {
     }
     function onTradeClosed(t, exitPrice, exitDate) {
         if (!t) return;
+        // Exit qty = what events still hold — closedQty/totalQty are lifetime
+        // totals (never decremented by partials) and would overstate the exit.
         var held = inventory(t, '9999-12-31');
-        var qty = num(t.closedQty) || num(t.totalQty) || held || num(t.shares) || 0;
         // If stored events already sum to flat, the broker path recorded it.
-        var evQty = held;
-        if (evQty <= 1e-8 && tradeEvents(t).some(function (e) { return e.kind === 'Exit'; })) return;
-        appendEvent(t, { kind: 'Exit', qty: qty, price: num(exitPrice) || 0, date: exitDate || today(), note: 'Manual close' });
+        if (held <= 1e-8 && tradeEvents(t).some(function (e) { return e.kind === 'Exit'; })) return;
+        appendEvent(t, { kind: 'Exit', qty: Math.max(0, held), price: num(exitPrice) || 0, date: exitDate || today(), note: 'Manual close' });
     }
     function onImportedPosition(t) {
         if (!t) return;
+        if (Array.isArray(t.events) && t.events.length) return;   // never clobber recorded history
         t.events = [{
             id: uid(), kind: 'Entry', date: t.entryDate || today(),
             qty: num(t.shares) || num(t.totalQty) || 0, price: num(t.entryPrice) || 0,
@@ -840,7 +847,7 @@ var Ledger = (function () {
         conf.remoteTime = payload.syncedAt;
         conf.lastError = '';
         saveSyncConfig(conf);
-        return { ok: true };
+        return { ok: true, syncedAt: payload.syncedAt };
     }
 
     // ---------- misc exports ----------

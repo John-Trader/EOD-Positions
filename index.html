@@ -8887,7 +8887,13 @@
             // Keep the flat view coherent with the ledger.
             if (kind === 'Partial') { trade.shares = Math.max(0, (trade.shares || 0) - qty); trade.realizedPnl = (trade.realizedPnl || 0) + (trade.side === 'LONG' ? 1 : -1) * (price - trade.entryPrice) * qty; }
             if (kind === 'Add') { trade.entryPrice = ((trade.entryPrice * trade.shares) + price * qty) / (trade.shares + qty); trade.shares += qty; trade.totalQty = Math.max(trade.totalQty || 0, trade.shares); }
-            if (kind === 'Split') { trade.shares *= qty; trade.entryPrice /= qty; trade.stopPrice && (trade.stopPrice /= qty); }
+            if (kind === 'Split') {
+                trade.shares *= qty; trade.entryPrice /= qty;
+                if (trade.stopPrice) trade.stopPrice /= qty;
+                if (trade.tp1) trade.tp1 /= qty;
+                if (trade.tp2) trade.tp2 /= qty;
+                if (trade.totalQty) trade.totalQty *= qty;
+            }
             Ledger.auditPush(kind + ' ' + trade.ticker, reason, undo);
             Ledger.flagStaleFrom(date);
             if (!saveActiveTradesLog()) { showErrorToast('Could not save the journal.'); return; }
@@ -8929,7 +8935,9 @@
             const conf = Ledger.syncConfig();
             if (!conf.enabled || conf.provider === 'none') return;
             if (_syncPushTimer) clearTimeout(_syncPushTimer);
-            _syncPushTimer = setTimeout(syncPushNow, 2500);
+            // 10s quiet period — quote refresh writes marks continuously during
+            // RTH; a short debounce would upload the whole backup per poll cycle.
+            _syncPushTimer = setTimeout(syncPushNow, 10000);
         }
         async function syncPushNow() {
             if (_syncBusy || !ledgerReady()) return;
@@ -8938,7 +8946,13 @@
             _syncBusy = true;
             try {
                 const r = await Ledger.syncPush((u, i) => fetch(u, i), buildBackupData());
-                if (r.ok) updateSyncStatusLine();
+                if (r.ok) {
+                    // Stamp local time so the next pull doesn't see our own push
+                    // as newer — otherwise restart-mid-debounce could re-apply it
+                    // over fresh local edits.
+                    safeStorageSet('journalSyncedAt', String(r.syncedAt));
+                    updateSyncStatusLine();
+                }
             } catch (e) {
                 const c = Ledger.syncConfig(); c.lastError = e.message; Ledger.saveSyncConfig(c);
                 updateSyncStatusLine();
@@ -9202,15 +9216,19 @@
             // Ledger stores — additive keys; absent in old backups (default-init ok),
             // so validate only when present. Stored as JSON strings like other values.
             if (data.ledgerConfig !== undefined) {
-                const c = data.ledgerConfig;
+                let c = data.ledgerConfig;
+                // Backups carry storage strings — parse before validating.
+                if (typeof c === 'string') { try { c = JSON.parse(c); } catch { throw new Error('Invalid ledger config'); } }
                 if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('Invalid ledger config');
                 if (c.start !== null && c.start !== undefined && !window.Ledger?.isIsoDate?.(c.start)) throw new Error('Invalid ledger start date');
                 if (c.openingEquity !== null && c.openingEquity !== undefined && !(Number(c.openingEquity) > 0)) throw new Error('Invalid opening equity');
                 values.ledgerConfig = JSON.stringify({ start: c.start || null, openingEquity: Number(c.openingEquity) || null, mode: c.mode === 'model' ? 'model' : 'actual', qldOpeningShares: Number(c.qldOpeningShares) || null, reportNotes: (c.reportNotes && typeof c.reportNotes === 'object') ? c.reportNotes : {} });
             }
             const jstore = (key, name) => {
-                if (data[key] === undefined) return;
+                // null/absent → leave the key alone so stores default-init.
+                if (data[key] === undefined || data[key] === null) return;
                 let v; try { v = typeof data[key] === 'string' ? JSON.parse(data[key]) : data[key]; } catch { throw new Error('Invalid ' + name); }
+                if (v === null) return;
                 values[key] = JSON.stringify(v);
             };
             jstore('dailyValuations', 'daily valuations');
@@ -9218,7 +9236,7 @@
             jstore('qldLedgerTxns', 'QLD ledger');
             jstore('reportSnapshots', 'report snapshots');
             jstore('journalAudit', 'audit log');
-            if (data.journalSyncedAt !== undefined && Number.isFinite(Number(data.journalSyncedAt))) values.journalSyncedAt = String(Number(data.journalSyncedAt));
+            if (data.journalSyncedAt !== undefined && Number.isFinite(Number(data.journalSyncedAt)) && Number(data.journalSyncedAt) > 0) values.journalSyncedAt = String(Number(data.journalSyncedAt));
             // Bridge URL + token are machine-local — a backup from another machine
             // must never overwrite the live bridge config with stale values.
             delete values.twsBridgeUrl;
@@ -10732,7 +10750,7 @@
         // the app works identically if the file is absent or stale-cached.
         if (window.Ledger) {
             Ledger.init({
-                storage: { get: safeStorageGet, set: safeStorageSet },
+                storage: { get: safeStorageGet, set: safeStorageSet, remove: safeStorageRemove },
                 journal: {
                     get: () => activeTradesLog,
                     set: (arr) => { activeTradesLog = arr; saveActiveTradesLog(); }
