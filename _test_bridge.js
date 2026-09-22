@@ -112,6 +112,16 @@ assertTrue(bridge.resolveWebFile(__dirname, '/') !== null, '/ maps to index.html
 assertEq(bridge.resolveWebFile(__dirname, '/orders'), null, 'API path not a static file');
 assertEq(bridge.resolveWebFile(__dirname, '/../secret'), null, 'non-whitelisted path rejected');
 
+// ---- flex module surface (re-exported for tests) ----
+assertTrue(typeof bridge.flexRequest === 'function', 'flexRequest exported');
+assertTrue(typeof bridge.flexTradesFromCsv === 'function', 'flexTradesFromCsv exported');
+const fcsv = '"Trades","Header","Symbol","Date/Time","Quantity","Trade Price","Buy/Sell","IB Commission","IB Exec ID"\n' +
+    '"Trades","Data","AAPL","20260904;093001","100","150.25","BUY","-1.05","0000e1a7.x.01.01"';
+const ftr = bridge.flexTradesFromCsv(fcsv);
+assertEq(ftr.trades.length, 1, 'csv -> one trade');
+assertEq(ftr.trades[0].side, 'BOT', 'BUY maps BOT');
+assertEq(ftr.trades[0].time, '20260904  09:30:01', 'TWS-layout time for twsExecKey');
+
 // ---- integration: real server on a random port, no TWS ----
 const http = require('http');
 function req(pathname, { method = 'GET', headers = {}, body } = {}, base) {
@@ -140,6 +150,14 @@ function req(pathname, { method = 'GET', headers = {}, body } = {}, base) {
 
   const denied = await req('/orders', { headers: { Origin: base } }, base);
   assertEq(denied.status, 401, 'authed GET requires token');
+
+  // /flex/report: token-authed, NOT gated on TWS connectivity (pure IBKR HTTPS)
+  const flexDenied = await req('/flex/report?q=1', { headers: { Origin: base } }, base);
+  assertEq(flexDenied.status, 401, 'flex report requires bridge token');
+  const token = (page.text.match(/name="psc-bridge" content="([^"]+)"/) || [])[1];
+  assertTrue(!!token, 'bridge token extracted from served meta');
+  const flexBadReq = await req('/flex/report?q=1', { headers: { Origin: base, 'X-Bridge-Token': token } }, base);
+  assertEq(flexBadReq.status, 400, 'flex report without X-Flex-Token -> 400 (not 503 — TWS not required)');
 
   const deniedPost = await req('/order', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: '{}' }, base);
   assertEq(deniedPost.status, 401, 'unauthed POST rejected');

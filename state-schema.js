@@ -65,7 +65,8 @@
     var LOCAL_STR = [
         'twsEnabled', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount',
         'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled',
-        'twsExitStrategy', 'twsEntryOutsideRth', 'autoEntryEnabled', 'autoEntryTime'
+        'twsExitStrategy', 'twsEntryOutsideRth', 'autoEntryEnabled', 'autoEntryTime',
+        'flexToken', 'flexQueryId', 'flexAutoSync', 'flexSyncTime'
     ];
     var LOCAL_ROOT_STR = ['journalSyncedAt', 'syncPending'];
     var BRIDGE_STR = ['twsBridgeUrl', 'twsBridgeToken'];           // derived/local — not portable
@@ -83,7 +84,8 @@
     var LOCAL_JSON = {
         twsSeenExecs: 'execReceipts',
         syncConfig: 'syncConfig',
-        autoEntryRun: 'autoEntryRun'
+        autoEntryRun: 'autoEntryRun',
+        flexSyncState: 'flexSyncState'
     };
     var CACHE_JSON = { earningsCalendarCache: 'earnings' };
     var SCANNER_PAGES = { '': 'scanner', 'pg_lsv3_': 'lsv3', 'pg_pb_': 'pullback' };
@@ -150,7 +152,8 @@
             execReceipts: [],
             syncConfig: { provider: 'none', enabled: false, url: '', binId: '', apiKey: '', basket: '', lastPushed: 0, lastPulled: 0, remoteTime: 0, lastError: '' },
             journalSyncedAt: null,
-            autoEntryRun: null
+            autoEntryRun: null,
+            flexSyncState: null
         };
     }
     function defaultData() {

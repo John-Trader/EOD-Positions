@@ -45,6 +45,7 @@ All endpoints bind to `127.0.0.1` only. `GET /health` is token-free; every other
 | `GET /pnl` | `{dailyPnL,unrealizedPnL,realizedPnL}` |
 | `GET /contract?symbol=` | `{ok,conId,longName}` — symbol preflight check |
 | `GET /history?symbol=&duration=` | Daily bars `[{d,o,h,l,c,v}]` for ATR/ADR + weekly resample — `duration` defaults to `1 M`, accepts IB strings like `430 D` / `3 Y` |
+| `GET /flex/report?q=` | IBKR Flex Web Service pull — needs `X-Flex-Token` header + `q` (query id). Pure HTTPS to IBKR, so it works without a TWS connection. Returns `{trades:[{symbol,side,shares,price,commission,execId,time,...}]}`. Setup: `FLEX.md` |
 | `WS /stream` | Streaming channel — see below |
 
 ## WS /stream

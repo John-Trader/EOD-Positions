@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.5.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.6.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -622,6 +622,22 @@
                                             <span class="text-[10px] text-gray-500">NY</span>
                                         </div>
                                         <p id="autoEntryStatus" class="text-[10px] text-gray-400" aria-live="polite">Off.</p>
+                                    </div>
+                                    <div class="border-t border-white/5 pt-1.5 space-y-1">
+                                        <div class="flex items-center gap-2 text-xs flex-wrap">
+                                            <span class="text-gray-300">IBKR Flex reconcile</span>
+                                            <input id="flexTokenSetting" type="password" placeholder="Flex token" autocomplete="off" onchange="saveTwsSettings()" class="bg-slate-800 text-white font-bold text-xs border border-slate-600 rounded px-1.5 py-0.5 w-32">
+                                            <input id="flexQueryIdSetting" type="text" inputmode="numeric" placeholder="Query ID" onchange="saveTwsSettings()" class="bg-slate-800 text-white font-bold text-xs border border-slate-600 rounded px-1.5 py-0.5 w-20">
+                                            <button type="button" onclick="flexReconcileNow(true)" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-gray-200 border border-slate-500">Reconcile now</button>
+                                        </div>
+                                        <div class="flex items-center gap-2 text-xs">
+                                            <label class="flex items-center gap-1.5" title="Once per day at the set New York time, pull the Flex report through the bridge and reconcile fills + commissions. Needs the bridge running; does not need TWS connected. See FLEX.md for setup.">
+                                                <input id="flexAutoSyncSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto at
+                                            </label>
+                                            <input id="flexSyncTimeSetting" type="time" value="18:00" onchange="saveTwsSettings()" class="bg-slate-800 text-white font-bold text-xs border border-slate-600 rounded px-1.5 py-0.5">
+                                            <span class="text-[10px] text-gray-500">NY</span>
+                                        </div>
+                                        <p id="flexStatus" class="text-[10px] text-gray-400" aria-live="polite">Off — set token + query ID to enable (see FLEX.md).</p>
                                     </div>
                                 </div>
                             </div>
@@ -1008,7 +1024,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.5.0';
+        const PSC_VERSION = '4.6.0';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -1226,6 +1242,14 @@
         let autoEntryTime = safeStorageGet('autoEntryTime') || '15:55';
         let autoEntryState = null;    // {date, done, results:{ticker:{status,msg}}} — hydrated from 'autoEntryRun'
         let autoEntryBusy = false;
+        // IBKR Flex reconcile (v4.6.0) — machine-local: once/day pulls the Flex
+        // report through the bridge and reconciles fills + commissions.
+        let flexToken = safeStorageGet('flexToken') || '';
+        let flexQueryId = safeStorageGet('flexQueryId') || '';
+        let flexAutoSync = safeStorageGet('flexAutoSync') === 'true';
+        let flexSyncTime = safeStorageGet('flexSyncTime') || '18:00';
+        let flexSyncState = null;     // {lastRunDate, lastAttempt, result:{...}} — hydrated from 'flexSyncState'
+        let flexBusy = false;
         let twsConnected = false;
         let twsBridgeUp = false;         // /health answered — distinguishes bridge-down from TWS-down
         let twsAccount = '';
@@ -3345,6 +3369,7 @@
             // Scheduled auto-entry — isolated so a failure here can never kill
             // the 1s clock tick that drives the countdown UI.
             try { autoEntryTick(ny); } catch (e) { console.warn('autoEntryTick:', e && e.message); }
+            try { flexSyncTick(ny); } catch (e) { console.warn('flexSyncTick:', e && e.message); }
         }
 
         // ========================================================
@@ -8672,6 +8697,8 @@
                 }
                 if (warns.length) out += `<div class="text-[10px] text-amber-200 bg-amber-950/30 border border-amber-500/30 rounded-lg px-2.5 py-1.5 space-y-0.5">${warns.map(w => `<div>⚠ ${escapeHtml(w)}</div>`).join('')}</div>`;
                 out += Ledger.reportHtml(report);
+                // Commissions — separate display-only tracking (never in P&L/cost).
+                out += flexCommissionsHtml(report.month);
                 // finalize + revisions
                 const snaps = Ledger.snapshotList(report.month);
                 const stale = snaps.filter(s => s.stale).length;
@@ -8705,6 +8732,26 @@
                 ${reportPanels.audit ? reportAuditHtml() : ''}
             </div>`;
             return out;
+        }
+        // Commissions panel (in-app only — kept out of the exported report so the
+        // published format stays untouched). Per-week rows inside the month.
+        function flexCommissionsHtml(month) {
+            if (!ledgerReady()) return '';
+            const byMonth = Ledger.commissionsByMonth();
+            const monthTotal = byMonth[month] || 0;
+            const byWeek = Ledger.commissionsByWeek();
+            const weeks = Object.keys(byWeek).filter(w => w.slice(0, 7) === month).sort();
+            if (!(monthTotal > 0)) {
+                return `<div class="bg-slate-900/60 border border-white/10 rounded-xl px-3 py-2 mt-2 text-[10px] text-gray-500">Commissions this month: none recorded yet — run "Reconcile now" (Settings → TWS) to pull them from IBKR.</div>`;
+            }
+            return `<div class="bg-slate-900/60 border border-white/10 rounded-xl px-3 py-2 mt-2 space-y-1">
+                <div class="flex items-baseline gap-2 text-[11px]">
+                    <span class="font-bold text-gray-200 uppercase text-[9px]">Commissions</span>
+                    <span class="font-mono-num text-white">$${monthTotal.toFixed(2)}</span>
+                    <span class="text-gray-500">this month — advisory; not deducted from the report P&amp;L</span>
+                </div>
+                ${weeks.map(w => `<div class="flex justify-between text-[10px] text-gray-400"><span>Week of ${Ledger.fmtDate(w)}</span><span class="font-mono-num">$${byWeek[w].toFixed(2)}</span></div>`).join('')}
+            </div>`;
         }
 
         function reportSetupHtml() {
@@ -8968,6 +9015,7 @@
                     <span class="w-14 text-gray-500">${e.date.slice(5)}</span>
                     <span class="w-14 font-bold ${e.kind === 'Exit' || e.kind === 'Partial' ? 'text-rose-300' : e.kind === 'Income' ? 'text-amber-300' : 'text-emerald-300'}">${e.kind}</span>
                     <span class="font-mono-num">${e.kind === 'Income' ? '$' + e.amount : e.qty + ' @ $' + Number(e.price).toFixed(2)}</span>
+                    ${Number(e.commission) > 0 ? `<span class="text-gray-500">comm $${Number(e.commission).toFixed(2)}</span>` : ''}
                     <span class="text-gray-600 flex-1 truncate">${escapeHtml(e.note || '')}</span>
                     ${['Partial', 'Add', 'Income', 'Split'].includes(e.kind) ? `<button onclick="removeTradeEvent('${trade.id}','${e.id}')" class="text-red-400">✕</button>` : ''}
                 </div>`).join('')}
@@ -8982,6 +9030,7 @@
                     <input id="txnAmt-${trade.id}" type="number" step="any" placeholder="$ (income)" class="bg-slate-800 border border-slate-600 rounded p-1 w-20">
                     <button onclick="submitTxnEvent('${trade.id}')" class="bg-emerald-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
                 </div>
+                ${Ledger.commissionForTrade(trade) > 0 ? `<div class="text-[10px] text-gray-400 pt-0.5">Commissions paid: $${Ledger.commissionForTrade(trade).toFixed(2)}</div>` : ''}
                 <p class="text-[9px] text-gray-600">Advisory only — events feed the monthly report; the card's live numbers stay as they are.</p>
             </div>`;
         }
@@ -9405,7 +9454,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '4.5.0';
+        const APP_VERSION = '4.6.0';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
@@ -9539,6 +9588,20 @@
             safeStorageSet('autoEntryEnabled', String(autoEntryEnabled));
             safeStorageSet('autoEntryTime', autoEntryTime);
             updateAutoEntryStatus();
+            const fTok = document.getElementById('flexTokenSetting');
+            const fQid = document.getElementById('flexQueryIdSetting');
+            const fAuto = document.getElementById('flexAutoSyncSetting');
+            const fTime = document.getElementById('flexSyncTimeSetting');
+            flexToken = fTok ? fTok.value.trim() : flexToken;
+            flexQueryId = fQid ? fQid.value.trim() : flexQueryId;
+            flexAutoSync = !!(fAuto && fAuto.checked);
+            flexSyncTime = parseAutoEntryTime(fTime ? fTime.value : '') !== null ? fTime.value : '18:00';
+            if (fTime) { fTime.value = flexSyncTime; fTime.disabled = !flexAutoSync; }
+            safeStorageSet('flexToken', flexToken);
+            safeStorageSet('flexQueryId', flexQueryId);
+            safeStorageSet('flexAutoSync', String(flexAutoSync));
+            safeStorageSet('flexSyncTime', flexSyncTime);
+            updateFlexStatus();
             // Turning off account sync restores the user's last typed value.
             if (wasSyncing && !twsSyncAccount && twsManualAccountValue != null) {
                 accountValue = twsManualAccountValue;
@@ -9574,6 +9637,12 @@
             const storedAeTime = safeStorageGet('autoEntryTime');
             autoEntryTime = parseAutoEntryTime(storedAeTime) !== null ? storedAeTime : '15:55';
             try { autoEntryState = JSON.parse(safeStorageGet('autoEntryRun') || 'null'); } catch (e) { autoEntryState = null; }
+            flexToken = safeStorageGet('flexToken') || '';
+            flexQueryId = safeStorageGet('flexQueryId') || '';
+            flexAutoSync = safeStorageGet('flexAutoSync') === 'true';
+            const storedFlexTime = safeStorageGet('flexSyncTime');
+            flexSyncTime = parseAutoEntryTime(storedFlexTime) !== null ? storedFlexTime : '18:00';
+            try { flexSyncState = JSON.parse(safeStorageGet('flexSyncState') || 'null'); } catch (e) { flexSyncState = null; }
             twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
@@ -9588,6 +9657,15 @@
             if (aeEn) aeEn.checked = autoEntryEnabled;
             if (aeTime) { aeTime.value = autoEntryTime; aeTime.disabled = !autoEntryEnabled; }
             updateAutoEntryStatus();
+            const fTok = document.getElementById('flexTokenSetting');
+            const fQid = document.getElementById('flexQueryIdSetting');
+            const fAuto = document.getElementById('flexAutoSyncSetting');
+            const fTime = document.getElementById('flexSyncTimeSetting');
+            if (fTok) fTok.value = flexToken;
+            if (fQid) fQid.value = flexQueryId;
+            if (fAuto) fAuto.checked = flexAutoSync;
+            if (fTime) { fTime.value = flexSyncTime; fTime.disabled = !flexAutoSync; }
+            updateFlexStatus();
             const tvals = { twsQuotesEnabled, twsSyncAccount, twsPositionsEnabled, twsOrdersEnabled, twsFillsJournalEnabled, twsPnlEnabled, twsEntryOutsideRth };
             for (const [key, elId] of Object.entries({
                 twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
@@ -9947,6 +10025,186 @@
             } finally {
                 autoEntryBusy = false;
             }
+        }
+
+        // ---------- IBKR Flex reconcile (v4.6.0) ----------
+        // Daily/manual pull of the Flex Web Service report through the bridge.
+        // Trades feed the same handleTwsExecution dedupe/classify machinery as the
+        // live stream; commissions land on events as metadata — never in cost basis.
+        function flexConfigured() { return !!(flexToken && flexQueryId); }
+        function flexStateLoad() {
+            if (flexSyncState) return flexSyncState;
+            try { flexSyncState = JSON.parse(safeStorageGet('flexSyncState') || 'null'); } catch (e) { flexSyncState = null; }
+            return flexSyncState;
+        }
+        function flexStateSave(st) {
+            flexSyncState = st;
+            return safeStorageSet('flexSyncState', JSON.stringify(st));
+        }
+        function setFlexStatus(msg) {
+            const el = (typeof document !== 'undefined' && document.getElementById) ? document.getElementById('flexStatus') : null;
+            if (el) el.textContent = msg;
+        }
+        function updateFlexStatus() {
+            const st = flexStateLoad();
+            if (!flexConfigured()) { setFlexStatus('Off — set token + query ID to enable (see FLEX.md).'); return; }
+            const last = st && st.lastRunDate ? 'last ran ' + st.lastRunDate : 'never ran';
+            const res = st && st.result;
+            const resTxt = res ? ` — ${res.new || 0} new · ${res.amended || 0} upgraded · ${res.updated || 0} updated` : '';
+            if (!flexAutoSync) { setFlexStatus(`Configured (manual only) — ${last}${resTxt}.`); return; }
+            setFlexStatus(`${flexBusy ? 'Running…' : 'Auto at ' + flexSyncTime + ' NY'} — ${last}${resTxt}.`);
+        }
+        // Long-timeout fetch — statement generation can take 30–90s.
+        async function flexFetchReport() {
+            // Needs only the bridge (not the TWS socket) — /flex/report is pure IBKR HTTPS.
+            if (!twsBridgeUrl || !twsBridgeToken) throw new Error('Bridge not configured');
+            const url = twsBridgeUrl.replace(/\/$/, '') + '/flex/report?q=' + encodeURIComponent(flexQueryId);
+            const headers = {};
+            if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
+            headers['X-Flex-Token'] = flexToken;
+            const res = await fetchWithTimeout(url, { method: 'GET', headers }, 120000);
+            return await res.json();
+        }
+        // Find a journal event matching a flex fill that carries no execId — est
+        // drafts, imported-position Entries, manual records. Unique match only:
+        // two identical same-day same-qty fills stay ambiguous → classify instead.
+        // Est-note events match across dates (drafts carry the detection date).
+        function findFlexEstMatch(ticker, side, qty, dateStr) {
+            const kinds = side === 'BOT' ? ['Entry', 'Add'] : ['Partial', 'Exit'];
+            const estish = /est|imported|manual/i;
+            const eq = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 1e-6;
+            const cands = [];
+            for (const tr of activeTradesLog) {
+                if (tr.ticker !== ticker) continue;
+                for (const e of (tr.events || [])) {
+                    if (e.execId || !kinds.includes(e.kind) || !eq(e.qty, qty)) continue;
+                    if (e.date === dateStr) cands.push({ tr, e, exact: true });
+                    else if (estish.test(e.note || '')) cands.push({ tr, e, exact: false });
+                }
+            }
+            const exact = cands.filter(c => c.exact);
+            if (exact.length === 1) return exact[0];
+            if (exact.length > 1) return null;
+            return cands.length === 1 ? cands[0] : null;
+        }
+        // One flex trade → dedupe / est-amend / classify. Returns a status string.
+        function reconcileFlexFill(tr) {
+            const key = twsExecKey(tr);
+            const ticker = normalizeTwsSymbol(tr.symbol);
+            const fees = Math.abs(Number(tr.commission)) || 0;
+            const qty = Number(tr.shares) || 0;
+            const dateStr = tr.day ? tr.day.slice(0, 4) + '-' + tr.day.slice(4, 6) + '-' + tr.day.slice(6, 8) : nyDateStr();
+            if (twsSeenExecs.has(key)) {
+                handleTwsExecution(tr, { quiet: true, source: 'flex' });   // late-commission delta path
+                if (window.Ledger) Ledger.setEventCommissionByExec(key, fees);
+                return 'updated';
+            }
+            if (window.Ledger && Ledger.findExecEvent(key)) {
+                // Exec recorded but its seen-map entry was evicted — stamp + skip.
+                twsSeenExecs.set(key, fees);
+                Ledger.setEventCommissionByExec(key, fees);
+                return 'updated';
+            }
+            const est = findFlexEstMatch(ticker, tr.side, qty, dateStr);
+            if (est && window.Ledger) {
+                const estPrice = Number(est.e.price) || 0;
+                const realPrice = Number(tr.price) || estPrice;
+                Ledger.amendEvent(est.tr, est.e.id, { price: realPrice, execId: key, commission: fees, date: dateStr, note: 'Flex fill' });
+                twsSeenExecs.set(key, fees);
+                // Drop the stale draft markers so a later live fill can't re-amend it.
+                if (est.tr._estExitEventId === est.e.id) delete est.tr._estExitEventId;
+                if (est.tr._estExitFills) est.tr._estExitFills = est.tr._estExitFills.filter(f => f.eventId !== est.e.id);
+                // Mirror the flat-row math the live path does for covered drafts:
+                // the estimate already banked P&L at estPrice — book the delta.
+                const isOut = est.e.kind === 'Partial' || est.e.kind === 'Exit';
+                const dir = est.tr.side === 'LONG' ? 1 : -1;
+                if (isOut) {
+                    // Price correction AND the fill's commission — the live path
+                    // nets fees out of realizedPnl the same way.
+                    const dPnl = dir * (realPrice - estPrice) * qty - fees;
+                    est.tr.realizedPnl = (est.tr.realizedPnl || 0) + dPnl;
+                    if (est.tr.status === 'CLOSED') {
+                        est.tr.pnl = (est.tr.pnl || 0) + dPnl;
+                        est.tr.exitPrice = realPrice;
+                        est.tr.exitCommission = (est.tr.exitCommission || 0) + fees;
+                    } else est.tr.commission = (est.tr.commission || 0) + fees;
+                } else {
+                    est.tr.commission = (est.tr.commission || 0) + fees;
+                    // An execId-less Entry upgraded to a real fill — adopt broker
+                    // source so position-sync reconciles it from here on, and fix
+                    // entryPrice when this event is the whole position's basis.
+                    if (est.tr.fillSource !== 'tws') est.tr.fillSource = 'tws';
+                    const ins = (est.tr.events || []).filter(e => (e.kind === 'Entry' || e.kind === 'Add'));
+                    if (est.e.kind === 'Entry' && ins.length === 1 && Math.abs((Number(est.tr.shares) || 0) - qty) < 1e-6) {
+                        est.tr.entryPrice = realPrice;
+                    }
+                }
+                return 'amended';
+            }
+            const out = handleTwsExecution(tr, { quiet: true, source: 'flex' });
+            if (window.Ledger && out !== 'seen' && out !== 'none') Ledger.setEventCommissionByExec(key, fees);
+            return out === 'seen' ? 'updated' : (out === 'none' ? 'skipped' : out);
+        }
+        async function flexReconcileNow(manual) {
+            if (flexBusy) return;
+            if (!twsFillsJournalEnabled) { if (manual) showErrorToast('Enable "Fills → journal" first.'); return; }
+            if (!flexConfigured()) { if (manual) showErrorToast('Set the Flex token + query ID first (see FLEX.md).'); return; }
+            flexBusy = true;
+            setFlexStatus('Fetching Flex report…');
+            const res = { new: 0, amended: 0, updated: 0, skipped: 0, errors: 0 };
+            try {
+                const rep = await flexFetchReport();
+                if (!rep || !rep.ok) throw new Error((rep && rep.error) || 'report fetch failed');
+                for (const tr of (rep.trades || [])) {
+                    try {
+                        const r = reconcileFlexFill(tr);
+                        if (r === 'amended') res.amended++;
+                        else if (r === 'updated') res.updated++;
+                        else if (r === 'skipped') res.skipped++;
+                        else res.new++;
+                    } catch (e) { res.errors++; console.warn('flex fill failed:', e && e.message); }
+                }
+                saveTwsSeenExecs();
+                saveActiveTradesLog();
+                updateActiveTradesCountBadge();
+                renderActiveTradesPage();
+                const st = flexStateLoad() || {};
+                st.lastRunDate = nyDateStr();
+                st.result = res;
+                flexStateSave(st);
+                let msg = `Flex reconcile: ${res.new} new · ${res.amended} upgraded · ${res.updated} updated${res.errors ? ' · ' + res.errors + ' failed' : ''}`;
+                // A report with other sections but no Trades rows = query misconfig.
+                if (!(rep.trades || []).length && (rep.skippedSections || []).length) {
+                    msg += ' — no Trades section in the report; check the query fields (FLEX.md)';
+                }
+                if (manual) showInfoToast(msg, 8000);
+                setFlexStatus(msg + '.');
+            } catch (e) {
+                const st = flexStateLoad() || {};
+                st.lastAttempt = Date.now();
+                st.result = res;
+                flexStateSave(st);
+                const msg = 'Flex reconcile failed: ' + (e && e.message || e);
+                setFlexStatus(msg);
+                if (manual) showErrorToast(msg);
+            } finally {
+                flexBusy = false;
+            }
+        }
+        // Once per day at flexSyncTime (NY) — no RTH gate; post-close is the point.
+        // Bridge-unreachable retries are throttled to once a minute via lastAttempt.
+        function flexSyncTick(ny) {
+            if (!flexAutoSync || flexBusy || !flexConfigured() || !twsFillsJournalEnabled) return;
+            const t = parseAutoEntryTime(flexSyncTime);
+            if (t === null || ny.minutesOfDay < t) return;
+            const st = flexStateLoad();
+            if (st && st.lastRunDate === ny.date) return;
+            if (st && st.lastAttempt && Date.now() - st.lastAttempt < 60000) return;
+            const s = st || {}; s.lastAttempt = Date.now(); flexStateSave(s);
+            flexReconcileNow(false).catch(e => {
+                console.warn('flexReconcile failed:', e && e.message);
+                setFlexStatus('Flex reconcile error: ' + (e && e.message || e));
+            });
         }
         async function sendTwsEntry(ticker, kind) {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
@@ -10470,8 +10728,12 @@
             saveActiveTradesLog();
             renderActiveTradesPage();
         }
-        function handleTwsExecution(ex) {
-            if (!ex || !ex.execId) return;
+        // opts.quiet: no per-fill toasts (bulk Flex reconcile). opts.source:
+        // 'flex' labels ledger notes + fills stamps; returns a status string.
+        function handleTwsExecution(ex, opts) {
+            const quiet = !!(opts && opts.quiet);
+            const src = (opts && opts.source) === 'flex' ? 'Flex' : 'TWS';
+            if (!ex || !ex.execId) return 'none';
             const key = twsExecKey(ex);
             const ticker0 = normalizeTwsSymbol(ex.symbol);
             const fees0 = Math.abs(Number(ex.commission)) || 0;
@@ -10483,7 +10745,7 @@
                     saveTwsSeenExecs();
                     applyLateCommission(ticker0, fees0 - recorded);
                 }
-                return;
+                return 'seen';
             }
             twsSeenExecs.set(key, fees0);
             saveTwsSeenExecs();
@@ -10493,18 +10755,18 @@
             if (qldPendingOrderFor(ex)) {
                 const qty0 = Number(ex.shares) || 0, price0 = Number(ex.price) || 0;
                 if (qty0 && price0) {
-                    showSuccessToast('QLD filled ' + qty0 + ' @ ' + price0.toFixed(2), 5000);
+                    if (!quiet) showSuccessToast('QLD filled ' + qty0 + ' @ ' + price0.toFixed(2), 5000);
                     qldRecordPendingFill(key, qty0, price0);
                     renderQldPage();
                 }
-                return;
+                return 'qld';
             }
             const side = ex.side === 'BOT' ? 'BOT' : (ex.side === 'SLD' ? 'SLD' : (ex.side || '').toUpperCase());
             const qty = Number(ex.shares) || 0;
             const price = Number(ex.price) || 0;
             const fees = fees0;
-            if (!ticker || !qty || !price) return;
-            showSuccessToast('Filled ' + qty + ' ' + ticker + ' @ ' + price.toFixed(2), 5000);
+            if (!ticker || !qty || !price) return 'none';
+            if (!quiet) showSuccessToast('Filled ' + qty + ' ' + ticker + ' @ ' + price.toFixed(2), 5000);
             const open = activeTradesLog.find(t => t.ticker === ticker && t.status === 'ACTIVE');
             // Position-aware classification: a fill moving against a held position is an
             // exit even without a matching journal row.
@@ -10514,7 +10776,9 @@
             const isExit = (open && ((open.side === 'LONG' && side === 'SLD') || (open.side === 'SHORT' && side === 'BOT')))
                 || (!open && held && ((heldLong && side === 'SLD') || (heldShort && side === 'BOT')));
             // Same-side fill on an existing TWS row = add-on → merge (weighted-avg entry).
+            let _outcome = 'none';
             if (open && open.fillSource === 'tws' && open.side === fillDir) {
+                _outcome = 'add';
                 const post = held ? Math.abs(held.qty) : null;
                 if (post != null && post <= open.shares) {
                     // Position already contains this fill (the row was imported/created
@@ -10523,7 +10787,7 @@
                     // The imported Entry event already covers these shares — no Add event.
                     open.commission = (open.commission || 0) + fees;
                 } else {
-                    if (window.Ledger) Ledger.onTwsFill(open, 'Add', qty, price, key);
+                    if (window.Ledger) Ledger.onTwsFill(open, 'Add', qty, price, key, src + ' fill', fees);
                     const tot = post != null && post > open.shares ? post : open.shares + qty;
                     open.entryPrice = (held && Number.isFinite(held.avgCost) && held.avgCost > 0)
                         ? held.avgCost
@@ -10536,13 +10800,14 @@
                     if (!(held && post >= tot)) (open._entryCredits = open._entryCredits || []).push({ qty, ts: Date.now() });
                 }
             } else if (!open && !isExit) {
+                _outcome = 'entry';
                 // Entry fill (any origin — PSC or manual TWS order): journal at real price.
                 const isQld = ticker === 'QLD';
                 activeTradesLog.unshift({
                     id: newTradeId(),
                     ticker, side: fillDir,
                     strategyId: isQld ? 'qld' : 'tws',
-                    regime: isQld ? 'QLD Trend' : (isPscRef(ex.orderRef) ? 'TWS fill' : 'TWS fill (manual)'),
+                    regime: isQld ? 'QLD Trend' : (src === 'Flex' ? 'Flex fill' : (isPscRef(ex.orderRef) ? 'TWS fill' : 'TWS fill (manual)')),
                     marketRegime: globalMarketRegime,
                     holdLimit: isQld ? null : maxHoldDays,
                     holdUnit: isQld ? 'week' : 'day',
@@ -10555,8 +10820,9 @@
                     _entryCredits: [{ qty, ts: Date.now() }],
                     _posQty: held ? Math.max(0, Math.abs(held.qty) - qty) : qty
                 });
-                if (window.Ledger) Ledger.onTwsFill(activeTradesLog[0], 'Entry', qty, price, key);
+                if (window.Ledger) Ledger.onTwsFill(activeTradesLog[0], 'Entry', qty, price, key, src + ' fill', fees);
             } else if (isExit && open) {
+                _outcome = 'exit';
                 // A fill on a manually-logged row with a live position: adopt it so
                 // position-sync keeps it reconciled from here on.
                 if (open.fillSource !== 'tws' && held) open.fillSource = 'tws';
@@ -10588,13 +10854,13 @@
                             if (ef.qty > cover) {
                                 // Partial coverage: shrink the draft to the confirmed
                                 // slice, then re-bank the leftover as a fresh draft.
-                                if (Ledger.amendEvent(open, ef.eventId, { qty: cover, price, execId: key, note: 'TWS fill' })) {
+                                if (Ledger.amendEvent(open, ef.eventId, { qty: cover, price, execId: key, note: src + ' fill', commission: fees })) {
                                     const rest = Ledger.onPositionDelta(open, 'Partial', ef.qty - cover, ef.price, 'TWS position delta (est)');
                                     still.push({ qty: ef.qty - cover, price: ef.price, ts: ef.ts, eventId: rest && rest.id });
                                 } else {
                                     still.push({ qty: ef.qty - cover, price: ef.price, ts: ef.ts });
                                 }
-                            } else if (Ledger.amendEvent(open, ef.eventId, { price, execId: key, note: 'TWS fill' })) {
+                            } else if (Ledger.amendEvent(open, ef.eventId, { price, execId: key, note: src + ' fill', commission: fees })) {
                                 lastEstAmended = ef;
                             }
                         } else if (ef.qty > cover) {
@@ -10644,7 +10910,7 @@
                         // Unexplained remainder only — est-covered shares already carry
                         // their (now-amended) events.
                         const _evQty = afterQty <= 0 ? Math.min(remaining, _preShares) : remaining;
-                        if (_evQty > 0) Ledger.onTwsFill(open, afterQty <= 0 ? 'Exit' : 'Partial', _evQty, price, key);
+                        if (_evQty > 0) Ledger.onTwsFill(open, afterQty <= 0 ? 'Exit' : 'Partial', _evQty, price, key, src + ' fill', fees);
                     } else if (afterQty <= 0 && lastEstAmended && lastEstAmended.eventId) {
                         // Fully covered by drafts and the position is flat — relabel the
                         // last draft 'Exit' so the ledger reports the trade closed.
@@ -10652,11 +10918,12 @@
                     }
                 }
             } else if (isExit && !open) {
+                _outcome = 'amend';
                 // The position-sync already closed the row on a draft Exit — a late
                 // confirmed fill rewrites that draft at the real price instead of
                 // being dropped (keeps reports accurate).
                 const closed = activeTradesLog.find(t => t.ticker === ticker && t.status === 'CLOSED' && t.fillSource === 'tws' && t._estExitEventId);
-                if (closed && window.Ledger && Ledger.amendEvent(closed, closed._estExitEventId, { price, execId: key, note: 'TWS fill' })) {
+                if (closed && window.Ledger && Ledger.amendEvent(closed, closed._estExitEventId, { price, execId: key, note: src + ' fill', commission: fees })) {
                     const dir = closed.side === 'LONG' ? 1 : -1;
                     const cq = Math.min(qty, closed.closedQty || qty);
                     const dPnl = dir * (price - (closed.exitPrice || price)) * cq - fees;
@@ -10672,6 +10939,7 @@
             saveActiveTradesLog();
             updateActiveTradesCountBadge();
             renderActiveTradesPage();
+            return _outcome;
         }
 
         // Reconcile journal rows with live positions — positions are the source of truth

@@ -39,7 +39,8 @@ async function main() {
      'settingsSectionsCollapsed', 'signalSyncMode', 'pbSignals', 'visibleCount',
      'signalSides', 'ticker_0', 'trigger_8', 'pg_lsv3_ticker_3', 'pg_pb_pbSignals',
      'pg_lsv3_riskValue', 'pg_pb_visibleCount',
-     'autoEntryEnabled', 'autoEntryTime', 'autoEntryRun'].forEach(k => {
+     'autoEntryEnabled', 'autoEntryTime', 'autoEntryRun',
+     'flexToken', 'flexQueryId', 'flexAutoSync', 'flexSyncTime', 'flexSyncState'].forEach(k => {
         assert(S.knownKey(k), 'registry knows key: ' + k);
     });
     assert(!S.knownKey('ticker_9'), 'ticker_9 out of range rejected');

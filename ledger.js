@@ -158,6 +158,9 @@ var Ledger = (function () {
             seq: nextSeq(t)
         };
         if (ev.execId) e.execId = String(ev.execId);
+        // Commission is display metadata only — never touches inventory or the
+        // report's price-only P&L; the flat journal stays the cost-aware view.
+        if (ev.commission !== undefined && Number.isFinite(num(ev.commission))) e.commission = Math.abs(num(ev.commission));
         t.events.push(e);
         return e;
     }
@@ -800,10 +803,10 @@ var Ledger = (function () {
     // ---------- TWS / journal hooks ----------
     // A broker fill becomes a ledger event. `kind` is decided by the caller
     // (which already classified the fill); execId dedupes replays.
-    function onTwsFill(t, kind, qty, price, execKey, note) {
+    function onTwsFill(t, kind, qty, price, execKey, note, commission) {
         if (!t || !KINDS.includes(kind)) return null;
         if (execKey && hasExecEvent(t, execKey)) return null;
-        return appendEvent(t, { kind: kind, qty: qty, price: price, execId: execKey, note: note || 'TWS fill' });
+        return appendEvent(t, { kind: kind, qty: qty, price: price, execId: execKey, note: note || 'TWS fill', commission: commission });
     }
     function onTradeLogged(t) {
         if (!t) return;
@@ -851,8 +854,55 @@ var Ledger = (function () {
         if (patch.kind !== undefined && KINDS.includes(patch.kind)) e.kind = patch.kind;
         if (patch.execId !== undefined) e.execId = String(patch.execId);
         if (patch.note !== undefined) e.note = String(patch.note);
+        if (patch.date !== undefined && isIsoDate(patch.date)) e.date = patch.date;
+        if (patch.commission !== undefined) e.commission = Math.abs(num(patch.commission)) || 0;
         return e;
     }
+    // Locate the event carrying a composite exec key ('yyyymmdd|ibExecId').
+    function findExecEvent(execKey) {
+        var key = String(execKey || '');
+        if (!key) return null;
+        var js = journal();
+        for (var i = 0; i < js.length; i++) {
+            var ev = (js[i].events || []).find(function (e) { return e.execId === key; });
+            if (ev) return { trade: js[i], event: ev };
+        }
+        return null;
+    }
+    // Stamp/overwrite a commission on an already-recorded event (Flex reconcile).
+    function setEventCommissionByExec(execKey, comm) {
+        var hit = findExecEvent(execKey);
+        if (!hit) return null;
+        hit.event.commission = Math.abs(num(comm)) || 0;
+        return hit.event;
+    }
+    // ---------- commissions (separate from cost basis by design) ----------
+    function commissionForTrade(t) {
+        var sum = 0;
+        (t && t.events || []).forEach(function (e) { sum += num(e.commission) || 0; });
+        return sum;
+    }
+    function mondayOf(dateStr) {
+        var d = new Date(dateStr + 'T12:00:00Z');
+        if (isNaN(d)) return null;
+        var dow = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() - dow + 1);
+        return d.toISOString().slice(0, 10);
+    }
+    function commissionsBucketed(keyFn) {
+        var out = {};
+        journal().forEach(function (t) {
+            (t.events || []).forEach(function (e) {
+                var c = num(e.commission);
+                if (!(c > 0) || !e.date) return;
+                var k = keyFn(e.date);
+                if (k) out[k] = (out[k] || 0) + c;
+            });
+        });
+        return out;
+    }
+    function commissionsByMonth() { return commissionsBucketed(monthOf); }
+    function commissionsByWeek() { return commissionsBucketed(mondayOf); }
 
     // ---------- cloud sync ----------
     var PROVIDERS = {
@@ -929,11 +979,11 @@ var Ledger = (function () {
 
     // ---------- misc exports ----------
     function exportEventsCsv(csvCell) {
-        var header = ['Ticker', 'Sleeve', 'Side', 'Event', 'Date', 'Quantity', 'Price', 'Amount', 'Note'];
+        var header = ['Ticker', 'Sleeve', 'Side', 'Event', 'Date', 'Quantity', 'Price', 'Amount', 'Commission', 'Note'];
         var rows = [header];
         journal().forEach(function (t) {
             tradeEvents(t).forEach(function (e) {
-                rows.push([t.ticker, sleeveBucket(t), tradeSide(t), e.kind, e.date, e.qty, e.price, e.amount, e.note || '']);
+                rows.push([t.ticker, sleeveBucket(t), tradeSide(t), e.kind, e.date, e.qty, e.price, e.amount, e.commission != null ? e.commission : '', e.note || '']);
             });
         });
         var escCell = csvCell || function (v) { var s = String(v == null ? '' : v); return /[,"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -973,6 +1023,8 @@ var Ledger = (function () {
         captureQldValue: captureQldValue, saveTodayClose: saveTodayClose,
         onTwsFill: onTwsFill, onTradeLogged: onTradeLogged, onTradeClosed: onTradeClosed,
         onImportedPosition: onImportedPosition, onPositionDelta: onPositionDelta, amendEvent: amendEvent,
+        findExecEvent: findExecEvent, setEventCommissionByExec: setEventCommissionByExec,
+        commissionForTrade: commissionForTrade, commissionsByMonth: commissionsByMonth, commissionsByWeek: commissionsByWeek,
         intervalContribution: intervalContribution,
         syncConfig: syncConfig, saveSyncConfig: saveSyncConfig, syncEndpoints: syncEndpoints,
         syncPull: syncPull, syncPush: syncPush,

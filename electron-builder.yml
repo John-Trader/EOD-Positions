@@ -6,6 +6,7 @@ directories:
 files:
   - electron/**
   - tws-bridge/server.js
+  - tws-bridge/flex.js
   - index.html
   - ledger.js
   - state-schema.js

@@ -9,6 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const { IBApi, EventName } = require('@stoqey/ib');
+const flex = require('./flex.js');
 
 let WebSocketServer = null;
 try {
@@ -1090,6 +1091,30 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(401, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Invalid or missing bridge token' }));
         }
+
+        // GET /flex/report?q=QUERY_ID — IBKR Flex Web Service pull. Pure HTTPS to
+        // IBKR (no TWS socket), so it sits before the `connected` gate. The flex
+        // token arrives in X-Flex-Token (kept out of URLs/logs).
+        if (url.pathname === '/flex/report') {
+            const flexToken = req.headers['x-flex-token'] || '';
+            const queryId = url.searchParams.get('q') || '';
+            if (!flexToken || !queryId) {
+                res.writeHead(400, corsHeaders);
+                return res.end(JSON.stringify({ ok: false, error: 'Missing X-Flex-Token header or q (query id)' }));
+            }
+            const r = await flex.flexRequest(flexToken, queryId);
+            if (!r.ok) {
+                res.writeHead(502, corsHeaders);
+                return res.end(JSON.stringify({ ok: false, error: r.error, errorCode: r.errorCode }));
+            }
+            const parsed = flex.flexTradesFromCsv(r.csv);
+            res.writeHead(200, corsHeaders);
+            return res.end(JSON.stringify({
+                ok: true, trades: parsed.trades, skippedRows: parsed.skipped,
+                skippedSections: parsed.skippedSections, fetchedAt: Date.now()
+            }));
+        }
+
         if (!connected) {
             res.writeHead(503, corsHeaders);
             return res.end(JSON.stringify({ ok: false, error: 'Not connected to TWS' }));
@@ -1453,4 +1478,6 @@ module.exports = {
     TICK_PRICE_MAP, TICK_PRICE_DELAYED, DELAYED_NOTICE_CODES, SYMBOL_ERROR_CODES,
     shapeOpenOrder, shapeExecution, shapeQuote, loadOrCreateToken, checkDedupe, recordDedupe, pruneToSeen,
     isAllowedStaticFile, resolveWebFile, start, stop,
+    flexRequest: flex.flexRequest, parseFlexCsv: flex.parseFlexCsv,
+    flexTradeToExec: flex.flexTradeToExec, flexTradesFromCsv: flex.flexTradesFromCsv,
 };
