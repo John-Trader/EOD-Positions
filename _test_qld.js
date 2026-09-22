@@ -207,14 +207,41 @@ try {
   assert(!api.qldSleeve.pending || api.qldSleeve.pending.reason === 'MONTH_END', 'EXIT pending clears once already flat');
 
   // ---------- 7. Chart SVG ----------
+  // Anchor the last bar to THIS week's Monday so 'LIVE WEEK' is deterministic:
+  // formingLive requires bars[last].t === mondayOf(today) regardless of when
+  // the suite runs (on weekends isCurrentWeekForming is false and the assert is skipped).
   const weekly = [];
-  for (let i = 0; i < 20; i++) weekly.push({ t: api.addCalendarDays('2026-04-06', i * 7), o: 100 + i, h: 103 + i, l: 99 + i, c: 101 + i });
+  const thisMon = api.mondayOf(api.nyDateStr());
+  for (let i = 19; i >= 0; i--) weekly.push({ t: api.addCalendarDays(thisMon, -i * 7), o: 100 + i, h: 103 + i, l: 99 + i, c: 101 + i });
   api.qldView = { ...api.qldView, weekly, liveQqq: null };
   const svg = api.qldChartSvg();
   assert(svg.includes('<svg'), 'chart emits an <svg>');
   assert((svg.match(/<path/g) || []).length === 2, 'two EMA polylines');
   assert(svg.includes('<rect'), 'candles drawn as rects');
   if (api.isCurrentWeekForming(api.nyDateStr())) assert(svg.includes('LIVE WEEK'), 'forming week tagged when mid-week');
+
+  // EMA overlay must seed from the FULL weekly series, not the 30-bar slice —
+  // a 200→100 regime break 10 bars before the window makes the difference obvious.
+  const weekly2 = [];
+  for (let i = 39; i >= 0; i--) {
+    const c = i >= 30 ? 200 : 100;   // first 10 bars high plateau, then flat 100
+    weekly2.push({ t: api.addCalendarDays(thisMon, -i * 7), o: c, h: c + 2, l: c - 2, c });
+  }
+  api.qldView = { ...api.qldView, weekly: weekly2, liveQqq: null };
+  const svg2 = api.qldChartSvg();
+  const mPath = /stroke="#e5e7eb"[^>]*\/?>/.exec(svg2);
+  const mPt = /d="M([\d.]+) ([\d.]+)/.exec(svg2);
+  assert(mPath && mPt, 'EMA-12 polyline present');
+  // Replicate the chart scale over the same 30 visible bars.
+  const shown = weekly2.slice(-30);
+  const e12full = api.emaSeries(weekly2.map(b => b.c), 12).slice(-30);
+  const e26full = api.emaSeries(weekly2.map(b => b.c), 26).slice(-30);
+  let lo = Infinity, hi = -Infinity;
+  shown.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); });
+  [e12full, e26full].forEach(s => s.forEach(v => { if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }));
+  const span2 = hi - lo; lo -= span2 * 0.04; hi += span2 * 0.04;
+  const yExp = 16 + (hi - e12full[0]) / (hi - lo) * 138;
+  assert(Math.abs(parseFloat(mPt[2]) - yExp) < 0.2, `chart EMA-12 seeds from full series (got ${mPt[2]}, want ${yExp.toFixed(1)}; slice-seeded would sit near 100)`);
 
   console.log('QLD tracker tests passed!');
 } catch (e) {

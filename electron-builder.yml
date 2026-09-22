@@ -8,6 +8,9 @@ files:
   - tws-bridge/server.js
   - index.html
   - ledger.js
+  - state-schema.js
+  - state-store.js
+  - sync.js
   - manifest.webmanifest
   - sw.js
   - icon.svg

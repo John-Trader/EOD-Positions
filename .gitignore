@@ -4,3 +4,6 @@ node_modules/
 dist/
 build/
 psc-settings.json
+psc-state-v1.json
+psc-state-v1.json.tmp
+psc-window-state.json

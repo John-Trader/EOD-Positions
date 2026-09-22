@@ -2,6 +2,8 @@
 // only when used, % leg validation, Auto batch strategy, share split never exceeds position.
 const fs = require('fs');
 const path = require('path');
+const StateSchema = require('./state-schema.js');
+const StateStore = require('./state-store.js');
 const h = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const code = h.slice(h.indexOf('<script>') + 8, h.lastIndexOf('</script>'));
 
@@ -20,8 +22,9 @@ const rows = [
   { dataset: { ticker: 'SHT', long: 'false' }, querySelector: (s) => ({ '.batch-entry': { value: '95' }, '.batch-shares': { value: '100' }, '.batch-stop': { value: '100' } })[s] || null, querySelectorAll: () => [] }
 ];
 const document = { getElementById: mockElement, querySelectorAll: (sel) => sel === '#batchReviewList .batch-row' ? rows : [], querySelector: () => null, createElement: () => mockElement('e' + Math.random()), addEventListener: () => {}, body: mockElement('body') };
-const localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-const window = { speechSynthesis: { speak: () => {}, cancel: () => {} }, addEventListener: () => {} };
+const localStore = {};
+const localStorage = { getItem: (k) => (k in localStore ? localStore[k] : null), setItem: (k, v) => { localStore[k] = String(v); }, removeItem: (k) => { delete localStore[k]; } };
+const window = { speechSynthesis: { speak: () => {}, cancel: () => {} }, addEventListener: () => {}, StateSchema, StateStore };
 const navigator = { clipboard: { writeText: () => Promise.resolve() } };
 const sandbox = { elements, document, localStorage, window, navigator, console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval, alert: () => {}, confirm: () => true, prompt: () => null };
 const fn = new Function(...Object.keys(sandbox), code + `
@@ -128,21 +131,16 @@ try {
   const result = api.journalResult({ side: 'LONG', entryPrice: 100, exitPrice: 110, shares: 10, stopPrice: 95, fees: 2, entryDate: '2026-09-01', exitDate: '2026-09-09' });
   assert(result.pnl === 98 && result.rMultiple === 1.96 && result.holdDays === 5, 'journal net P&L/R/day count');
   assert(api.csvCell('=1+1') === "'=1+1", 'journal formulas escaped');
-  const restored = api.prepareBackup({ version: '1.1.0', liveUpdateEnabled: false, showRangePct: true, slippageValue: 0, scanner: { tickers: ['AMPL'], triggers: [13.96], visibleCount: 3, sides: { 0: 'LONG' } } });
-  assert(restored.liveUpdateEnabled === 'false' && restored.showRangePct === 'true' && restored.slippageValue === '0' && restored.ticker_0 === 'AMPL', 'backup preserves false, zero, scanner');
-  const withRiskMode = api.prepareBackup({ version: '3.0.5', riskMode: 'percent' });
-  assert(withRiskMode.riskMode === 'percent', 'backup accepts riskMode fixed/percent');
-  let riskModeThrew = false;
-  try { api.prepareBackup({ version: '3.0.5', riskMode: 'bogus' }); } catch (e) { riskModeThrew = /Invalid risk mode/.test(e.message); }
-  assert(riskModeThrew, 'backup rejects unknown riskMode');
-  // twsExitStrategy is a strategy id ('__auto'/built-in/custom) — not a boolean toggle.
-  const withExitStrat = api.prepareBackup({ version: '3.6.3', twsExitStrategy: '__auto' });
-  assert(withExitStrat.twsExitStrategy === '__auto', 'backup accepts twsExitStrategy __auto');
-  assert(api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'opt2' }).twsExitStrategy === 'opt2', 'backup accepts built-in exit strategy');
-  assert(api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'mycustom', customStrategies: [{ id: 'mycustom', name: 'Mine', legs: [{ pct: 100, rr: 2, stopMode: 'fixed' }] }] }).twsExitStrategy === 'mycustom', 'backup accepts exit strategy carried in same backup');
-  let exitStratThrew = false;
-  try { api.prepareBackup({ version: '3.6.3', twsExitStrategy: 'nope' }); } catch (e) { exitStratThrew = /Unknown exit strategy/.test(e.message); }
-  assert(exitStratThrew, 'backup rejects unknown exit strategy id');
+  // Backups are schema-v1 envelopes — legacy flat payloads reject with zero writes.
+  const env = window.StateStore.exportFor('backup');
+  const dec = api.prepareBackup(env);
+  assert(dec && dec.data && Array.isArray(dec.data.trades), 'own backup envelope decodes');
+  let legacyThrew = false;
+  try { api.prepareBackup({ version: '3.0.5', riskMode: 'percent' }); } catch (e) { legacyThrew = true; }
+  assert(legacyThrew, 'legacy flat backup rejected');
+  let garbageThrew = false;
+  try { api.prepareBackup({ version: '4.0.0', activeTradesLog: [] }); } catch (e) { garbageThrew = true; }
+  assert(garbageThrew, 'unversioned backup rejected');
   api.navigateTo('settings');
   api.toggleSignalPaste(false);
   api.setTradesTab('history');

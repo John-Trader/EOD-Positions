@@ -138,6 +138,35 @@ try {
   assertTrue(result.status === 'ok', 'Tiingo fallback provides OK volatility');
   assertTrue(result.atrPct !== null && result.adrPct !== null, 'Tiingo provides both ATR% and ADR%');
 
+  // ---- TWS /history bars keep the daily open ----
+  // Bridge emits {d,o,h,l,c,v}; the app must not drop `o` (weekly resample + candles need it).
+  localStorage.removeItem('tiingo_key');
+  api.providerPriorityOrder = ['tws'];
+  api.twsEnabled = true; api.twsQuotesEnabled = true; api.twsConnected = true;
+  api.twsBridgeUrl = 'http://127.0.0.1:9'; api.twsBridgeToken = 'tok';
+  fetchResponse = (url) => {
+    if (url.includes('/history')) {
+      const bars = [];
+      for (let i = 0; i < 25; i++) bars.push({ d: `2024-02-${String(i + 1).padStart(2, '0')}`, o: 99, h: 102, l: 98, c: 101, v: 1000 });
+      return { ok: true, json: async () => ({ ok: true, bars }) };
+    }
+    return { ok: false, status: 404 };
+  };
+  result = await api.fetchVolatilityData('TWST');
+  assertTrue(result.status === 'ok', 'TWS volatility ok');
+  assertTrue(result.bars && result.bars.length === 25, 'TWS bars normalized');
+  assertTrue(result.bars.every(b => b.o === 99), 'daily open preserved (o=99, not c-fallback 101)');
+  api.twsEnabled = false; api.twsConnected = false; api.providerPriorityOrder = ['finnhub'];
+
+  // ---- aborted fetch propagates and writes no cache ----
+  localStorage.setItem('finnhub_key', 'fh_key');
+  fetchResponse = () => { const e = new Error('aborted'); e.name = 'AbortError'; throw e; };
+  let aborted = false;
+  try { await api.fetchVolatilityData('ABRT'); } catch (e) { aborted = e && e.name === 'AbortError'; }
+  assertTrue(aborted, 'AbortError propagates out of fetchVolatilityData');
+  assertTrue(!api.volatilityCache['ABRT'], 'aborted fetch leaves no stale cache entry');
+  localStorage.removeItem('finnhub_key');
+
   // ---- TWS /history fallback via provider priority ----
   // Enable TWS bridge; priority list puts tws first so /history wins over any key provider.
   localStorage.setItem('twsEnabled', 'true');

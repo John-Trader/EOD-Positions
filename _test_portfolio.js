@@ -114,6 +114,17 @@ try {
   const dup = api.capProjection([{ key: 'HLD', ticker: 'HLD', kind: 'v3', entry: 150, stop: 140, notional: 100000, isLong: true }], 100000);
   assert(dup.fitByKey['HLD'].booked === true && dup.fitByKey['HLD'].accepted === false, 'booked row flagged booked, not double-counted');
   near(dup.projected, 150000, 'booked row adds no new notional');
+  near(dup.attempted, 150000, 'booked row must not inflate attempted either — its notional is already inside booked');
+
+  // booked row between live candidates: attempted = booked + new only
+  const mix = api.capProjection([
+    { key: 'N1', ticker: 'N1', kind: 'v3', entry: 100, stop: 90, notional: 20000, isLong: true },
+    { key: 'HLD', ticker: 'HLD', kind: 'v3', entry: 150, stop: 140, notional: 100000, isLong: true },
+    { key: 'N2', ticker: 'N2', kind: 'v3', entry: 100, stop: 90, notional: 30000, isLong: true },
+  ], 100000);
+  near(mix.attempted, 200000, 'attempted = 150k booked + 20k + 30k new (HLD not re-counted)');
+  near(mix.projected, 200000, 'both live candidates fit');
+  assert(mix.fitByKey['HLD'].booked === true, 'HLD booked in mix');
 
   // advisory shape: capProjection returns flags, never throws/blocks
   assert(typeof proj.overCap === 'object' && typeof proj.fitByKey === 'object', 'projection is data-only (advisory)');
@@ -142,6 +153,9 @@ try {
   // recomputation path when pnl not stored: LONG 100sh 50→45 = -500
   api.activeTradesLog = [{ ticker: 'R', status: 'CLOSED', side: 'LONG', shares: 100, entryPrice: 50, exitPrice: 45, exitDate: MONTH + '-03', entryDate: MONTH + '-01', fees: 0 }];
   near(api.mtdRealizedPnl(MONTH), -500, 'pnl recomputed when not stored');
+
+  // New York month boundary: 2025-04-01 02:00Z is still Mar 31 22:00 ET
+  assert(api.currentMonthKey(new Date('2025-04-01T02:00:00Z')) === '2025-03', 'month key uses NY date, not host-local');
 
   // ---------- circuitBreakerStatus ----------
   api.accountValue = 100000;

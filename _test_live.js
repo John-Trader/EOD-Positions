@@ -63,12 +63,19 @@ try {
 
   // Resync merge: socket quiet -> REST close wins; widens h/l; never narrows
   api.realtimeQuotes['CCC'] = { c: 20, h: 21, l: 19, pc: 18, bid: null, ask: null };
-  let changed = api.mergeRestQuote('CCC', { c: 20.4, h: 21.5, l: 19.5, pc: 18.2, bid: 20.3, ask: 20.5 });
+  let changed = api.mergeRestQuote('CCC', { c: 20.4, h: 21.5, l: 19.5, pc: 18, bid: 20.3, ask: 20.5 });
   const q = api.realtimeQuotes['CCC'];
-  assert(changed && q.c === 20.4 && q.h === 21.5 && q.l === 19 && q.pc === 18.2 && q.bid === 20.3, 'resync merged (quiet socket takes REST close, LOD kept lower)');
+  assert(changed && q.c === 20.4 && q.h === 21.5 && q.l === 19 && q.pc === 18 && q.bid === 20.3, 'resync merged (quiet socket takes REST close, LOD kept lower)');
   api.applyLivePrice('CCC', 20.6); // socket active now
-  changed = api.mergeRestQuote('CCC', { c: 20.1, h: 21.5, l: 19, pc: 18.2, bid: null, ask: null });
+  changed = api.mergeRestQuote('CCC', { c: 20.1, h: 21.5, l: 19, pc: 18, bid: null, ask: null });
   assert(api.realtimeQuotes['CCC'].c === 20.6, 'live close kept when socket is active');
+
+  // New session: a changed previous-close means the quote belongs to a new day —
+  // yesterday's HOD/LOD must not leak into today's extrema.
+  api.realtimeQuotes['EEE'] = { c: 55, h: 56, l: 54, pc: 50, bid: null, ask: null };
+  api.mergeRestQuote('EEE', { c: 60.5, h: 60.7, l: 60.1, pc: 55, bid: null, ask: null });
+  const e = api.realtimeQuotes['EEE'];
+  assert(e.pc === 55 && e.h === 60.7 && e.l === 60.1 && e.c === 60.5, 'pc rollover resets session extrema to the new day');
 
   // Voice transitions: only inactive -> active speaks
   api.toggleVoice(); spoken.length = 0;

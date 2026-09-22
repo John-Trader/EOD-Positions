@@ -14,8 +14,11 @@ const APP_DIR = app.isPackaged
     : path.join(__dirname, '..');
 const USER_DATA = app.getPath('userData');
 // Portable target sets PORTABLE_EXECUTABLE_DIR to the folder containing the exe.
-const SETTINGS_FILE_PRIMARY = path.join(process.env.PORTABLE_EXECUTABLE_DIR || USER_DATA, 'psc-settings.json');
-const SETTINGS_FILE_FALLBACK = path.join(USER_DATA, 'psc-settings.json');
+// psc-state-v1.json is the schema-v1 envelope file. The old psc-settings.json
+// (flat pre-v4.1 format) is deliberately never read or written — a portable
+// install upgrades by starting clean, never by importing the legacy file.
+const SETTINGS_FILE_PRIMARY = path.join(process.env.PORTABLE_EXECUTABLE_DIR || USER_DATA, 'psc-state-v1.json');
+const SETTINGS_FILE_FALLBACK = path.join(USER_DATA, 'psc-state-v1.json');
 
 // ---------- bridge token (persisted per machine) ----------
 function loadOrCreateToken() {
@@ -30,12 +33,14 @@ function loadOrCreateToken() {
 }
 
 // ---------- settings file ----------
-// One snapshot is resolved before the window opens; the sync preload read and
-// the renderer's async load both serve it, so they can never disagree.
+// One snapshot is resolved before the window opens; the preload's synchronous
+// bootState read and every renderer save both go through it, so they can never
+// disagree. File shape: { fileVersion:1, installId, savedAt, state:{envelope} }.
 let settingsPath = SETTINGS_FILE_PRIMARY;
-let settingsSnapshot = {};
+let settingsSnapshot = null;   // { installId, state } | null when absent
 let settingsWritable = true;
 let settingsLoadError = null;
+let installId = '';
 
 // status: 'missing' | 'valid' | 'malformed' | 'error'
 function inspectSettingsFile(file) {
@@ -45,7 +50,15 @@ function inspectSettingsFile(file) {
     let obj;
     try { obj = JSON.parse(raw); }
     catch (e) { return { status: 'malformed', error: (e && e.message) || String(e) }; }
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { status: 'malformed', error: 'settings file is not a JSON object' };
+    // Minimal envelope check — full schema validation lives in the renderer's
+    // StateSchema.decode; here we only need "ours, parseable, right format" so a
+    // foreign/old-format file is never silently overwritten.
+    const st = obj && obj.state;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)
+        || !st || typeof st !== 'object'
+        || st.format !== 'positioncalc-state' || st.schemaVersion !== 1) {
+        return { status: 'malformed', error: 'not a psc-state v1 file' };
+    }
     let mtime = 0;
     try { mtime = fs.statSync(file).mtimeMs; } catch (_) {}
     return { status: 'valid', data: obj, mtime };
@@ -61,7 +74,11 @@ async function initializeSettingsFile() {
     const primary = inspectSettingsFile(SETTINGS_FILE_PRIMARY);
     const fallback = SETTINGS_FILE_FALLBACK !== SETTINGS_FILE_PRIMARY
         ? inspectSettingsFile(SETTINGS_FILE_FALLBACK) : { status: 'missing' };
-    const pick = (insp, file) => { settingsPath = file; settingsSnapshot = insp.data; };
+    const pick = (insp, file) => {
+        settingsPath = file;
+        settingsSnapshot = { installId: insp.data.installId || '', state: insp.data.state };
+        if (settingsSnapshot.installId) installId = settingsSnapshot.installId;
+    };
 
     if (primary.status === 'valid' && fallback.status === 'valid') {
         const same = JSON.stringify(primary.data) === JSON.stringify(fallback.data);
@@ -113,10 +130,18 @@ async function initializeSettingsFile() {
     // Both missing: fresh install at the primary path.
 }
 
+// obj from the renderer: { installId, state } — state is the psc-state envelope.
+// The file wrapper adds fileVersion + savedAt so the JSON is self-describing.
 function writeSettingsFile(obj) {
     if (!settingsWritable) return { ok: false, error: 'settings writes disabled for this session' };
+    const fileObj = {
+        fileVersion: 1,
+        savedAt: Date.now(),
+        installId: obj.installId || installId || '',
+        state: obj.state
+    };
     let data;
-    try { data = JSON.stringify(obj, null, 2); }
+    try { data = JSON.stringify(fileObj, null, 2); }
     catch (_) { return { ok: false, error: 'unserializable settings' }; }
     // Atomic write: temp file + rename, so a crash never leaves a half file.
     const attempt = (file) => {
@@ -134,7 +159,8 @@ function writeSettingsFile(obj) {
         console.error('[electron] settings write failed:', err && err.message);
         return { ok: false, error: (err && err.message) || 'write failed' };
     }
-    settingsSnapshot = obj;
+    if (fileObj.installId) installId = fileObj.installId;
+    settingsSnapshot = { installId: fileObj.installId, state: obj.state };
     return { ok: true, location: settingsLocation(settingsPath) };
 }
 
@@ -166,23 +192,68 @@ if (!app.requestSingleInstanceLock()) {
     });
 }
 
-// ---------- settings IPC ----------
-// Only the app view may read/write settings — the dock strip gets pscTerm only.
+// ---------- state IPC ----------
+// Only the app view may read/write the state file — the dock strip gets pscTerm
+// only. Protocol: bootState (sync, preload hydration) → saveState (debounced
+// flushes) / saveStateSync (pagehide teardown) → stateStatus (post-boot check).
 const isAppSender = (wc) => !!(appView && wc === appView.webContents);
 const isDockSender = (wc) => !!(chromeView && wc === chromeView.webContents);
 
-ipcMain.on('psc:settings-load', (e) => { e.returnValue = isAppSender(e.sender) ? settingsSnapshot : {}; });
-ipcMain.handle('psc:load-settings-async', (e) => isAppSender(e.sender) ? settingsSnapshot : {});
-ipcMain.handle('psc:settings-status', (e) => isAppSender(e.sender)
+function bootPayload() {
+    return {
+        installId: (settingsSnapshot && settingsSnapshot.installId) || installId || '',
+        state: settingsSnapshot ? settingsSnapshot.state : null,
+        writable: settingsWritable,
+        location: settingsLocation(settingsPath),
+        error: settingsLoadError
+    };
+}
+function validStatePayload(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return 'invalid payload';
+    const st = obj.state;
+    if (!st || typeof st !== 'object' || st.format !== 'positioncalc-state' || st.schemaVersion !== 1) return 'not a psc-state v1 payload';
+    try { if (JSON.stringify(obj).length > 8 * 1024 * 1024) return 'too large'; }
+    catch (_) { return 'unserializable'; }
+    return null;
+}
+
+ipcMain.on('psc:boot-state', (e) => { e.returnValue = isAppSender(e.sender) ? bootPayload() : { installId: '', state: null, writable: false }; });
+ipcMain.handle('psc:state-status', (e) => isAppSender(e.sender)
     ? { writable: settingsWritable, location: settingsLocation(settingsPath), error: settingsLoadError }
     : { writable: false, location: null, error: 'unauthorized' });
-ipcMain.handle('psc:settings-save', (e, obj) => {
+ipcMain.handle('psc:state-save', (e, obj) => {
     if (!isAppSender(e.sender)) return { ok: false, error: 'unauthorized' };
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'invalid payload' };
-    let size;
-    try { size = JSON.stringify(obj).length; } catch (_) { return { ok: false, error: 'unserializable' }; }
-    if (size > 5 * 1024 * 1024) return { ok: false, error: 'too large' };
+    const bad = validStatePayload(obj);
+    if (bad) return { ok: false, error: bad };
     return writeSettingsFile(obj);
+});
+// Synchronous flush for pagehide — the renderer can't await a promise there.
+ipcMain.on('psc:state-save-sync', (e, obj) => {
+    if (!isAppSender(e.sender)) { e.returnValue = { ok: false, error: 'unauthorized' }; return; }
+    const bad = validStatePayload(obj);
+    e.returnValue = bad ? { ok: false, error: bad } : writeSettingsFile(obj);
+});
+// Report printing — window.open is denied on the app view, so the report HTML
+// renders in a hidden window and prints from there (system dialog, default).
+ipcMain.handle('psc:print-html', async (e, html) => {
+    if (!isAppSender(e.sender) || typeof html !== 'string' || !html) return { ok: false, error: 'unauthorized' };
+    const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: true, partition: 'psc-print' } });
+    // The printed HTML is app-generated — give the window an isolated session
+    // that may only load the data: URL (no network, no cache, no cookies).
+    try {
+        pw.webContents.session.webRequest.onBeforeRequest((details, cb) => {
+            cb({ cancel: !details.url.startsWith('data:') });
+        });
+        await pw.loadURL('data:text/html;charset=utf-8;base64,' + Buffer.from(html, 'utf8').toString('base64'));
+        const res = await new Promise((resolve) => {
+            pw.webContents.print({ printBackground: true }, (ok, reason) => resolve({ ok: !!ok, error: ok ? undefined : String(reason || 'print failed') }));
+        });
+        pw.close();
+        return res;
+    } catch (err) {
+        try { pw.close(); } catch (_) {}
+        return { ok: false, error: String((err && err.message) || err) };
+    }
 });
 
 // ---------- window ----------
@@ -298,11 +369,19 @@ function createWindow(port) {
     appView.webContents.on('page-title-updated', (e, title) => { if (title) win.setTitle(title); });
 
     chromeView.webContents.on('did-finish-load', () => { logSink = chromeView.webContents; });
-    chromeView.webContents.loadFile(path.join(__dirname, 'chrome.html'));
-    appView.webContents.loadURL(`http://127.0.0.1:${port}/`);
+    chromeView.webContents.loadFile(path.join(__dirname, 'chrome.html'))
+        .catch(e => console.error('[electron] dock load failed:', e && e.message));
+    appView.webContents.loadURL(`http://127.0.0.1:${port}/`)
+        .catch(e => {
+            console.error('[electron] app load failed:', e && e.message);
+            dialog.showErrorBox('Position Size Calculator', `Failed to load the app.\n${e && e.message}`);
+        });
 
     layoutViews();
     win.on('resize', layoutViews);
+    // Dropping the view refs keeps isAppSender/isDockSender truthful after close
+    // and lets the destroyed WebContents be collected.
+    win.on('closed', () => { win = null; appView = null; chromeView = null; logSink = null; });
 }
 
 // ---------- boot ----------

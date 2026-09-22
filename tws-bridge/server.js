@@ -63,6 +63,9 @@ const STATIC_FILES = {
     '/': 'index.html',
     '/index.html': 'index.html',
     '/ledger.js': 'ledger.js',
+    '/state-schema.js': 'state-schema.js',
+    '/state-store.js': 'state-store.js',
+    '/sync.js': 'sync.js',
     '/manifest.webmanifest': 'manifest.webmanifest',
     '/sw.js': 'sw.js',
     '/icon.svg': 'icon.svg',
@@ -695,7 +698,7 @@ function connect() {
             const ts = String(time || '');
             const dm = /^(\d{4})(\d{2})(\d{2})/.exec(ts.replace(/-/g, ''));
             const day = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : ts.slice(0, 10);
-            p.bars.push({ d: day, h: high, l: low, c: close, v: Number(volume) });
+            p.bars.push({ d: day, o: open, h: high, l: low, c: close, v: Number(volume) });
         }
     });
 

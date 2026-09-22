@@ -44,7 +44,7 @@ All endpoints bind to `127.0.0.1` only. `GET /health` is token-free; every other
 | `GET /executions` | Today's fills `[{execId,orderId,orderRef,symbol,side,shares,price,time,commission,realizedPnl}]` |
 | `GET /pnl` | `{dailyPnL,unrealizedPnL,realizedPnL}` |
 | `GET /contract?symbol=` | `{ok,conId,longName}` — symbol preflight check |
-| `GET /history?symbol=` | ~1 month of daily bars `[{h,l,c}]` for ATR/ADR |
+| `GET /history?symbol=&duration=` | Daily bars `[{d,o,h,l,c,v}]` for ATR/ADR + weekly resample — `duration` defaults to `1 M`, accepts IB strings like `430 D` / `3 Y` |
 | `WS /stream` | Streaming channel — see below |
 
 ## WS /stream

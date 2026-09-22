@@ -9,6 +9,9 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./state-schema.js"></script>
+    <script src="./state-store.js"></script>
+    <script src="./sync.js"></script>
     <script src="./ledger.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -261,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.0.0</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.5.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -610,6 +613,16 @@
                                             <input id="twsEntryOutsideRthSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Entries outside RTH
                                         </label>
                                     </div>
+                                    <div class="border-t border-white/5 pt-1.5 space-y-1">
+                                        <div class="flex items-center gap-2 text-xs">
+                                            <label class="flex items-center gap-1.5" title="Once per trading day at the set New York time, evaluate the saved LS v3 + Pullback signals on fresh quotes and send qualifying opening orders through TWS (trigger crossed for v3, valid signal for pullback). Held tickers, already-sent or uncertain orders, and tickers with working PSC orders are skipped. Only fires while the app is open, during regular hours, with the bridge connected.">
+                                                <input id="autoEntryEnabledSetting" type="checkbox" class="custom-checkbox" onchange="saveTwsSettings()"> Auto-entry at
+                                            </label>
+                                            <input id="autoEntryTimeSetting" type="time" value="15:55" onchange="saveTwsSettings()" class="bg-slate-800 text-white font-bold text-xs border border-slate-600 rounded px-1.5 py-0.5">
+                                            <span class="text-[10px] text-gray-500">NY</span>
+                                        </div>
+                                        <p id="autoEntryStatus" class="text-[10px] text-gray-400" aria-live="polite">Off.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -951,6 +964,23 @@
         </div>
     </div>
 
+    <!-- Correction-reason prompt — window.prompt() is unsupported in Electron -->
+    <div id="reasonPromptOverlay" role="dialog" aria-modal="true" aria-label="Correction reason" class="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-md hidden items-center justify-center px-3 modal-overlay-pad animate-fade-in" onclick="if(event.target.id==='reasonPromptOverlay')reasonPromptCancel()">
+        <div class="glass-modal w-full max-w-sm rounded-2xl border border-white/10 shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
+            <div class="bg-slate-900/80 px-4 py-3 border-b border-white/10">
+                <h2 class="text-sm font-black uppercase text-white">Correction reason</h2>
+            </div>
+            <div class="p-4 space-y-3">
+                <p id="reasonPromptMsg" class="text-xs text-gray-300"></p>
+                <input id="reasonPromptInput" type="text" placeholder="Why is this changing?" class="w-full bg-slate-800 text-white text-xs rounded px-2.5 py-2 border border-slate-600 outline-none focus:border-cyan-500" onkeydown="if(event.key==='Enter')reasonPromptOk();if(event.key==='Escape')reasonPromptCancel()">
+            </div>
+            <div class="bg-slate-900/80 px-4 py-3 border-t border-white/10 flex justify-end gap-2">
+                <button onclick="reasonPromptCancel()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Cancel</button>
+                <button onclick="reasonPromptOk()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ========================================================
         // GLOBAL CONFIG & STATE
@@ -966,20 +996,6 @@
         // Wrap localStorage so the app never crashes from quota, private-browsing, or a missing storage object.
         // Returns true/false. Critical call sites should check the return and react (e.g., revert in-memory state).
         const _storage = (typeof localStorage !== 'undefined' && localStorage) ? localStorage : { getItem: () => null, setItem: () => {}, removeItem: () => {} };
-        function safeStorageSet(key, value) {
-            try { _storage.setItem(key, value); pscScheduleSave(); return true; } catch (e) {
-                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-                console.warn('Storage save failed:', key, e);
-                if (quota) showErrorToast('Storage full: export a backup and free up space.');
-                return false;
-            }
-        }
-        function safeStorageGet(key) {
-            try { return _storage.getItem(key); } catch (e) { return null; }
-        }
-        function safeStorageRemove(key) {
-            try { _storage.removeItem(key); pscScheduleSave(); } catch (e) {}
-        }
 
         // ---- Electron / portable bootstrap (inert outside the packaged app) ----
         // The bridge injects <meta name="psc-bridge"> when it serves this page, and the
@@ -991,7 +1007,87 @@
         // Named pscBridgeApi (not pscBridge): Electron's contextBridge plants a global
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
-        let _pscSaveTimer = null;
+
+        const PSC_VERSION = '4.5.0';
+
+        // ---- State store (schema v1) ----
+        // The whole app state lives in ONE storage record (psc:state:v1); every
+        // write is an atomic commit so a crash can never leave half-applied keys.
+        // state-schema.js + state-store.js are required shell assets — if absent
+        // (broken install / old sandbox) the app falls back to legacy direct-key
+        // storage so it still runs in degraded mode.
+        let _pscStoreBootError = null;
+        let _pscDeviceId = '';
+        function stateStoreReady() {
+            return !!(window.StateSchema && window.StateStore && window.StateStore.status().hydrated);
+        }
+        function pscInstallationId() {
+            const k = window.StateSchema ? window.StateSchema.INSTALL_KEY : 'psc:installation:v1';
+            let id = '';
+            try { id = _storage.getItem(k) || ''; } catch (e) {}
+            if (!id) {
+                id = 'in_' + (window.StateSchema ? window.StateSchema.newId() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
+                try { _storage.setItem(k, id); } catch (e) {}
+            }
+            return id;
+        }
+        (function pscInitStore() {
+            if (!(window.StateSchema && window.StateStore)) { _pscStoreBootError = 'State modules missing — changes will not persist.'; return; }
+            let boot = null;
+            if (pscBridgeApi && pscBridgeApi.bootState) {
+                try { boot = pscBridgeApi.bootState() || null; } catch (e) { boot = null; }
+            }
+            _pscDeviceId = (boot && boot.installId) || pscInstallationId();
+            const st = window.StateStore.init({
+                storage: _storage,
+                appVersion: PSC_VERSION,
+                deviceId: _pscDeviceId,
+                bootEnvelope: boot && boot.state ? boot.state : null,
+                // Synchronous IPC write — debounced in StateStore; sync so a
+                // flush during teardown can't be orphaned mid-navigation.
+                onFlush: pscBridgeApi && pscBridgeApi.saveStateSync
+                    ? (payload) => pscBridgeApi.saveStateSync({ installId: _pscDeviceId, state: payload })
+                    : (pscBridgeApi ? (payload) => pscBridgeApi.saveState({ installId: _pscDeviceId, state: payload }) : null),
+                onError: (m) => { _pscStoreBootError = m; try { console.warn('[state]', m); } catch (e) {} }
+            });
+            if (st && st.error) _pscStoreBootError = st.error;
+            // Whole-state dirty tracking: any commit that touched syncable records
+            // queues a debounced cloud push. Local/cache-only writes produce an
+            // empty changedKeys list and are skipped, so sync bookkeeping
+            // (syncPending, journalSyncedAt, syncConfig) can never loop a push.
+            // 'sync'-source applies are skipped too — the pull/push paths already
+            // manage convergence via remoteBehind.
+            window.StateStore.subscribe(function (info) {
+                if (!info || info.readonly || info.source === 'sync') return;
+                var ks = info.changedKeys;
+                if (ks && !ks.length) return;
+                if (typeof notifyLedgerDirty === 'function') notifyLedgerDirty();
+            });
+        })();
+        function safeStorageSet(key, value) {
+            try {
+                if (stateStoreReady()) return window.StateStore.set(key, value);
+                _storage.setItem(key, value);   // legacy fallback — modules absent
+                return true;
+            } catch (e) {
+                const quota = e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+                console.warn('Storage save failed:', key, e);
+                if (quota) showErrorToast('Storage full: export a backup and free up space.');
+                return false;
+            }
+        }
+        function safeStorageGet(key) {
+            try {
+                if (stateStoreReady()) return window.StateStore.get(key);
+                return _storage.getItem(key);
+            } catch (e) { return null; }
+        }
+        function safeStorageRemove(key) {
+            try {
+                if (stateStoreReady()) { window.StateStore.remove(key); return; }
+                _storage.removeItem(key);
+            } catch (e) {}
+        }
         if (pscBridgeInfo) {
             // The bridge serving this page is authoritative for its own url+token —
             // always refresh them (a settings file copied from another machine holds
@@ -1003,67 +1099,40 @@
                 if (safeStorageGet(k) === null) safeStorageSet(k, 'true');
             }
         }
-        let _pscHydrating = false;   // suppresses saves while a file is applied
-        let _pscSaveDirty = false;   // a change landed while a save was in flight
-        let _pscSaveWarned = 0;      // rate-limit the failure toast
-        function pscScheduleSave() {
-            if (!pscBridgeApi || _pscHydrating) return;
-            _pscSaveDirty = true;
-            if (_pscSaveTimer) clearTimeout(_pscSaveTimer);
-            _pscSaveTimer = setTimeout(() => { _pscSaveTimer = null; pscFlushSave(); }, 500);
-        }
-        // Serialized save: one write at a time, dirty-flag rerun. A failed write
-        // surfaces once and retries once on the next change — never silently.
-        async function pscFlushSave() {
-            if (!pscBridgeApi || !_pscSaveDirty) return;
-            _pscSaveDirty = false;
-            let res = null;
-            try { res = await pscBridgeApi.saveSettings(collectPortableState()); } catch (e) { res = null; }
-            if (!res || res.ok !== true) {
-                console.warn('[psc] settings file save failed:', res && res.error);
-                if (Date.now() - _pscSaveWarned > 60000) {
-                    _pscSaveWarned = Date.now();
-                    showErrorToast('Settings file save failed — changes live in this window only. Free disk space or restart the app.', 8000);
-                }
-                _pscSaveDirty = true; // keep the flag — a later save retries
-            }
-        }
-        // Flush a pending debounced save on teardown — otherwise edits made in the
-        // final <500ms before closing the window never reach psc-settings.json.
+        // Portable durability: every commit persists the single storage record and
+        // StateStore schedules the debounced file flush itself. On teardown we do a
+        // synchronous flush so the last edits reach psc-state-v1.json.
         if (typeof window !== 'undefined' && window.addEventListener) {
             window.addEventListener('pagehide', () => {
-                if (!pscBridgeApi || !_pscSaveTimer) return;
-                clearTimeout(_pscSaveTimer);
-                _pscSaveTimer = null;
-                try { pscBridgeApi.saveSettings(collectPortableState()); } catch (_) {}
+                if (!pscBridgeApi || !stateStoreReady()) return;
+                // flushPortable() runs the same onFlush path (sync IPC in
+                // Electron) — one durable write, no second code path.
+                try { window.StateStore.flushPortable(); } catch (_) {}
             });
         }
-        // Same payload as exportSettingsJson, plus apiKeys + execution-dedupe state
-        // so the file is a complete portable install (public backups keep keys out).
-        function collectPortableState() {
-            return {
-                version: "4.0.0",
-                customStrategies,
-                regimeStrategyMap,
-                activeTradesLog,
-                globalMarketRegime,
-                qldSleeve,
-                twsSeenExecs: [...twsSeenExecs],
-                // Ledger stores — without these the portable exe loses the whole
-                // event ledger / valuations / report data on every restart.
-                ...(ledgerReady() ? Object.fromEntries(
-                    ['config', 'valuations', 'cash', 'qldTxns', 'snapshots', 'audit', 'sync']
-                        .map(k => [Ledger.KEYS[k], safeStorageGet(Ledger.KEYS[k])])
-                        .concat([['journalSyncedAt', safeStorageGet('journalSyncedAt')]])
-                ) : {}),
-                // twsBridgeUrl/twsBridgeToken are bridge-derived (meta-injected) and
-                // machine-local — persisting them would seed another PC's copy of
-                // this file with a stale token.
-                ...Object.fromEntries(BACKUP_SETTINGS.filter(k => k !== 'twsBridgeUrl' && k !== 'twsBridgeToken').map(k => [k, safeStorageGet(k)])),
-                apiKeys: Object.fromEntries(Object.values(API_CONFIGS).map(c => c.storageKey).filter(Boolean).map(k => [k, safeStorageGet(k)])),
-                scanner: collectScannerStore(''),
-                scannerStores: collectScannerStores()
-            };
+        // Re-pull the structured globals after a backup restore or sync apply —
+        // the same block the top-level boot path runs against the hydrated store.
+        function rehydrateGlobalsFromStore() {
+            try { customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]'); } catch (e) {}
+            try { regimeStrategyMap = { expanding: 'opt1', declining: 'opt2', ...(JSON.parse(safeStorageGet('regimeStrategyMap') || '{}')) }; } catch (e) {}
+            try { activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]'); } catch (e) { activeTradesLog = []; }
+            try {
+                const qs = JSON.parse(safeStorageGet('qldSleeve') || 'null');
+                if (qs && typeof qs === 'object') qldSleeve = {
+                    inPos: !!qs.inPos, shares: Math.max(0, parseInt(qs.shares, 10) || 0),
+                    entryPrice: parseFloat(qs.entryPrice) || 0, entryDate: qs.entryDate || null,
+                    cashValue: Math.max(0, parseFloat(qs.cashValue) || 0),
+                    pending: qs.pending && typeof qs.pending === 'object' ? qs.pending : null,
+                    pendingOrder: qs.pendingOrder && typeof qs.pendingOrder === 'object' ? qs.pendingOrder : null,
+                    signalWeek: qs.signalWeek || null
+                };
+            } catch (e) {}
+            twsSeenExecs = loadTwsSeenExecs();
+        }
+        // Trade/record identity — schema-v1 uses UUID strings (never timestamps).
+        function newTradeId() {
+            return window.StateSchema ? window.StateSchema.newId()
+                : ('t' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
         }
         // Collapsible settings sections — expanded by default, collapse choices persisted.
         function initSettingsSections() {
@@ -1083,62 +1152,18 @@
             });
         }
 
-        // Object-typed fields (journal, strategies, scanner) aren't seeded by the
-        // preload's scalar pass — apply them post-init through the same validated
-        // path backups use. _pscHydrating gates pscScheduleSave so applying the
-        // file doesn't immediately queue a redundant write-back.
+        // Post-init portable status check. The file itself was already hydrated
+        // synchronously during StateStore.init (via the preload's bootState()),
+        // so by this point every safeStorageGet above already saw file values.
+        // What remains is surfacing writability/parse errors once toasts exist.
         async function applyPortableSettings() {
-            if (!pscBridgeApi) return;
-            let s;
-            try { s = await pscBridgeApi.loadSettings(); } catch (_) { return; }
-            if (!s || typeof s !== 'object' || !Object.keys(s).length) return;
-            let hydratedOk = false;
+            if (_pscStoreBootError) { showErrorToast(_pscStoreBootError, 8000); }
+            if (!pscBridgeApi || !pscBridgeApi.stateStatus) return;
             try {
-                if (pscBridgeApi.settingsStatus) {
-                    const st = await pscBridgeApi.settingsStatus().catch(() => null);
-                    if (st && st.writable === false) {
-                        showErrorToast('Settings file is read-only this session — changes won\'t persist.', 8000);
-                    }
-                }
-                _pscHydrating = true;
-                const values = prepareBackup(s);
-                Object.entries(values).forEach(([k, v]) => { try { _storage.setItem(k, v); } catch (e) {} });
-                // The serving bridge stays authoritative for url+token — files
-                // written by older versions (or copied from another machine)
-                // carry a token that is invalid for this bridge instance.
-                if (pscBridgeInfo) {
-                    safeStorageSet('twsBridgeUrl', pscBridgeInfo.url);
-                    safeStorageSet('twsBridgeToken', pscBridgeInfo.token);
-                }
-                if (s.apiKeys && typeof s.apiKeys === 'object') {
-                    for (const [k, v] of Object.entries(s.apiKeys)) {
-                        if (typeof v === 'string' && v) safeStorageSet(k, v);
-                    }
-                }
-                if (Array.isArray(s.twsSeenExecs)) {
-                    // Entries may be plain exec keys (legacy) or [key, commission] pairs.
-                    const arr = s.twsSeenExecs.filter(x => (typeof x === 'string' && x) || (Array.isArray(x) && typeof x[0] === 'string')).slice(-TWS_SEEN_EXECS_MAX);
-                    safeStorageSet('twsSeenExecs', JSON.stringify(arr));
-                    twsSeenExecs = loadTwsSeenExecs();
-                }
-                customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
-                regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
-                activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
-                globalMarketRegime = safeStorageGet('globalMarketRegime') || globalMarketRegime;
-                loadSettings();
-                updateActiveTradesCountBadge();
-                renderActiveTradesPage();
-                hydratedOk = true;
-            } catch (e) { console.warn('portable settings apply failed:', e && e.message); }
-            finally {
-                _pscHydrating = false;
-                // A boot-time save may have debounced mid-hydration and written a
-                // partial file — rewrite the hydrated state once. Only when apply
-                // SUCCEEDED: on a validation failure (e.g. a newer version's file)
-                // _storage still holds defaults and a flush would clobber the
-                // untouched file with them.
-                if (hydratedOk) { _pscSaveDirty = true; pscFlushSave(); }
-            }
+                const st = await pscBridgeApi.stateStatus().catch(() => null);
+                if (st && st.writable === false) showErrorToast('Settings file is read-only this session — changes won\'t persist.', 8000);
+                if (st && st.error) showErrorToast('Settings file: ' + st.error, 8000);
+            } catch (_) {}
         }
 
         let realtimeSocket = null;
@@ -1195,6 +1220,12 @@
         // '__auto' = AUTO_STRATEGY (follow regime) — declared before that const exists.
         let twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
         let twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
+        // Scheduled auto-entry (v4.5.0) — TWS-local: fires once per trading day at
+        // autoEntryTime (NY), only while the app is open and the bridge is ready.
+        let autoEntryEnabled = safeStorageGet('autoEntryEnabled') === 'true';
+        let autoEntryTime = safeStorageGet('autoEntryTime') || '15:55';
+        let autoEntryState = null;    // {date, done, results:{ticker:{status,msg}}} — hydrated from 'autoEntryRun'
+        let autoEntryBusy = false;
         let twsConnected = false;
         let twsBridgeUp = false;         // /health answered — distinguishes bridge-down from TWS-down
         let twsAccount = '';
@@ -1774,13 +1805,6 @@
             const next = addTradingDays(dateStr, 1);
             return !!next && next.slice(0, 7) !== dateStr.slice(0, 7);
         }
-        // Calendar weeks between the week containing fromDate and the current week (entry week = 0).
-        function weeksSinceEntry(entryDateStr, nowDateStr) {
-            const a = ymdToUtc(mondayOf(entryDateStr)), b = ymdToUtc(mondayOf(nowDateStr || nyDateStr()));
-            if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime()) || b < a) return 0;
-            return Math.round((b - a) / (7 * 86400000));
-        }
-
         // ---------- Pine-accurate ATR(5) (RMA-seeded, matches ta.atr) ----------
         function barDateStr(b) {
             const raw = b && (b.d || b.date || b.datetime || b.t);
@@ -2108,18 +2132,6 @@
                 safeStorageSet(config.storageKey, key);
                 alert('API Key Saved');
                 updateSecondaryApiKeyInput();
-            }
-        }
-
-        function toggleSecondaryApiKeyVisibility() {
-            const input = document.getElementById('secondaryApiKeyInput');
-            if (!input) return;
-            const show = input.type === 'password';
-            input.type = show ? 'text' : 'password';
-            const btn = document.getElementById('showSecondaryKeyBtn');
-            if (btn) {
-                btn.textContent = show ? 'HIDE' : 'SHOW';
-                btn.setAttribute('aria-pressed', String(show));
             }
         }
 
@@ -3147,6 +3159,7 @@
 
         function snapshotScannerInputs() {
             return {
+                page: currentPage,              // undo must not cross page stores
                 visibleCount,
                 tickers: Array.from(pq('.ticker-input')).map(i => i.value),
                 triggers: Array.from(pq('.trigger-input')).map(i => i.value),
@@ -3155,51 +3168,29 @@
             };
         }
 
-        // ---------- Persisted scanner stores (backup/portable state) ----------
-        // Backups read STORAGE, not the live DOM — exporting from Settings must not
-        // capture whatever page happens to be open. Each page's store lives under a
-        // canonical prefix ('' base, pg_lsv3_, pg_pb_) regardless of the current
-        // signalSyncMode, so both modes round-trip intact.
-        const SCANNER_STORE_PREFIXES = { scanner: '', lsv3: 'pg_lsv3_', pullback: 'pg_pb_' };
-        function collectScannerStore(pfx) {
-            const tickers = [], triggers = [];
-            for (let i = 0; i < 9; i++) {
-                tickers.push(safeStorageGet(pfx + 'ticker_' + i) || '');
-                triggers.push(safeStorageGet(pfx + 'trigger_' + i) || '');
-            }
-            let sides = {};
-            try {
-                const sd = JSON.parse(safeStorageGet(pfx + 'signalSides') || '{}');
-                if (sd && typeof sd === 'object' && !Array.isArray(sd)) sides = sd;
-            } catch (e) {}
-            let pb = [];
-            try {
-                const arr = JSON.parse(safeStorageGet(pfx + 'pbSignals') || '[]');
-                if (Array.isArray(arr)) pb = arr;
-            } catch (e) {}
-            const vcRaw = parseInt(safeStorageGet(pfx + 'visibleCount'), 10);
-            const riskRaw = safeStorageGet(pfx + 'riskValue');
-            return {
-                visibleCount: [3, 6, 9].includes(vcRaw) ? vcRaw : 3,
-                tickers, triggers, sides, pb,
-                riskValue: Number.isFinite(Number(riskRaw)) && Number(riskRaw) > 0 ? Number(riskRaw) : null
-            };
-        }
-        function collectScannerStores() {
-            const out = {};
-            for (const [page, pfx] of Object.entries(SCANNER_STORE_PREFIXES)) out[page] = collectScannerStore(pfx);
-            return out;
-        }
+        // ---------- Persisted scanner stores ----------
+        // Scanner state persists per page under canonical prefixes ('' base,
+        // pg_lsv3_, pg_pb_) via the StateStore adapter — backups/sync/portable
+        // exports read data.scannerStores, never the live DOM.
         function restoreScannerInputs(snap) {
             if (!snap) return;
+            const page = snap.page || currentPage;
+            const onTarget = page === currentPage;
+            // Always write the captured page's STORE keys — the DOM only exists
+            // for the page on screen, so off-screen restores go store-first.
+            const pfx = skey('', page);
+            (snap.tickers || []).forEach((v, k) => { v ? safeStorageSet(pfx + 'ticker_' + k, v) : safeStorageRemove(pfx + 'ticker_' + k); });
+            (snap.triggers || []).forEach((v, k) => { v ? safeStorageSet(pfx + 'trigger_' + k, v) : safeStorageRemove(pfx + 'trigger_' + k); });
+            if (snap.sides) safeStorageSet(pfx + 'signalSides', JSON.stringify(snap.sides));
+            safeStorageSet(pfx + 'visibleCount', String(snap.visibleCount || 3));
+            if (snap.pb) safeStorageSet(pfx + 'pbSignals', JSON.stringify(snap.pb));
+            if (!onTarget) return;   // store updated — repaint happens on next visit
             pq('.ticker-input').forEach((i, k) => { i.value = snap.tickers[k] || ''; });
             pq('.trigger-input').forEach((i, k) => { i.value = snap.triggers[k] || ''; });
             signalSides = { ...(snap.sides || {}) };
             visibleCount = snap.visibleCount || 3;
-            safeStorageSet(skey('visibleCount'), visibleCount);
             if (snap.pb) setPbSignals(snap.pb);
             updateVisibleRows();
-            saveInputs();
         }
 
         function resetScanState() {
@@ -3351,6 +3342,9 @@
             const legacyClock = (typeof document !== 'undefined' && document.getElementById) ? document.getElementById('countdown') : null;
             if (legacyClock && !clocks.includes(legacyClock)) clocks.push(legacyClock);
             clocks.forEach(el => setClockText(el, text, color));
+            // Scheduled auto-entry — isolated so a failure here can never kill
+            // the 1s clock tick that drives the countdown UI.
+            try { autoEntryTick(ny); } catch (e) { console.warn('autoEntryTick:', e && e.message); }
         }
 
         // ========================================================
@@ -3717,7 +3711,7 @@
         async function fetchTwsVolatility(ticker, signal) {
             const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}&duration=${encodeURIComponent('430 D')}`, signal);
             if (!d || !d.ok || !Array.isArray(d.bars) || d.bars.length < 21) throw new Error('TWS history too short');
-            const bars = d.bars.map(b => ({ d: barDateStr(b), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) })).filter(b => Number.isFinite(b.c) && b.c > 0);
+            const bars = normalizeBars(d.bars);
             if (bars.length < 21) throw new Error('TWS history too short after filter');
             const close = bars[bars.length - 1].c;
             if (!Number.isFinite(close) || close <= 0) throw new Error('TWS history invalid');
@@ -3756,7 +3750,8 @@
             try {
                 for (const p of providerPriorityOrder) {
                     if (atrPct !== null && adrPct !== null && avgVol !== null && bars !== null) break;
-                    try { await tryOne(p); } catch (e) { console.warn(`Volatility ${p} failed for ${ticker}:`, e.message); }
+                    if (signal && signal.aborted) break;
+                    try { await tryOne(p); } catch (e) { if (e && e.name === 'AbortError') throw e; console.warn(`Volatility ${p} failed for ${ticker}:`, e.message); }
                 }
 
                 const status = (atrPct !== null || adrPct !== null || avgVol !== null) ? 'ok' : 'error';
@@ -3767,6 +3762,8 @@
                 volatilityCache[ticker] = result;
                 return result;
             } catch (e) {
+                // Aborted fetches must not poison the cache — nothing was learned.
+                if (e && e.name === 'AbortError') throw e;
                 console.warn(`Volatility fetch failed for ${ticker}:`, e.message);
                 const result = { ticker, atrPct: null, adrPct: null, latestClose: null, avgVol: null, bars: null, refPct: null, checkedAt: now, status: 'error' };
                 volatilityCache[ticker] = result;
@@ -3989,10 +3986,13 @@
             const prev = realtimeQuotes[ticker];
             if (!prev) { realtimeQuotes[ticker] = data; return true; }
             const socketQuiet = !lastTradeAt[ticker] || (Date.now() - lastTradeAt[ticker]) > RESYNC_INTERVAL_MS;
+            // A changed previous-close marks a new session — the old day's
+            // high/low/last must not carry into the fresh session's quote.
+            const newSession = data.pc > 0 && prev.pc > 0 && data.pc !== prev.pc;
             const next = {
-                c: socketQuiet && data.c > 0 ? data.c : prev.c,
-                h: Math.max(prev.h > 0 ? prev.h : 0, data.h > 0 ? data.h : 0) || prev.h,
-                l: (prev.l > 0 && data.l > 0) ? Math.min(prev.l, data.l) : (data.l > 0 ? data.l : prev.l),
+                c: (newSession || socketQuiet) && data.c > 0 ? data.c : prev.c,
+                h: newSession ? (data.h > 0 ? data.h : prev.h) : (Math.max(prev.h > 0 ? prev.h : 0, data.h > 0 ? data.h : 0) || prev.h),
+                l: newSession ? (data.l > 0 ? data.l : prev.l) : ((prev.l > 0 && data.l > 0) ? Math.min(prev.l, data.l) : (data.l > 0 ? data.l : prev.l)),
                 pc: data.pc > 0 ? data.pc : prev.pc,
                 bid: (data.bid && data.bid > 0) ? data.bid : prev.bid,
                 ask: (data.ask && data.ask > 0) ? data.ask : prev.ask
@@ -4032,7 +4032,6 @@
 
         // Composite selection key — the same ticker can be a v3 signal AND a pullback.
         function selKeyFor(kind, ticker) { return (kind === 'pb') ? ticker + '|pb' : ticker; }
-        function selKeyParts(key) { const i = key.lastIndexOf('|'); return i < 0 ? { kind: 'v3', ticker: key } : { kind: key.slice(i + 1), ticker: key.slice(0, i) }; }
 
         function renderRealtimeSnapshot(container, riskVal, slippageVal) {
             if (!container) return;
@@ -4531,14 +4530,16 @@
             let attempted = booked;
             admissionOrder(candidates).forEach((c, i) => {
                 const row = { key: c.key, ticker: c.ticker, order: i + 1, notional: c.notional || 0, notionalPct: account > 0 ? (c.notional || 0) / account : 0, accepted: false };
-                attempted += row.notional;
                 if (hasActiveJournal(c.ticker, c.isLong)) {
-                    row.booked = true;  // already counted in `booked` — not a new admission
-                } else if (account <= 0 || running + row.notional <= account * PB_EXPOSURE_CAP + 1e-9) {
-                    running += row.notional;   // only accepted candidates book projected capacity
-                    row.accepted = true;
+                    row.booked = true;  // already inside `booked` — not a new admission
                 } else {
-                    overCap.add(c.key);        // rejected rows leave `running` unchanged — the queue continues
+                    attempted += row.notional;   // booked rows must not double-count
+                    if (account <= 0 || running + row.notional <= account * PB_EXPOSURE_CAP + 1e-9) {
+                        running += row.notional;   // only accepted candidates book projected capacity
+                        row.accepted = true;
+                    } else {
+                        overCap.add(c.key);        // rejected rows leave `running` unchanged — the queue continues
+                    }
                 }
                 rows.push(row);
                 fitByKey[c.key] = row;
@@ -4618,25 +4619,41 @@
                     : (p.attemptedPct > PB_EXPOSURE_CAP * 0.85 ? 'text-amber-300 border-amber-500/40 bg-amber-950/30' : 'text-gray-300 border-white/10 bg-slate-950/60');
                 el.className = 'text-[9px] font-black font-mono-num px-2 py-1 rounded-full border ' + cls;
             });
+            // Repaint every visible FIT/OVER badge — capacity changes (journal or
+            // account edits) must not leave a stale badge on a rendered row.
+            document.querySelectorAll('[data-field="capBadge"]').forEach(el => {
+                const host = el.closest('[id^="card-"],[id^="table-row-"],[id^="pbcard-"],[id^="pbrow-"]');
+                if (!host) return;
+                const m = /^(pb)?(?:card|row|table-row)-(.+)$/.exec(host.id);
+                if (!m) return;
+                setCapBadge(el, capBadgeFor(m[1] ? 'pb' : 'v3', m[2]));
+            });
         }
 
         // ---- −9% monthly realized-loss circuit breaker (advisory only) ----
 
         const BREAKER_MONTHLY_PCT = 0.09;
         function currentMonthKey(now) {
-            const d = now || new Date();
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            return nyNow(now || new Date()).date.slice(0, 7);
         }
 
-        // Sum realized P&L of CLOSED journal trades whose exitDate falls in monthKey
-        // ('YYYY-MM'). Missing/invalid rows contribute 0.
+        // Realized P&L attributed to monthKey ('YYYY-MM'). The event ledger
+        // dates each Partial/Exit fill (average-cost basis), so partials and
+        // cross-month trades land in the month they actually realized. Flat
+        // fallback (missing ledger) keeps the old CLOSED-by-exitDate sum plus
+        // banked partials on open trades for the current month.
         function mtdRealizedPnl(monthKey) {
             const mk = monthKey || currentMonthKey();
+            if (window.Ledger && typeof Ledger.realizedInMonth === 'function') return Ledger.realizedInMonth(mk);
             let pnl = 0;
             for (const t of activeTradesLog) {
-                if (!t || t.status !== 'CLOSED' || !t.exitDate || String(t.exitDate).slice(0, 7) !== mk) continue;
-                const r = journalResult(t);
-                if (r && Number.isFinite(r.pnl)) pnl += r.pnl;
+                if (!t) continue;
+                if (t.status === 'CLOSED' && t.exitDate && String(t.exitDate).slice(0, 7) === mk) {
+                    const r = journalResult(t);
+                    if (r && Number.isFinite(r.pnl)) pnl += r.pnl;
+                } else if (mk === currentMonthKey() && Number.isFinite(t.realizedPnl)) {
+                    pnl += t.realizedPnl;  // undated banked partials — best available without events
+                }
             }
             return pnl;
         }
@@ -4923,6 +4940,7 @@
 
         // ---------- Live poll (RTH only; provider-safe cadence) ----------
         let qldLiveTimer = null;
+        let qldLiveGen = 0;
         function qldLiveIntervalMs() {
             const p = resolveProviders().primary;
             // 2 symbols per tick — 20s keeps free-tier ~8 req/min providers under the cap.
@@ -4930,23 +4948,28 @@
         }
         async function qldLiveTick() {
             if (currentPage !== 'qld' || !nyNow().isRTH) return;
+            // Generation guard: a slow tick must not overwrite a newer tick's
+            // result, and leaving the page / stopping live kills in-flight writes.
+            const gen = ++qldLiveGen;
             const r = resolveProviders();
             if (!r.primary) return;
             try {
                 const q = await fetchTickerData('QQQ', r.primary, providerStreamKey(r.primary), null);
+                if (gen !== qldLiveGen || currentPage !== 'qld') return;
                 if (q && Number.isFinite(q.c) && q.c > 0) { qldView.liveQqq = q.c; qldView.quoteProvider = q._provider || r.primary; qldView.liveAt = Date.now(); }
             } catch (e) { }
             try {
                 const q2 = await fetchTickerData('QLD', r.primary, providerStreamKey(r.primary), null);
+                if (gen !== qldLiveGen || currentPage !== 'qld') return;
                 if (q2 && Number.isFinite(q2.c) && q2.c > 0) { qldView.qldPrice = q2.c; qldView.liveAt = Date.now(); }
             } catch (e) { }
-            if (currentPage === 'qld') renderQldPage();
+            if (gen === qldLiveGen && currentPage === 'qld') renderQldPage();
         }
         function startQldLive() {
             stopQldLive();
             qldLiveTimer = setInterval(qldLiveTick, qldLiveIntervalMs());
         }
-        function stopQldLive() { if (qldLiveTimer) { clearInterval(qldLiveTimer); qldLiveTimer = null; } }
+        function stopQldLive() { qldLiveGen++; if (qldLiveTimer) { clearInterval(qldLiveTimer); qldLiveTimer = null; } }
 
         async function refreshQldPage(force) {
             if (currentPage === 'qld') renderQldPage();
@@ -5005,8 +5028,7 @@
         function qldChartSvg() {
             const wk = qldView.weekly || [];
             if (wk.length < 10) return '';
-            const N = Math.min(30, wk.length);
-            const bars = wk.slice(-N).map(b => ({ ...b }));
+            let bars = wk.map(b => ({ ...b }));
             // Fold the live QQQ quote into the forming week so the chart is real-time.
             // When history lacks a current-week bar, append the live preview instead —
             // never overwrite the prior completed week's close.
@@ -5022,9 +5044,13 @@
                 }
             }
             const formingLive = bars.length > 0 && isCurrentWeekForming(nyDateStr()) && bars[bars.length - 1].t === mondayOf(nyDateStr());
-            const closes = bars.map(b => b.c);
-            const e12 = emaSeries(closes, 12);
-            const e26 = emaSeries(closes, 26);
+            // EMA must seed from the FULL series (as the signal does) — computing it
+            // on the visible slice alone restarts the EMA and diverges from signal.
+            const e12All = emaSeries(bars.map(b => b.c), 12);
+            const e26All = emaSeries(bars.map(b => b.c), 26);
+            const N = Math.min(30, bars.length);
+            bars = bars.slice(-N);
+            const e12 = e12All.slice(-N), e26 = e26All.slice(-N);
             const W = 620, H = 168, padL = 6, padR = 56, padT = 16, padB = 14;
             const plotW = W - padL - padR, plotH = H - padT - padB;
             let lo = Infinity, hi = -Infinity;
@@ -5184,6 +5210,10 @@
                     <button onclick="qldEditSave()" class="px-2.5 py-1.5 text-[10px] font-black uppercase rounded-lg bg-emerald-700/80 border border-emerald-500/40 text-white">Save</button>
                     <button onclick="qldEditCancel()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Cancel</button>
                 </div>` : '';
+            // Live ticks rewrite this card — carry the editor draft + focus across.
+            const editInp = acts.querySelector('#qldEditInput');
+            const editDraft = editInp ? editInp.value : null;
+            const editFocused = typeof document !== 'undefined' && document.activeElement === editInp;
             acts.innerHTML = `
                 <div class="text-[10px] font-black uppercase text-gray-400">Pending action</div>
                 ${actHtml}
@@ -5195,6 +5225,10 @@
                     <button onclick="qldDismissPending()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-400 border border-white/10">Dismiss</button>` : ''}
                     <button onclick="qldManualSet()" class="px-2.5 py-1.5 text-[10px] font-bold uppercase rounded-lg bg-slate-800 text-gray-300 border border-white/10">${qldEditOpen ? 'Close editor' : (r.inPos ? 'Edit sleeve' : 'Set sleeve')}</button>
                 </div>`;
+            if (editDraft !== null) {
+                const nInp = acts.querySelector('#qldEditInput');
+                if (nInp) { nInp.value = editDraft; if (editFocused && nInp.focus) nInp.focus(); }
+            }
         }
 
         // Shared journal upsert — the record shape drives the slim amber TREND SLEEVE
@@ -5204,7 +5238,7 @@
             activeTradesLog = activeTradesLog.filter(t => !(t.sleeve === 'QLD' && t.status === 'ACTIVE'));
             if (qldSleeve.inPos && qldSleeve.shares > 0) {
                 activeTradesLog.unshift({
-                    id: priorQld ? priorQld.id : Date.now() + Math.random(),   // keep id → marks continuity
+                    id: priorQld ? priorQld.id : newTradeId(),   // keep id → marks continuity
                     ticker: 'QLD', side: 'LONG', sleeve: 'QLD',
                     strategyId: 'qld', marketRegime: globalMarketRegime,
                     holdLimit: null, holdUnit: 'week', targets: [],
@@ -5792,7 +5826,13 @@
                         if (response.event !== 'price') return;
                         const tkr = String(response.symbol).toUpperCase();
                         const extra = { bid: Number(response.bid), ask: Number(response.ask) };
-                        if (applyLivePrice(tkr, Number(response.price), extra)) { delayedByTicker[tkr] = false; changedTickers.add(tkr); }
+                        // TD timestamps arrive in epoch seconds — normalize to ms for ordering.
+                        let ts = Number(response.timestamp);
+                        if (Number.isFinite(ts) && ts > 0 && ts < 1e12) ts *= 1000;
+                        const applied = isEnhanced
+                            ? applyLivePriceIfNewer(tkr, Number(response.price), ts, extra)
+                            : applyLivePrice(tkr, Number(response.price), extra);
+                        if (applied) { delayedByTicker[tkr] = false; changedTickers.add(tkr); }
                     } else if (provider === 'tiingo') {
                         if (response.messageType === 'E') {
                             console.warn('Tiingo WS error:', response.data);
@@ -5924,7 +5964,6 @@
             const mainProvider = resolved.primary;
             const secondaryProvider = resolved.secondary;
             const mainConfig = API_CONFIGS[mainProvider];
-            const secondaryConfig = isEnhanced ? API_CONFIGS[secondaryProvider] : null;
             const mainKey = mainProvider ? providerStreamKey(mainProvider) : null;
             const secondaryKey = secondaryProvider ? providerStreamKey(secondaryProvider) : null;
             const provider = mainProvider;
@@ -7505,7 +7544,7 @@
                     ? explicit.map(l => l.tp)
                     : (strat.legs || []).map(l => t.isLong ? t.entry + l.rr * rps : t.entry - l.rr * rps);
             activeTradesLog.unshift({
-                id: Date.now() + Math.random(),
+                id: newTradeId(),
                 ticker: t.ticker,
                 side: t.isLong ? 'LONG' : 'SHORT',
                 strategyId: strat.id,
@@ -7839,9 +7878,22 @@
             const err = validateTradeParams(isLong, entry, shares, stop);
             if (err) { alert(err); return; }
             const customTps = readCustomTpsFromDom();
-            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps);
-            const tpValues = built.ok ? built.preview.map(p => p.tp) : null;
-            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId }, tpValues);
+            const isPb = currentModalState.kind === 'pb';
+            const pbCat = isPb && currentModalState.pbCat ? PB_CATS[currentModalState.pbCat] : null;
+            const modalTimedOverride = isPb
+                ? (timedExitDate ? { enabled: true, date: timedExitDate, time: '15:55' } : null)
+                : undefined;
+            const built = buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: modalTimedOverride });
+            // A failed build must not journal the trade — block, same as send/export.
+            if (!built.ok) { alert(built.error); return; }
+            const tpValues = built.preview.map(p => p.tp);
+            // Pullback rows keep their sleeve/day-week/hold metadata — otherwise the
+            // journal loses which strategy family + holding period the trade came from.
+            logTradeRecord({ ticker, isLong, entry, shares, stop, strategyId,
+                sleeve: isPb ? 'LS Pullback' : undefined,
+                holdUnit: pbCat ? pbCat.unit : undefined,
+                holdLimit: isPb ? (pbCat ? pbCat.holdN : 5) : undefined
+            }, tpValues);
             if (!saveActiveTradesLog()) {
                 activeTradesLog.shift();
                 alert('Could not save the journal. Export a backup and check browser storage.');
@@ -8278,7 +8330,7 @@
         function tradeCloseForm(trade) {
             if (closingTradeId !== trade.id) return '';
             const quote = getTradePrice(trade.ticker);
-            return `<form onsubmit="event.preventDefault(); submitTradeClose(${trade.id})" class="border-t border-white/10 pt-2 space-y-2 text-[11px]">
+            return `<form onsubmit="event.preventDefault(); submitTradeClose('${trade.id}')" class="border-t border-white/10 pt-2 space-y-2 text-[11px]">
                 <p class="text-gray-400">Enter the quantity-weighted average exit price across ALL shares, including partial exits. A quote prefill is only an estimate; use your actual fills.</p>
                 <div class="grid grid-cols-2 gap-2">
                     <label>Average exit $<input id="closePrice-${trade.id}" type="number" min="0.0001" step="any" required value="${quote ? quote.toFixed(2) : ''}" class="w-full bg-slate-800 border border-slate-600 rounded p-1"></label>
@@ -8288,7 +8340,7 @@
                 </div>
                 <label class="block">Note<textarea id="closeNote-${trade.id}" maxlength="2000" rows="2" class="w-full bg-slate-800 border border-slate-600 rounded p-1">${escapeHtml(trade.note || '')}</textarea></label>
                 <button type="submit" class="bg-emerald-700 rounded px-3 py-1.5 font-bold">RECORD CLOSE</button>
-                <button type="button" onclick="toggleTradeClose(${trade.id})" class="text-gray-400 px-2">Cancel</button>
+                <button type="button" onclick="toggleTradeClose('${trade.id}')" class="text-gray-400 px-2">Cancel</button>
             </form>`;
         }
 
@@ -8361,8 +8413,8 @@
                     <div class="text-gray-400">${escapeHtml(trade.regime)}</div>
                     ${trade.note ? `<p class="whitespace-pre-wrap break-words text-gray-300">${escapeHtml(trade.note)}</p>` : ''}
                     <div class="flex gap-3">
-                        <button onclick="toggleTxnEditor(${trade.id})" class="text-cyan-300 text-[10px]">History</button>
-                        <button onclick="deleteTrade(${trade.id})" class="text-red-400 text-[10px]">Remove record</button>
+                        <button onclick="toggleTxnEditor('${trade.id}')" class="text-cyan-300 text-[10px]">History</button>
+                        <button onclick="deleteTrade('${trade.id}')" class="text-red-400 text-[10px]">Remove record</button>
                     </div>
                     ${txnEditorHtml(trade)}
                 </div>`;
@@ -8450,15 +8502,40 @@
                     <div class="flex justify-between items-center pt-1 border-t border-white/5">
                         <div data-trade-pnl="${trade.id}">${pnlHtml}</div>
                         <div class="flex gap-2 text-[11px] font-bold">
-                            <button onclick="toggleTxnEditor(${trade.id})" class="text-cyan-300 px-2 py-1">History</button>
-                            <button onclick="toggleTradeClose(${trade.id})" class="text-emerald-300 px-2 py-1">Record close</button>
-                            <button onclick="deleteTrade(${trade.id})" class="text-red-400 px-2 py-1">Remove</button>
+                            <button onclick="toggleTxnEditor('${trade.id}')" class="text-cyan-300 px-2 py-1">History</button>
+                            <button onclick="toggleTradeClose('${trade.id}')" class="text-emerald-300 px-2 py-1">Record close</button>
+                            <button onclick="deleteTrade('${trade.id}')" class="text-red-400 px-2 py-1">Remove</button>
                         </div>
                     </div>
                     ${txnEditorHtml(trade)}
                     ${tradeCloseForm(trade)}
                 </div>
             `;
+        }
+
+        // Broker fills/position syncs rerender this page without warning — snapshot
+        // in-progress form fields (close forms, valuation grid, report editors) by
+        // element id and restore them into the rebuilt DOM.
+        function snapshotFormDrafts(container) {
+            const out = {};
+            if (!container || !container.querySelectorAll) return out;
+            container.querySelectorAll('input[id], textarea[id], select[id]').forEach(el => {
+                const focused = typeof document !== 'undefined' && document.activeElement === el;
+                out[el.id] = { v: el.value, checked: !!el.checked, sel: focused ? [el.selectionStart, el.selectionEnd] : null };
+            });
+            return out;
+        }
+        function restoreFormDrafts(container, snap) {
+            Object.keys(snap).forEach(id => {
+                const el = document.getElementById(id);
+                if (!el || (container.contains && !container.contains(el))) return;
+                el.value = snap[id].v;
+                if (el.type === 'checkbox' || el.type === 'radio') el.checked = snap[id].checked;
+                if (snap[id].sel && el.focus) {
+                    el.focus();
+                    if (el.setSelectionRange) try { el.setSelectionRange(snap[id].sel[0], snap[id].sel[1]); } catch (e) {}
+                }
+            });
         }
 
         function renderActiveTradesPage() {
@@ -8469,15 +8546,18 @@
                 const button = document.getElementById(tab === 'active' ? 'tradesActiveTab' : tab === 'history' ? 'tradesHistoryTab' : 'tradesReportTab');
                 if (button) button.className = `rounded px-3 py-1.5 ${tab === tradesTab ? 'bg-blue-600' : 'bg-slate-800'}`;
             });
+            const drafts = snapshotFormDrafts(container);
             if (tradesTab === 'report') {
                 container.innerHTML = reportTabHtml();
+                restoreFormDrafts(container, drafts);
                 return;
             }
             if (tradesTab === 'history') {
-                const closed = activeTradesLog.filter(t => t.status === 'CLOSED').sort((a, b) => b.exitDate.localeCompare(a.exitDate) || b.id - a.id);
+                const closed = activeTradesLog.filter(t => t.status === 'CLOSED').sort((a, b) => b.exitDate.localeCompare(a.exitDate) || String(b.id).localeCompare(String(a.id)));
                 const ae = document.activeElement;
                 const caret = (ae && ae.id === 'journalSearch') ? ae.selectionStart : null;
                 container.innerHTML = journalHistoryHtml(closed);
+                restoreFormDrafts(container, drafts);
                 if (caret !== null) {
                     const el = document.getElementById('journalSearch');
                     if (el) { el.focus(); el.setSelectionRange(caret, caret); }
@@ -8491,9 +8571,11 @@
                     <div class="font-bold text-white">No active logged trades</div>
                     <div class="text-xs text-gray-500">Log a trade from Strategy Orders, Order Builder, or Batch Export.</div>
                 </div>`;
+                restoreFormDrafts(container, drafts);
                 return;
             }
             container.innerHTML = activeTrades.map(tradeCardHtml).join('');
+            restoreFormDrafts(container, drafts);
         }
 
         function updateActiveTradeCards() {
@@ -8521,10 +8603,32 @@
                 <span>${escapeHtml(label)}</span><span class="text-gray-500">${reportPanels[key] ? '▾' : '▸'} ${hint || ''}</span></button>`;
         }
         // Ask for a correction reason when the change touches a finalized month.
-        function ledgerReasonFor(dateStr) {
+        // Async — window.prompt() is unsupported in Electron, so a modal is used.
+        let _reasonResolve = null;
+        function pscReasonPrompt(message) {
+            return new Promise(resolve => {
+                _reasonResolve = resolve;
+                const ov = document.getElementById('reasonPromptOverlay');
+                document.getElementById('reasonPromptMsg').textContent = message;
+                document.getElementById('reasonPromptInput').value = '';
+                ov.classList.remove('hidden'); ov.classList.add('flex');
+                setTimeout(() => { const i = document.getElementById('reasonPromptInput'); if (i) i.focus(); }, 30);
+            });
+        }
+        function reasonPromptClose(v) {
+            const ov = document.getElementById('reasonPromptOverlay');
+            if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+            const r = _reasonResolve; _reasonResolve = null;
+            if (r) r(v);
+        }
+        function reasonPromptOk() { reasonPromptClose((document.getElementById('reasonPromptInput') || {}).value || ''); }
+        function reasonPromptCancel() { reasonPromptClose(null); }
+        async function ledgerReasonFor(dateStr) {
             if (!ledgerReady() || !Ledger.requiresReason(dateStr)) return '';
-            const r = prompt('This changes a finalized month — enter a correction reason:');
-            return r === null ? null : r.trim();
+            const r = await pscReasonPrompt('This changes a finalized month — enter a correction reason:');
+            if (r === null) return null;
+            if (!r.trim()) { showErrorToast('A reason is required for finalized months.'); return null; }
+            return r.trim();
         }
 
         function reportTabHtml() {
@@ -8619,14 +8723,14 @@
                 <button onclick="saveLedgerSetup()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold uppercase">Save setup</button>
             </div>`;
         }
-        function saveLedgerSetup() {
+        async function saveLedgerSetup() {
             if (!ledgerReady()) return;
             const start = document.getElementById('ledgerSetupStart').value;
             const equity = Number(document.getElementById('ledgerSetupEquity').value);
             const mode = document.getElementById('ledgerSetupMode').value;
             const qldSh = document.getElementById('ledgerSetupQldShares').value;
             if (!Ledger.isIsoDate(start) || !Number.isFinite(equity) || equity <= 0) { showErrorToast('Enter a valid opening date and equity.'); return; }
-            const reason = ledgerReasonFor(start);
+            const reason = await ledgerReasonFor(start);
             if (reason === null) return;
             const conf = Ledger.config();
             const undo = Ledger.captureStoreUndo([Ledger.KEYS.config]);
@@ -8662,11 +8766,11 @@
                 <button onclick="saveValuationGrid()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold uppercase">Save valuation</button>
             </div>`;
         }
-        function saveValuationGrid() {
+        async function saveValuationGrid() {
             if (!ledgerReady()) return;
             const date = document.getElementById('valGridDate').value;
             if (!Ledger.isIsoDate(date)) { showErrorToast('Pick a valid date.'); return; }
-            const reason = ledgerReasonFor(date);
+            const reason = await ledgerReasonFor(date);
             if (reason === null) return;
             const marks = {};
             activeTradesLog.filter(t => t.status === 'ACTIVE').forEach(t => {
@@ -8693,7 +8797,9 @@
             const equity = (twsSyncAccount && twsConnected && twsLastAccountValue > 0) ? twsLastAccountValue : (Number(accountValue) || null);
             const qldR = qldReality();
             const undo = Ledger.captureStoreUndo([Ledger.KEYS.valuations]);
-            Ledger.saveTodayClose(equity, marks, qldR.shares > 0 ? qldR.posValue : (qldR.sleeveValue || 0));
+            // qldValue is the SECURITY mark only — the flat reserve is account
+            // cash already inside `equity`; storing sleeveValue would count it twice.
+            Ledger.saveTodayClose(equity, marks, qldR.posValue || 0);
             Ledger.auditPush('Save today\'s close', '', undo);
             showSuccessToast('Saved today\'s closing values — ' + Object.keys(marks).length + ' position(s), equity $' + (equity ? Math.round(equity).toLocaleString() : '—') + '.');
             renderActiveTradesPage();
@@ -8729,13 +8835,13 @@
                 </div>
             </div>`;
         }
-        function addCashRecord(kind) {
+        async function addCashRecord(kind) {
             if (!ledgerReady()) return;
             const date = document.getElementById(kind === 'flows' ? 'flowDate' : 'incomeDate').value;
             const amt = Number(document.getElementById(kind === 'flows' ? 'flowAmt' : 'incomeAmt').value);
             const note = document.getElementById(kind === 'flows' ? 'flowNote' : 'incomeNote').value.trim();
             if (!Ledger.isIsoDate(date) || !Number.isFinite(amt) || amt === 0) { showErrorToast('Enter a date and a non-zero amount.'); return; }
-            const reason = ledgerReasonFor(date);
+            const reason = await ledgerReasonFor(date);
             if (reason === null) return;
             const cash = Ledger.cashRecords();
             const undo = Ledger.captureStoreUndo([Ledger.KEYS.cash]);
@@ -8745,12 +8851,12 @@
             Ledger.flagStaleFrom(date);
             renderActiveTradesPage();
         }
-        function deleteCashRecord(kind, id) {
+        async function deleteCashRecord(kind, id) {
             if (!ledgerReady()) return;
             const cash = Ledger.cashRecords();
             const rec = cash[kind].find(x => x.id === id);
             if (!rec) return;
-            const reason = ledgerReasonFor(rec.date);
+            const reason = await ledgerReasonFor(rec.date);
             if (reason === null) return;
             const undo = Ledger.captureStoreUndo([Ledger.KEYS.cash]);
             cash[kind] = cash[kind].filter(x => x.id !== id);
@@ -8802,14 +8908,17 @@
             showSuccessToast('Note saved.');
         }
 
-        function finalizeReportMonth(month) {
+        async function finalizeReportMonth(month) {
             if (!ledgerReady()) return;
-            const report = Ledger.buildMonthReport(month, Ledger.monthBounds(month)[1]);
+            // Default asof = today: mid-month views clamp to month-to-date and
+            // canFinalize refuses — do not stamp a partial month as complete.
+            const report = Ledger.buildMonthReport(month);
             const existing = Ledger.snapshotList(month).length;
             let reason = '';
             if (existing) {
-                reason = prompt('Revising finalized report ' + month + ' — enter a reason:');
-                if (reason === null || !reason.trim()) { if (reason !== null) showErrorToast('A reason is required to revise.'); return; }
+                const r = await pscReasonPrompt('Revising finalized report ' + month + ' — enter a reason:');
+                if (r === null || !r.trim()) { if (r !== null) showErrorToast('A reason is required to revise.'); return; }
+                reason = r.trim();
             }
             const res = Ledger.finalizeMonth(month, report, reason);
             if (!res.ok) { showErrorToast(res.error); return; }
@@ -8825,16 +8934,23 @@
             if (!report || report.ok === false) { showErrorToast('No report to export.'); return; }
             downloadText(`PortfolioT_${report.month}.html`, Ledger.reportHtmlDocument(report), 'text/html;charset=utf-8');
         }
-        function printLedgerReport() {
+        async function printLedgerReport() {
             if (!ledgerReady()) return;
             const month = reportViewSnapshot ? reportViewSnapshot.month : (reportMonth || Ledger.today().slice(0, 7));
             const report = reportViewSnapshot
                 ? (Ledger.snapshotList(reportViewSnapshot.month).find(s => s.revision === reportViewSnapshot.revision) || {}).report
                 : Ledger.buildMonthReport(month);
             if (!report || report.ok === false) { showErrorToast('No report to print.'); return; }
+            const html = Ledger.reportHtmlDocument(report);
+            // Electron denies window.open — print through the hidden-window IPC path.
+            if (window.pscBridge && typeof window.pscBridge.printHtml === 'function') {
+                const r = await window.pscBridge.printHtml(html);
+                if (!r || !r.ok) showErrorToast('Print failed: ' + (r && r.error || 'cancelled'));
+                return;
+            }
             const w = window.open('', '_blank');
             if (!w) { showErrorToast('Popup blocked — allow popups to print.'); return; }
-            w.document.write(Ledger.reportHtmlDocument(report));
+            w.document.write(html);
             w.document.close();
             setTimeout(() => { w.focus(); w.print(); }, 300);
         }
@@ -8853,7 +8969,7 @@
                     <span class="w-14 font-bold ${e.kind === 'Exit' || e.kind === 'Partial' ? 'text-rose-300' : e.kind === 'Income' ? 'text-amber-300' : 'text-emerald-300'}">${e.kind}</span>
                     <span class="font-mono-num">${e.kind === 'Income' ? '$' + e.amount : e.qty + ' @ $' + Number(e.price).toFixed(2)}</span>
                     <span class="text-gray-600 flex-1 truncate">${escapeHtml(e.note || '')}</span>
-                    ${e.kind !== 'Entry' ? `<button onclick="removeTradeEvent(${trade.id},'${e.id}')" class="text-red-400">✕</button>` : ''}
+                    ${['Partial', 'Add', 'Income', 'Split'].includes(e.kind) ? `<button onclick="removeTradeEvent('${trade.id}','${e.id}')" class="text-red-400">✕</button>` : ''}
                 </div>`).join('')}
                 ${warnings.length ? `<div class="text-[9px] text-amber-300">${warnings.map(w => '⚠ ' + escapeHtml(w)).join('<br>')}</div>` : ''}
                 <div class="flex gap-1.5 flex-wrap items-center pt-1">
@@ -8864,12 +8980,12 @@
                     <input id="txnQty-${trade.id}" type="number" min="0" step="any" placeholder="qty / factor" class="bg-slate-800 border border-slate-600 rounded p-1 w-24">
                     <input id="txnPrice-${trade.id}" type="number" min="0" step="any" placeholder="price" class="bg-slate-800 border border-slate-600 rounded p-1 w-24">
                     <input id="txnAmt-${trade.id}" type="number" step="any" placeholder="$ (income)" class="bg-slate-800 border border-slate-600 rounded p-1 w-20">
-                    <button onclick="submitTxnEvent(${trade.id})" class="bg-emerald-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
+                    <button onclick="submitTxnEvent('${trade.id}')" class="bg-emerald-700 text-white rounded px-2.5 py-1 font-bold">ADD</button>
                 </div>
                 <p class="text-[9px] text-gray-600">Advisory only — events feed the monthly report; the card's live numbers stay as they are.</p>
             </div>`;
         }
-        function submitTxnEvent(id) {
+        async function submitTxnEvent(id) {
             if (!ledgerReady()) return;
             const trade = activeTradesLog.find(t => t.id === id);
             if (!trade) return;
@@ -8880,12 +8996,18 @@
             const amount = Number(document.getElementById(`txnAmt-${id}`).value) || 0;
             if (!Ledger.isIsoDate(date)) { showErrorToast('Pick a valid date.'); return; }
             if (kind === 'Income' ? !(amount > 0) : !(qty > 0 && (kind === 'Split' || price > 0))) { showErrorToast('Enter qty + price (or $ amount for income).'); return; }
-            const reason = ledgerReasonFor(date);
+            const reason = await ledgerReasonFor(date);
             if (reason === null) return;
             const undo = Ledger.captureTradeUndo([id]);
-            Ledger.appendEvent(trade, { kind, date, qty, price, amount, note: 'manual' });
-            // Keep the flat view coherent with the ledger.
-            if (kind === 'Partial') { trade.shares = Math.max(0, (trade.shares || 0) - qty); trade.realizedPnl = (trade.realizedPnl || 0) + (trade.side === 'LONG' ? 1 : -1) * (price - trade.entryPrice) * qty; }
+            const ev = Ledger.appendEvent(trade, { kind, date, qty, price, amount, note: 'manual' });
+            // Keep the flat view coherent with the ledger — and record the applied
+            // delta on the event so removing it can reverse the effect exactly.
+            if (kind === 'Partial') {
+                const d = (trade.side === 'LONG' ? 1 : -1) * (price - trade.entryPrice) * qty;
+                trade.shares = Math.max(0, (trade.shares || 0) - qty);
+                trade.realizedPnl = (trade.realizedPnl || 0) + d;
+                if (ev) ev.flatDelta = { shares: -qty, realized: d };
+            }
             if (kind === 'Add') { trade.entryPrice = ((trade.entryPrice * trade.shares) + price * qty) / (trade.shares + qty); trade.shares += qty; trade.totalQty = Math.max(trade.totalQty || 0, trade.shares); }
             if (kind === 'Split') {
                 trade.shares *= qty; trade.entryPrice /= qty;
@@ -8899,16 +9021,48 @@
             if (!saveActiveTradesLog()) { showErrorToast('Could not save the journal.'); return; }
             renderActiveTradesPage();
         }
-        function removeTradeEvent(id, eventId) {
+        async function removeTradeEvent(id, eventId) {
             if (!ledgerReady()) return;
             const trade = activeTradesLog.find(t => t.id === id);
             if (!trade || !Array.isArray(trade.events)) return;
             const ev = trade.events.find(e => e.id === eventId);
             if (!ev) return;
-            const reason = ledgerReasonFor(ev.date);
+            const reason = await ledgerReasonFor(ev.date);
             if (reason === null) return;
             const undo = Ledger.captureTradeUndo([id]);
             trade.events = trade.events.filter(e => e.id !== eventId);
+            // Reverse the flat-journal adjustments submitTxnEvent applied — the
+            // flat view must not drift from the event ledger after a removal.
+            if (ev.kind === 'Partial') {
+                const d = ev.flatDelta || { shares: -ev.qty, realized: (trade.side === 'LONG' ? 1 : -1) * ((ev.price || 0) - (trade.entryPrice || 0)) * ev.qty };
+                trade.shares = (trade.shares || 0) - d.shares;
+                trade.realizedPnl = (trade.realizedPnl || 0) - d.realized;
+            }
+            if (ev.kind === 'Add' && ev.qty > 0) {
+                // Weighted-mean removal — exact regardless of intervening events.
+                const before = trade.shares || 0, rem = before - ev.qty;
+                if (rem > 1e-8) trade.entryPrice = ((trade.entryPrice || 0) * before - (ev.price || 0) * ev.qty) / rem;
+                trade.shares = Math.max(0, rem);
+            }
+            if (ev.kind === 'Split' && ev.qty) {
+                trade.shares = (trade.shares || 0) / ev.qty;
+                trade.entryPrice = (trade.entryPrice || 0) * ev.qty;
+                if (trade.stopPrice) trade.stopPrice *= ev.qty;
+                if (trade.tp1) trade.tp1 *= ev.qty;
+                if (trade.tp2) trade.tp2 *= ev.qty;
+            }
+            if (ev.kind === 'Add' || ev.kind === 'Split') {
+                // totalQty is a high-water mark — recompute the peak from the
+                // remaining events rather than trusting stored pre-values.
+                let hi = 0, q = 0;
+                (trade.events || []).forEach(e => {
+                    if (e.kind === 'Entry' || e.kind === 'Add') q += e.qty;
+                    else if (e.kind === 'Partial' || e.kind === 'Exit') q -= e.qty;
+                    else if (e.kind === 'Split') q *= e.qty;
+                    hi = Math.max(hi, q);
+                });
+                trade.totalQty = Math.max(hi, trade.shares || 0);
+            }
             Ledger.auditPush('Remove ' + ev.kind + ' event on ' + trade.ticker, reason, undo);
             Ledger.flagStaleFrom(ev.date);
             if (!saveActiveTradesLog()) { showErrorToast('Could not save the journal.'); return; }
@@ -8921,65 +9075,124 @@
         }
 
         function ledgerOnBoot() {
-            // Cloud sync pull — applied before the first render when remote is newer.
+            // Cloud sync pull — merged before the first render. A durable
+            // outbox flag re-arms a push when the last session died mid-queue.
             const conf = Ledger.syncConfig();
             if (!conf.enabled || conf.provider === 'none') return;
             syncPullAndApply();
+            if (safeStorageGet('syncPending') === '1') _syncPendingPush = true;
         }
 
         // ---------- Cloud sync (optional — Settings → Sync) ----------
+        // Per-record LWW merge (SyncEngine + mergeMeta stamps): independent
+        // records never clobber each other; same-record conflicts resolve by
+        // revision stamp. Replace-only providers (jsonbin/npoint/pantry/custom)
+        // converge via client-side pull-merge-push; Apps Script additionally
+        // CASes server-side so concurrent pushes can't lose records.
         let _syncBusy = false;
         let _syncPushTimer = null;
+        let _syncPendingPush = false;
+        let _syncPendingPull = false;
+        function _syncQueueDrain() {
+            if (_syncBusy) return;
+            if (_syncPendingPull) { _syncPendingPull = false; syncPullAndApply(); }
+            else if (_syncPendingPush) { _syncPendingPush = false; syncPushNow(); }
+        }
         function notifyLedgerDirty() {
             if (!ledgerReady()) return;
             const conf = Ledger.syncConfig();
             if (!conf.enabled || conf.provider === 'none') return;
+            // Durable outbox: the flag survives a reload that kills the timer.
+            if (stateStoreReady() && safeStorageGet('syncPending') !== '1') safeStorageSet('syncPending', '1');
             if (_syncPushTimer) clearTimeout(_syncPushTimer);
             // 10s quiet period — quote refresh writes marks continuously during
             // RTH; a short debounce would upload the whole backup per poll cycle.
             _syncPushTimer = setTimeout(syncPushNow, 10000);
         }
+        // Pull the remote envelope and merge it into local state.
+        // Returns {ok, empty?, error?, merged, remoteSavedAt}.
+        async function _syncPullMerge() {
+            const r = await Ledger.syncPull((u, i) => fetch(u, i));
+            if (!r.ok) return r;
+            const data = r.data;
+            if (!data || (typeof data === 'object' && !Object.keys(data).length)) return { ok: true, empty: true };
+            const isEnvelope = window.StateSchema && data.format === window.StateSchema.FORMAT;
+            if (!isEnvelope) return { ok: false, error: 'Remote payload is not a schema-v1 state.' };
+            const dec = window.StateSchema.decode(data, { purpose: 'sync' });
+            if (!dec.ok) return { ok: false, error: 'Remote rejected: ' + dec.error };
+            if (!stateStoreReady() || !window.SyncEngine) return { ok: false, error: 'State store not initialized' };
+            const m = window.SyncEngine.mergeEnvelopes(window.StateStore.raw(), dec.value);
+            if (!m.ok) return m;
+            if (m.changed) {
+                const res = window.StateStore.applySnapshot({ data: m.data, mergeMeta: m.mergeMeta }, { source: 'sync' });
+                if (!res.ok) return { ok: false, error: res.error };
+            }
+            return { ok: true, merged: m, remoteSavedAt: dec.value.savedAt || 0 };
+        }
+        function _applyMergedToUi(m) {
+            if (m && m.changed) {
+                rehydrateGlobalsFromStore();
+                loadSettings();
+                renderActiveTradesPage();
+            }
+        }
         async function syncPushNow() {
-            if (_syncBusy || !ledgerReady()) return;
+            if (!ledgerReady()) return;
             const conf = Ledger.syncConfig();
             if (!conf.enabled || conf.provider === 'none') return;
+            if (_syncBusy) { _syncPendingPush = true; return; }
             _syncBusy = true;
             try {
-                const r = await Ledger.syncPush((u, i) => fetch(u, i), buildBackupData());
+                // Merge before writing: a blind whole-document PUT would clobber
+                // records another device wrote since our last pull.
+                let remoteSavedAt = 0;
+                if (stateStoreReady() && window.SyncEngine) {
+                    const m = await _syncPullMerge();
+                    if (!m.ok) { updateSyncStatusLine('Push skipped — pull failed: ' + (m.error || '')); return; }
+                    if (!m.empty) { remoteSavedAt = m.remoteSavedAt; _applyMergedToUi(m.merged); }
+                }
+                const payload = stateStoreReady() ? window.StateStore.exportFor('sync') : buildBackupData();
+                // CAS only when we merged against a known remote savedAt.
+                const casOpts = (conf.provider === 'appscript' && remoteSavedAt > 0) ? { cas: remoteSavedAt } : undefined;
+                let r = await Ledger.syncPush((u, i) => fetch(u, i), payload, casOpts);
+                if (r && r.conflict) {
+                    // Remote moved between our merge and write — re-merge + retry once.
+                    const m2 = await _syncPullMerge();
+                    if (!m2.ok) throw new Error(m2.error || 'conflict re-merge failed');
+                    _applyMergedToUi(m2.merged);
+                    r = await Ledger.syncPush((u, i) => fetch(u, i),
+                        window.StateStore.exportFor('sync'), { cas: m2.remoteSavedAt || 0 });
+                    if (r && r.conflict) throw new Error('Remote is changing too fast — retrying on next push.');
+                }
                 if (r.ok) {
-                    // Stamp local time so the next pull doesn't see our own push
-                    // as newer — otherwise restart-mid-debounce could re-apply it
-                    // over fresh local edits.
                     safeStorageSet('journalSyncedAt', String(r.syncedAt));
+                    if (stateStoreReady()) safeStorageSet('syncPending', '0');
                     updateSyncStatusLine();
                 }
             } catch (e) {
                 const c = Ledger.syncConfig(); c.lastError = e.message; Ledger.saveSyncConfig(c);
                 updateSyncStatusLine();
-            } finally { _syncBusy = false; }
+            } finally { _syncBusy = false; _syncQueueDrain(); }
         }
         async function syncPullAndApply() {
-            if (_syncBusy || !ledgerReady()) return;
+            if (!ledgerReady()) return;
+            const conf = Ledger.syncConfig();
+            if (!conf.enabled || conf.provider === 'none') return;
+            if (_syncBusy) { _syncPendingPull = true; return; }
             _syncBusy = true;
             try {
-                const r = await Ledger.syncPull((u, i) => fetch(u, i));
-                if (!r.ok) { updateSyncStatusLine(); return; }
-                const data = r.data;
-                if (!data || typeof data !== 'object' || data.activeTradesLog === undefined) { updateSyncStatusLine('Remote payload is not a backup.'); return; }
-                const localStamp = Number(safeStorageGet('journalSyncedAt') || 0);
-                if ((data.syncedAt || 0) > localStamp) {
-                    const values = prepareBackup(data);
-                    Object.entries(values).forEach(([k, v]) => safeStorageSet(k, v));
-                    safeStorageSet('journalSyncedAt', String(data.syncedAt));
-                    activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
-                    loadSettings();
-                    updateSyncStatusLine('Pulled newer data from cloud.');
-                    renderActiveTradesPage();
-                } else updateSyncStatusLine();
+                const m = await _syncPullMerge();
+                if (!m.ok) { updateSyncStatusLine(m.error || 'Pull failed.'); return; }
+                if (m.empty) { updateSyncStatusLine('Remote empty — pushing local state.'); _syncPendingPush = true; return; }
+                safeStorageSet('journalSyncedAt', String(Date.now()));
+                _applyMergedToUi(m.merged);
+                updateSyncStatusLine(m.merged && m.merged.changed ? 'Merged newer data from cloud.' : 'Already in sync.');
+                // Remote may still lack records we hold — converge it.
+                if (m.merged && m.merged.remoteBehind) _syncPendingPush = true;
             } catch (e) {
                 const c = Ledger.syncConfig(); c.lastError = e.message; Ledger.saveSyncConfig(c);
                 updateSyncStatusLine();
-            } finally { _syncBusy = false; }
+            } finally { _syncBusy = false; _syncQueueDrain(); }
         }
         function updateSyncStatusLine(extra) {
             const el = document.getElementById('syncStatusLine');
@@ -8988,7 +9201,7 @@
             const fmt = ts => ts ? new Date(ts).toLocaleString() : 'never';
             el.innerText = extra || (!c.enabled || c.provider === 'none'
                 ? 'Sync off.'
-                : `${Ledger.PROVIDERS[c.provider].name} · pushed ${fmt(c.lastPushed)} · pulled ${fmt(c.lastPulled)}${c.lastError ? ' · ⚠ ' + c.lastError : ''}`);
+                : `${(Ledger.PROVIDERS[c.provider] || {}).name || c.provider} · pushed ${fmt(c.lastPushed)} · pulled ${fmt(c.lastPulled)}${c.lastError ? ' · ⚠ ' + c.lastError : ''}`);
         }
         function saveSyncSettings() {
             if (!ledgerReady()) return;
@@ -9006,7 +9219,7 @@
         function syncProviderChanged() {
             if (!ledgerReady()) return;
             const p = document.getElementById('syncProvider').value;
-            const fields = (Ledger.PROVIDERS[p] || { fields: [] }).fields;
+            const fields = (Ledger.PROVIDERS[p] && Ledger.PROVIDERS[p].fields) || [];
             const show = { url: 'syncUrlWrap', binId: 'syncBinIdWrap', apiKey: 'syncApiKeyWrap', basket: 'syncBasketWrap' };
             Object.entries(show).forEach(([f, id]) => document.getElementById(id).classList.toggle('hidden', !fields.includes(f)));
             document.getElementById('syncProviderHint').innerText = (Ledger.PROVIDERS[p] || {}).hint || '';
@@ -9022,33 +9235,12 @@
             updateSyncStatusLine();
         }
 
+        // Public backup = the schema envelope minus machine-local/secret sections.
+        // Shape: { format:'psc-state', schema:1, app, createdAt, rev, device,
+        //        meta:{mergeMeta,outbox}, data:{...records} } — see state-schema.js.
         function buildBackupData() {
-            return {
-                version: "4.0.0",
-                exportDate: new Date().toISOString(),
-                customStrategies,
-                regimeStrategyMap,
-                activeTradesLog,
-                globalMarketRegime,
-                qldSleeve,
-                riskValue: safeStorageGet('riskValue'),
-                slippageValue: safeStorageGet('slippageValue'),
-                selectedProvider: safeStorageGet('selectedProvider'),
-                collapseAfterCalc: safeStorageGet('collapseAfterCalc'),
-                preferredViewMode: safeStorageGet('preferredViewMode'),
-                ...(ledgerReady() ? {
-                    ledgerConfig: safeStorageGet(Ledger.KEYS.config),
-                    dailyValuations: safeStorageGet(Ledger.KEYS.valuations),
-                    cashRecords: safeStorageGet(Ledger.KEYS.cash),
-                    qldLedgerTxns: safeStorageGet(Ledger.KEYS.qldTxns),
-                    reportSnapshots: safeStorageGet(Ledger.KEYS.snapshots),
-                    journalAudit: safeStorageGet(Ledger.KEYS.audit),
-                    journalSyncedAt: safeStorageGet('journalSyncedAt')
-                } : {}),
-                ...Object.fromEntries(BACKUP_SETTINGS.map(k => [k, safeStorageGet(k)])),
-                scanner: collectScannerStore(''),
-                scannerStores: collectScannerStores()
-            };
+            if (stateStoreReady()) return window.StateStore.exportFor('backup');
+            return { version: PSC_VERSION };   // degraded — state modules absent
         }
 
         function exportSettingsJson() {
@@ -9064,184 +9256,14 @@
             URL.revokeObjectURL(url);
         }
 
-        const BACKUP_SETTINGS = ['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus', 'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct', 'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct', 'liqVolPeriod', 'twsEnabled', 'twsBridgeUrl', 'twsBridgeToken', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled', 'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth'];
-
+        // Backup/restore accepts ONLY the schema-v1 envelope (what this app writes).
+        // Anything else — old-format exports, hand-edited files, foreign JSON —
+        // is rejected before any state changes (transactional restore).
         function prepareBackup(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data) || ![1, '1', '1.0.2', '1.1.0', '2.0.0', '2.0.1', '2.0.2', '2.1.0', '2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5', '2.1.6', '2.1.7', '2.1.8', '2.1.9', '2.2.0', '2.2.1', '2.3.0', '2.5.0', '2.5.1', '2.5.2', '2.6.0', '2.7.0', '3.0.0', '3.0.1', '3.0.5', '3.0.6', '3.1.0', '3.5.0', '3.5.1', '3.5.2', '3.6.0', '3.6.1', '3.6.2', '3.6.3', '3.7.5', '3.7.6', '3.7.7', '3.7.8', '3.7.9', '3.8.0', '3.9.0', '4.0.0'].includes(data.version)) throw new Error('Unsupported backup version');
-            const values = {};
-            BACKUP_SETTINGS.forEach(key => {
-                if (data[key] === undefined || data[key] === null) return;
-                // Machine-local bridge config is dropped below — validating it would
-                // fail a whole restore over a field we discard anyway.
-                if (key === 'twsBridgeUrl' || key === 'twsBridgeToken') return;
-                const value = String(data[key]);
-                if (key === 'riskValue' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid risk');
-                if (key === 'slippageValue' && (!Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error('Invalid slippage');
-                if ((key === 'selectedProvider' || key === 'enhancedSecondaryProvider') && !Object.hasOwn(API_CONFIGS, value)) throw new Error('Unknown quote provider');
-                if (key === 'providerPriorityOrder') {
-                    let arr; try { arr = JSON.parse(value); } catch (e) { throw new Error('Invalid provider priority'); }
-                    if (!Array.isArray(arr) || !arr.length || arr.some(p => typeof p !== 'string' || !Object.hasOwn(API_CONFIGS, p))) throw new Error('Invalid provider priority');
-                }
-                if (key === 'preferredViewMode' && !['cards', 'table'].includes(value)) throw new Error('Unknown view');
-                if (key === 'maxHoldDays' && boundedHoldDays(value) !== Number(value)) throw new Error('Invalid hold days');
-                if (key === 'liqVolPct' && (!Number.isFinite(Number(value)) || Number(value) <= 0)) throw new Error('Invalid liquidity %');
-                if (key === 'liqVolPeriod' && (!Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > 250)) throw new Error('Invalid liquidity period');
-                if (key === 'timedExitTime' && !TIMED_EXIT_TIMES.includes(value)) throw new Error('Unsupported scheduled exit time');
-                if (key === 'twsBridgeUrl' && !isValidBridgeUrl(value)) throw new Error('Invalid bridge URL');
-                if (key === 'riskMode' && !['fixed', 'percent'].includes(value)) throw new Error('Invalid risk mode');
-                if (key === 'signalSyncMode' && !['shared', 'perPage'].includes(value)) throw new Error('Invalid signal sync mode');
-                if (key === 'pbEtfUniverse') {
-                    let arr; try { arr = JSON.parse(value); } catch (e) { throw new Error('Invalid pullback ETF universe'); }
-                    if (!Array.isArray(arr) || !arr.length || arr.some(t => typeof t !== 'string' || !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t))) throw new Error('Invalid pullback ETF universe');
-                }
-                if ((key === 'qldTargetPct' || key === 'qldBandPct') && (!Number.isFinite(Number(value)) || Number(value) <= 0 || Number(value) > 100)) throw new Error('Invalid QLD setting');
-                if (key === 'twsExitStrategy' && !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid exit strategy');
-                if (!['riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider', 'providerPriorityOrder', 'preferredViewMode', 'maxHoldDays', 'timedExitTime', 'twsBridgeUrl', 'twsBridgeToken', 'accountValue', 'liqVolPct', 'liqVolPeriod', 'riskMode', 'signalSyncMode', 'pbEtfUniverse', 'qldTargetPct', 'qldBandPct', 'twsExitStrategy'].includes(key) && !['true', 'false'].includes(value)) throw new Error('Invalid toggle: ' + key);
-                values[key] = value;
-            });
-            if (data.globalMarketRegime !== undefined) {
-                if (!['expanding', 'declining'].includes(data.globalMarketRegime)) throw new Error('Unknown market regime');
-                values.globalMarketRegime = data.globalMarketRegime;
-            }
-            const strategies = data.customStrategies ?? customStrategies;
-            if (!Array.isArray(strategies)) throw new Error('Invalid custom strategies');
-            strategies.forEach(s => {
-                if (!s || !/^[a-zA-Z0-9_-]+$/.test(s.id) || typeof s.name !== 'string' || !Array.isArray(s.legs)) throw new Error('Invalid custom strategy');
-                if (s.legs.some(l => !l || !Number.isFinite(Number(l.pct)) || Number(l.pct) < 0 || !Number.isFinite(Number(l.rr)) || Number(l.rr) < 0 || !['fixed', 'breakeven', 'plus1'].includes(l.stopMode || 'fixed'))) throw new Error('Invalid strategy leg');
-            });
-            const ids = [...DEFAULT_STRATEGIES, ...strategies].map(s => s.id);
-            if (new Set(ids).size !== ids.length) throw new Error('Duplicate strategy ID');
-            // twsExitStrategy may point at a custom strategy carried in this same backup.
-            if (values.twsExitStrategy && values.twsExitStrategy !== AUTO_STRATEGY && !ids.includes(values.twsExitStrategy)) throw new Error('Unknown exit strategy');
-            if (data.customStrategies !== undefined) values.customStrategies = JSON.stringify(strategies);
-            if (data.regimeStrategyMap !== undefined) {
-                const map = data.regimeStrategyMap;
-                if (!map || !ids.includes(map.expanding) || !ids.includes(map.declining)) throw new Error('Unknown regime strategy');
-                values.regimeStrategyMap = JSON.stringify({ expanding: map.expanding, declining: map.declining });
-            }
-            if (data.activeTradesLog !== undefined) {
-                if (!Array.isArray(data.activeTradesLog)) throw new Error('Invalid trade log');
-                data.activeTradesLog.forEach(t => {
-                    if (!t || typeof t !== 'object') throw new Error('Invalid trade record');
-                    // Stopless records the app itself creates: QLD sleeve entries and
-                    // broker fill/position imports — validate shared shape, skip stop rules.
-                    // Broker fill/position imports (and QLD sleeve rows) can carry a
-                    // recorded stop yet still have shares=0 when fully closed — the
-                    // shared shape check must not route them through shares>0 rules.
-                    const stopless = (t.sleeve === 'QLD' || t.strategyId === 'qld' || t.fillSource === 'tws')
-                        && (!Number.isFinite(t.stopPrice) || t.fillSource === 'tws');
-                    const sharesOk = t.fillSource === 'tws'
-                        ? (Number.isFinite(t.shares) && t.shares >= 0)         // broker fractional / fully-closed 0
-                        : (Number.isSafeInteger(t.shares) && t.shares > 0);
-                    const paramsOk = stopless
-                        ? (Number.isFinite(t.entryPrice) && t.entryPrice > 0 && sharesOk
-                            && (!Number.isFinite(t.stopPrice) || t.stopPrice > 0) ? null : 'bad fill params')
-                        : validateTradeParams(t.side === 'LONG', t.entryPrice, t.shares, t.stopPrice);
-                    if (!Number.isFinite(t.id) || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(t.ticker) || !['LONG', 'SHORT'].includes(t.side) || !['ACTIVE', 'CLOSED'].includes(t.status) || !Number.isFinite(ymdToUtc(t.entryDate).getTime()) || paramsOk) throw new Error('Invalid trade record');
-                    if (t.status === 'CLOSED') {
-                        // Broker-sourced closes may hold shares=0 (flat) — the recorded
-                        // exitPrice/realized result carries the outcome, not shares.
-                        if (!Number.isFinite(t.exitPrice) || t.exitPrice <= 0 || !Number.isFinite(ymdToUtc(t.exitDate).getTime()) || t.exitDate < t.entryDate) throw new Error('Invalid closed trade');
-                        if (t.shares === 0 && t.fillSource !== 'tws') throw new Error('Invalid closed trade');
-                    }
-                });
-                if (new Set(data.activeTradesLog.map(t => t.id)).size !== data.activeTradesLog.length) throw new Error('Duplicate trade ID');
-                values.activeTradesLog = JSON.stringify(data.activeTradesLog);
-            }
-            if (data.qldSleeve !== undefined) {
-                const s = data.qldSleeve;
-                if (!s || typeof s !== 'object' || !Number.isSafeInteger(Number(s.shares)) || Number(s.shares) < 0 || (Number(s.shares) > 0 && (!Number.isFinite(Number(s.entryPrice)) || Number(s.entryPrice) <= 0))) throw new Error('Invalid QLD sleeve');
-                const pend = s.pending && typeof s.pending === 'object' && ['ENTER', 'EXIT', 'ADD', 'TRIM', 'CASH'].includes(s.pending.type) && ['WEEKLY', 'MONTH_END'].includes(s.pending.reason)
-                    ? { type: s.pending.type, reason: s.pending.reason, month: typeof s.pending.month === 'string' ? s.pending.month : undefined, queuedAt: typeof s.pending.queuedAt === 'string' ? s.pending.queuedAt : undefined }
-                    : null;
-                const pord = s.pendingOrder && typeof s.pendingOrder === 'object'
-                    && typeof s.pendingOrder.orderRef === 'string'
-                    && ['ENTER', 'EXIT', 'ADD', 'TRIM'].includes(s.pendingOrder.action)
-                    && ['BUY', 'SELL'].includes(s.pendingOrder.side)
-                    && Number.isSafeInteger(Number(s.pendingOrder.requestedQty)) && Number(s.pendingOrder.requestedQty) > 0
-                    ? {
-                        orderRef: s.pendingOrder.orderRef, orderId: Number.isSafeInteger(Number(s.pendingOrder.orderId)) ? Number(s.pendingOrder.orderId) : null,
-                        action: s.pendingOrder.action, side: s.pendingOrder.side, requestedQty: Number(s.pendingOrder.requestedQty),
-                        baseline: s.pendingOrder.baseline && typeof s.pendingOrder.baseline === 'object' ? {
-                            shares: Math.max(0, Number(s.pendingOrder.baseline.shares) || 0),
-                            entryPrice: Number(s.pendingOrder.baseline.entryPrice) || 0,
-                            entryDate: typeof s.pendingOrder.baseline.entryDate === 'string' ? s.pendingOrder.baseline.entryDate : null,
-                            cashValue: Math.max(0, Number(s.pendingOrder.baseline.cashValue) || 0)
-                        } : { shares: 0, entryPrice: 0, entryDate: null, cashValue: 0 },
-                        execKeys: s.pendingOrder.execKeys && typeof s.pendingOrder.execKeys === 'object' ? s.pendingOrder.execKeys : {},
-                        filledQty: Math.max(0, Number(s.pendingOrder.filledQty) || 0),
-                        avgFillPrice: Number(s.pendingOrder.avgFillPrice) || 0,
-                        status: ['submitted', 'partial', 'unknown'].includes(s.pendingOrder.status) ? s.pendingOrder.status : 'submitted'
-                    } : null;
-                values.qldSleeve = JSON.stringify({ inPos: !!s.inPos && Number(s.shares) > 0, shares: Math.max(0, Number(s.shares) || 0), entryPrice: Number(s.entryPrice) || 0, entryDate: typeof s.entryDate === 'string' ? s.entryDate : null, cashValue: Math.max(0, Number(s.cashValue) || 0), pending: pend, pendingOrder: pord, signalWeek: typeof s.signalWeek === 'string' ? s.signalWeek : null });
-            }
-            // One scanner store = the persisted state of a scanner page (grid +
-            // pullback list + per-page risk). Written under `pfx` so per-page
-            // stores land on their own keys.
-            const prepareScannerStore = (scan, pfx) => {
-                if (!scan || !Array.isArray(scan.tickers) || !Array.isArray(scan.triggers) || scan.tickers.length > 9 || scan.triggers.length > 9 || ![3, 6, 9].includes(scan.visibleCount)) throw new Error('Invalid scanner grid');
-                if (scan.pb !== undefined) {
-                    if (!Array.isArray(scan.pb) || scan.pb.length > 24 || scan.pb.some(s => !s || !/^[A-Za-z][A-Za-z0-9.\-]{0,9}$/.test(String(s.ticker || '')) || (s.tf !== undefined && s.tf !== null && !['daily', 'weekly'].includes(s.tf)) || (s.cat !== undefined && s.cat !== null && !['auto', 'etf_d', 'etf_w', 'nas_w'].includes(s.cat)))) throw new Error('Invalid pullback signal list');
-                    values[pfx + 'pbSignals'] = JSON.stringify(scan.pb.map(s => ({ ticker: String(s.ticker).toUpperCase(), tf: s.tf || null, cat: s.cat || 'auto', atrOverride: Number.isFinite(Number(s.atrOverride)) && Number(s.atrOverride) > 0 ? Number(s.atrOverride) : null })));
-                }
-                if (scan.riskValue !== undefined && scan.riskValue !== null) {
-                    const rv = Number(scan.riskValue);
-                    if (!Number.isFinite(rv) || rv <= 0) throw new Error('Invalid risk');
-                    values[pfx + 'riskValue'] = String(rv);
-                }
-                const sides = {};
-                for (let i = 0; i < 9; i++) {
-                    const ticker = String(scan.tickers[i] || '');
-                    const trigger = String(scan.triggers[i] ?? '');
-                    if (ticker && !/^[A-Za-z][A-Za-z0-9.-]{0,9}$/.test(ticker)) throw new Error('Invalid ticker');
-                    if (trigger && (!Number.isFinite(Number(trigger)) || Number(trigger) <= 0)) throw new Error('Invalid trigger');
-                    values[pfx + `ticker_${i}`] = ticker.toUpperCase();
-                    values[pfx + `trigger_${i}`] = trigger;
-                    if (['LONG', 'SHORT'].includes(scan.sides?.[i])) sides[i] = scan.sides[i];
-                }
-                values[pfx + 'visibleCount'] = String(scan.visibleCount);
-                values[pfx + 'signalSides'] = JSON.stringify(sides);
-            };
-            if (data.scanner !== undefined) prepareScannerStore(data.scanner, '');
-            // Per-page stores are authoritative over the legacy flat `scanner` field —
-            // apply them after it so scannerStores.scanner wins for shared keys.
-            if (data.scannerStores !== undefined) {
-                const stores = data.scannerStores;
-                if (!stores || typeof stores !== 'object' || Array.isArray(stores)) throw new Error('Invalid scanner stores');
-                for (const page of Object.keys(stores)) {
-                    if (!Object.hasOwn(SCANNER_STORE_PREFIXES, page)) throw new Error('Unknown scanner store: ' + page);
-                    prepareScannerStore(stores[page], SCANNER_STORE_PREFIXES[page]);
-                }
-            }
-            // Ledger stores — additive keys; absent in old backups (default-init ok),
-            // so validate only when present. Stored as JSON strings like other values.
-            if (data.ledgerConfig !== undefined) {
-                let c = data.ledgerConfig;
-                // Backups carry storage strings — parse before validating.
-                if (typeof c === 'string') { try { c = JSON.parse(c); } catch { throw new Error('Invalid ledger config'); } }
-                if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('Invalid ledger config');
-                if (c.start !== null && c.start !== undefined && !window.Ledger?.isIsoDate?.(c.start)) throw new Error('Invalid ledger start date');
-                if (c.openingEquity !== null && c.openingEquity !== undefined && !(Number(c.openingEquity) > 0)) throw new Error('Invalid opening equity');
-                values.ledgerConfig = JSON.stringify({ start: c.start || null, openingEquity: Number(c.openingEquity) || null, mode: c.mode === 'model' ? 'model' : 'actual', qldOpeningShares: Number(c.qldOpeningShares) || null, reportNotes: (c.reportNotes && typeof c.reportNotes === 'object') ? c.reportNotes : {} });
-            }
-            const jstore = (key, name) => {
-                // null/absent → leave the key alone so stores default-init.
-                if (data[key] === undefined || data[key] === null) return;
-                let v; try { v = typeof data[key] === 'string' ? JSON.parse(data[key]) : data[key]; } catch { throw new Error('Invalid ' + name); }
-                if (v === null) return;
-                values[key] = JSON.stringify(v);
-            };
-            jstore('dailyValuations', 'daily valuations');
-            jstore('cashRecords', 'cash records');
-            jstore('qldLedgerTxns', 'QLD ledger');
-            jstore('reportSnapshots', 'report snapshots');
-            jstore('journalAudit', 'audit log');
-            if (data.journalSyncedAt !== undefined && Number.isFinite(Number(data.journalSyncedAt)) && Number(data.journalSyncedAt) > 0) values.journalSyncedAt = String(Number(data.journalSyncedAt));
-            // Bridge URL + token are machine-local — a backup from another machine
-            // must never overwrite the live bridge config with stale values.
-            delete values.twsBridgeUrl;
-            delete values.twsBridgeToken;
-            return values;
+            if (!(window.StateSchema)) throw new Error('State module not loaded.');
+            const dec = window.StateSchema.decode(data, { purpose: 'backup' });
+            if (!dec.ok) throw new Error(dec.error || 'Unsupported backup');
+            return dec.value;   // decoded envelope snapshot
         }
 
         function importSettingsJson(e) {
@@ -9252,24 +9274,18 @@
             const reader = new FileReader();
             reader.onload = (event) => {
                 try {
-                    const values = prepareBackup(JSON.parse(event.target.result));
+                    const snapshot = prepareBackup(JSON.parse(event.target.result));
                     if (!confirm('Replace the settings and trade records included in this backup? Export your current backup first if needed.')) return;
-                    const before = Object.fromEntries(Object.keys(values).map(k => [k, safeStorageGet(k)]));
-                    const failed = [];
-                    Object.entries(values).forEach(([k, v]) => { if (!safeStorageSet(k, v)) failed.push(k); });
-                    if (failed.length) {
-                        Object.entries(before).forEach(([k, v]) => { if (v === null) safeStorageRemove(k); else safeStorageSet(k, v); });
-                        throw new Error('Could not save all restored values. Backup rolled back.');
-                    }
+                    const r = stateStoreReady() ? window.StateStore.applySnapshot(snapshot, { source: 'backup' })
+                        : { ok: false, error: 'State store not initialized' };
+                    if (!r.ok) throw new Error(r.error || 'Restore failed');
                     resetScanState();
-                    customStrategies = JSON.parse(safeStorageGet('customStrategies') || '[]');
-                    regimeStrategyMap = JSON.parse(safeStorageGet('regimeStrategyMap') || '{"expanding":"opt1","declining":"opt2"}');
-                    activeTradesLog = JSON.parse(safeStorageGet('activeTradesLog') || '[]');
+                    rehydrateGlobalsFromStore();
                     timedExitDate = null;
                     earningsCache = {};
                     loadSettings();
                     navigateTo('scanner');
-                    alert('Backup restored. API keys were not imported.');
+                    alert('Backup restored. API keys and bridge settings were not imported.');
                 } catch (err) {
                     alert('Could not restore backup: ' + err.message);
                 }
@@ -9361,7 +9377,13 @@
                 const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
                 return await res.json();
             } catch (e) {
-                return bridgeNetError(e);
+                const err = bridgeNetError(e);
+                // A lost POST to an order-mutating endpoint is UNKNOWN, not a definite
+                // failure — the request may have reached TWS before the connection died.
+                // Callers must treat it like a TWS timeout: keep pending state, gate
+                // resends behind the "check TWS first" confirmation.
+                if (path === '/order' || path === '/orders') err.unknown = true;
+                return err;
             }
         }
         async function bridgeGet(path, signal) {
@@ -9383,7 +9405,7 @@
             try { json = await res.json(); } catch (e) {}
             return { status: res.status, json };
         }
-        const APP_VERSION = '4.0.0';
+        const APP_VERSION = '4.5.0';
         let _bridgeVersionWarned = false;
         async function bridgeHealth() {
             if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
@@ -9509,6 +9531,14 @@
             safeStorageSet('twsBridgeUrl', twsBridgeUrl);
             safeStorageSet('twsBridgeToken', twsBridgeToken);
             safeStorageSet('autoSendExitsOnOpen', String(autoSendExitsOnOpen));
+            const aeEn = document.getElementById('autoEntryEnabledSetting');
+            const aeTime = document.getElementById('autoEntryTimeSetting');
+            autoEntryEnabled = !!(aeEn && aeEn.checked);
+            autoEntryTime = parseAutoEntryTime(aeTime ? aeTime.value : '') !== null ? aeTime.value : '15:55';
+            if (aeTime) { aeTime.value = autoEntryTime; aeTime.disabled = !autoEntryEnabled; }
+            safeStorageSet('autoEntryEnabled', String(autoEntryEnabled));
+            safeStorageSet('autoEntryTime', autoEntryTime);
+            updateAutoEntryStatus();
             // Turning off account sync restores the user's last typed value.
             if (wasSyncing && !twsSyncAccount && twsManualAccountValue != null) {
                 accountValue = twsManualAccountValue;
@@ -9540,6 +9570,10 @@
             twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
             twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
             twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
+            autoEntryEnabled = safeStorageGet('autoEntryEnabled') === 'true';
+            const storedAeTime = safeStorageGet('autoEntryTime');
+            autoEntryTime = parseAutoEntryTime(storedAeTime) !== null ? storedAeTime : '15:55';
+            try { autoEntryState = JSON.parse(safeStorageGet('autoEntryRun') || 'null'); } catch (e) { autoEntryState = null; }
             twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
             const en = document.getElementById('twsEnabledSetting');
             const urlEl = document.getElementById('twsBridgeUrlSetting');
@@ -9549,6 +9583,11 @@
             if (urlEl) urlEl.value = twsBridgeUrl;
             if (tokEl) tokEl.value = twsBridgeToken;
             if (autoEl) autoEl.checked = autoSendExitsOnOpen;
+            const aeEn = document.getElementById('autoEntryEnabledSetting');
+            const aeTime = document.getElementById('autoEntryTimeSetting');
+            if (aeEn) aeEn.checked = autoEntryEnabled;
+            if (aeTime) { aeTime.value = autoEntryTime; aeTime.disabled = !autoEntryEnabled; }
+            updateAutoEntryStatus();
             const tvals = { twsQuotesEnabled, twsSyncAccount, twsPositionsEnabled, twsOrdersEnabled, twsFillsJournalEnabled, twsPnlEnabled, twsEntryOutsideRth };
             for (const [key, elId] of Object.entries({
                 twsQuotesEnabled: 'twsQuotesEnabledSetting', twsSyncAccount: 'twsSyncAccountSetting',
@@ -9696,6 +9735,219 @@
             });
         }
         // ---------- Send handlers ----------
+        // ---------- Scheduled auto-entry ----------
+        // Once per trading day at autoEntryTime (New York), evaluate the saved
+        // v3 + pullback signals on fresh quotes and send qualifying entries via
+        // sendTwsOpen — identical to clicking OPEN: same sizing, trigger gate,
+        // adaptive order spec, preflight, exit-bracket behavior, fill capture.
+        function parseAutoEntryTime(v) {
+            const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(v || '').trim());
+            return m ? (+m[1]) * 60 + (+m[2]) : null;
+        }
+        function autoEntryRunLoad() {
+            if (autoEntryState) return autoEntryState;
+            try { autoEntryState = JSON.parse(safeStorageGet('autoEntryRun') || 'null'); } catch (e) { autoEntryState = null; }
+            return autoEntryState;
+        }
+        function autoEntryRunSave(run) {
+            autoEntryState = run;
+            return safeStorageSet('autoEntryRun', JSON.stringify(run));
+        }
+        function setAutoEntryStatus(msg) {
+            const el = (typeof document !== 'undefined' && document.getElementById) ? document.getElementById('autoEntryStatus') : null;
+            if (el) el.innerText = msg;
+        }
+        function fmtNyMin(min) { return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0'); }
+        function updateAutoEntryStatus() {
+            if (!autoEntryEnabled) { setAutoEntryStatus('Off.'); return; }
+            if (!twsEnabled) { setAutoEntryStatus('On, but the TWS bridge is disabled — enable it above for this to fire.'); return; }
+            const ny = nyNow();
+            const t = parseAutoEntryTime(autoEntryTime);
+            if (t === null) { setAutoEntryStatus('Invalid time — use HH:MM.'); return; }
+            const run = autoEntryRunLoad();
+            if (run && run.date === ny.date && run.done) {
+                const res = run.results || {};
+                const parts = Object.keys(res).map(k => {
+                    const r = res[k] || {};
+                    const st = typeof r === 'object' ? (r.status || 'unknown') : String(r);
+                    return `${k}: ${st}${r.msg && st === 'skipped' ? ' (' + r.msg + ')' : ''}`;
+                });
+                setAutoEntryStatus(`Ran ${ny.date} — ${parts.length ? parts.join(' · ') : 'no qualifying signals'}`);
+                return;
+            }
+            if (!ny.isTradingDay) { setAutoEntryStatus(`Next run: next trading day at ${fmtNyMin(t)} ET.`); return; }
+            if (t >= ny.closeMin) { setAutoEntryStatus(`Scheduled ${fmtNyMin(t)} ET is at/after today's ${fmtNyMin(ny.closeMin)} close — won't fire today.`); return; }
+            if (ny.minutesOfDay >= t) { setAutoEntryStatus(autoEntryBusy ? 'Firing…' : 'Due — waiting for TWS connection.'); return; }
+            setAutoEntryStatus(`Next run today ${fmtNyMin(Math.max(t, MARKET_OPEN_MIN))} ET${t < MARKET_OPEN_MIN ? ' (fires at open)' : ''} — app must be open with TWS connected.`);
+        }
+        // Pure timing gate: trading day, inside RTH, minute reached, not already done.
+        function autoEntryDue(ny, targetMin, run) {
+            if (targetMin === null || !ny || !ny.isTradingDay || !ny.isRTH) return false;
+            if (ny.minutesOfDay < targetMin) return false;
+            if (run && run.date === ny.date && run.done) return false;
+            return true;
+        }
+        function autoEntryTick(ny) {
+            if (!autoEntryEnabled || autoEntryBusy) return;
+            const run = autoEntryRunLoad();
+            if (!autoEntryDue(ny, parseAutoEntryTime(autoEntryTime), run)) return;
+            // twsReady() only proves the bridge is CONFIGURED — a configured but
+            // disconnected bridge would latch the day with all-error results.
+            if (!twsReady() || !twsConnected) { setAutoEntryStatus(twsEnabled ? 'Auto-entry due — waiting for TWS connection.' : 'Auto-entry on, but the TWS bridge is disabled.'); return; }
+            autoEntryFire(ny).catch(e => {
+                console.warn('autoEntryFire failed:', e && e.message);
+                setAutoEntryStatus('Auto-entry error: ' + (e && e.message || 'unknown'));
+            });
+        }
+        // Rebuild today's candidate tasks from the persisted scanner stores —
+        // union of the scanner + per-strategy pages, deduped per kind. Works no
+        // matter which page is open and ignores any stale rendered snapshot.
+        function buildAutoEntryTasks() {
+            const tasks = [];
+            const seen = new Set();
+            const addV3 = (page) => {
+                const count = Math.min(9, Math.max(3, parseInt(safeStorageGet(skey('visibleCount', page)), 10) || 3));
+                let sides = {};
+                try { sides = JSON.parse(safeStorageGet(skey('signalSides', page)) || '{}') || {}; } catch (e) {}
+                for (let i = 0; i < count; i++) {
+                    const ticker = sanitizeTicker(safeStorageGet(skey('ticker_' + i, page)) || '');
+                    const trigger = parseFloat(safeStorageGet(skey('trigger_' + i, page)) || '');
+                    if (ticker && !seen.has('v3|' + ticker)) {
+                        seen.add('v3|' + ticker);
+                        tasks.push({ ticker, kind: 'v3', trigger: Number.isNaN(trigger) ? null : trigger, signalSide: sides[i] || null });
+                    }
+                }
+            };
+            addV3('scanner'); addV3('lsv3');
+            ['scanner', 'pullback'].forEach(page => {
+                loadPbSignals(page).forEach(s => {
+                    if (seen.has('pb|' + s.ticker)) return;
+                    seen.add('pb|' + s.ticker);
+                    tasks.push({ ticker: s.ticker, kind: 'pb', tf: s.tf, cat: s.cat, atrOverride: s.atrOverride, signalSide: 'LONG' });
+                });
+            });
+            return tasks;
+        }
+        // Pure decision pass — deps injectable for tests. Returns one entry per
+        // candidate: {ticker, kind, send, reason}. The skip set exactly covers the
+        // cases where the manual send path would confirm() — automation never prompts.
+        function autoEntryEvaluate(results, deps) {
+            deps = deps || {};
+            const risk = deps.risk !== undefined ? deps.risk : currentRiskAndSlippage().risk;
+            const slippage = deps.slippage !== undefined ? deps.slippage : currentRiskAndSlippage().slippage;
+            const posFor = deps.posFor || twsPositionFor;
+            const dupFor = deps.dupOrdersFor || findDuplicatePscOrders;
+            const sendState = deps.sendState || twsSendState;
+            const ordersOn = deps.ordersEnabled !== undefined ? deps.ordersEnabled : twsOrdersEnabled;
+            return results.map(item => {
+                const kind = item.kind === 'pb' ? 'pb' : 'v3';
+                const out = { ticker: item.ticker, kind, send: false, reason: '' };
+                if (!item.success || !item.data) { out.reason = 'quote failed'; return out; }
+                if (kind === 'v3') {
+                    const f = getRealtimeFields(item, risk, slippage);
+                    if (!f.isActive) { out.reason = 'trigger not met'; return out; }
+                    if (!(f.shares > 0)) { out.reason = 'no shares sized'; return out; }
+                    if (!Number.isFinite(f.stopPrice)) { out.reason = 'no stop'; return out; }
+                } else {
+                    const f = getPbFields(item, slippage);
+                    if (f.missingCat) { out.reason = 'no category'; return out; }
+                    if (!(f.shares > 0)) { out.reason = 'no shares sized'; return out; }
+                    if (!(f.stop > 0)) { out.reason = 'no stop'; return out; }
+                }
+                const key = twsSendKey(item.ticker, 'entry', kind);
+                if (sendState[key] === 'sending' || sendState[key] === 'sent' || sendState[key] === 'unknown') { out.reason = 'order already ' + sendState[key]; return out; }
+                const pos = posFor(item.ticker);
+                if (pos && pos.qty) { out.reason = 'position held'; return out; }
+                if (ordersOn && (dupFor(item.ticker, 'BUY').length || dupFor(item.ticker, 'SELL').length)) { out.reason = 'working PSC order'; return out; }
+                out.send = true;
+                return out;
+            });
+        }
+        async function autoEntryFire(ny) {
+            if (autoEntryBusy) return;
+            // Still configured but disconnected between the tick and here — stay
+            // pending (no latch) so a reconnect inside RTH can still fire today.
+            if (!twsReady() || !twsConnected) { setAutoEntryStatus('Auto-entry due — waiting for TWS connection.'); return; }
+            autoEntryBusy = true;
+            try {
+                // Latch BEFORE any send — a reload mid-run must not re-fire orders.
+                // If the latch can't persist, abort: an in-memory-only latch means
+                // a reload could refire orders already sent.
+                const run = { date: ny.date, done: true, results: {} };
+                if (!autoEntryRunSave(run)) {
+                    setAutoEntryStatus('Auto-entry aborted — could not persist run state (storage error).');
+                    showErrorToast('Auto-entry aborted: storage write failed', 8000);
+                    return;
+                }
+                setAutoEntryStatus('Auto-entry running — fetching quotes…');
+                const { risk, slippage } = currentRiskAndSlippage();
+                const tasks = buildAutoEntryTasks();
+                if (!tasks.length) {
+                    setAutoEntryStatus(`Auto-entry ${ny.date}: no saved signals.`);
+                    showInfoToast('Auto-entry: no saved signals', 5000);
+                    return;
+                }
+                const provider = resolveProviders().primary;
+                if (!provider || !API_CONFIGS[provider]) {
+                    tasks.forEach(t => { run.results[t.ticker] = { status: 'skipped', msg: 'no quote provider' }; });
+                    autoEntryRunSave(run);
+                    setAutoEntryStatus(`Auto-entry ${ny.date}: no quote provider available.`);
+                    showErrorToast('Auto-entry skipped — no quote provider', 6000);
+                    return;
+                }
+                const apiKey = providerStreamKey(provider);
+                const results = [];
+                for (const t of tasks) {
+                    try {
+                        const data = await fetchTickerData(t.ticker, provider, apiKey, null);
+                        results.push({ ...t, data, success: true });
+                    } catch (e) {
+                        results.push({ ...t, success: false, error: (e && e.message) || 'fetch failed' });
+                    }
+                    await new Promise(r => setTimeout(r, 250));
+                }
+                // Pullback sizing needs ATR bars — the same volatility fetch the scan uses.
+                for (const r of results) {
+                    if (!r.success || r.kind !== 'pb') continue;
+                    if (Number.isFinite(r.atrOverride) && r.atrOverride > 0) continue;   // manual ATR — no bars needed
+                    const cached = volatilityCache[r.ticker];
+                    if (!cached || !Array.isArray(cached.bars) || cached.bars.length < 21) {
+                        try { await fetchVolatilityData(r.ticker, null); } catch (e) { /* evaluate reports the sizing failure */ }
+                    }
+                }
+                lastRenderedSnapshot = results;
+                refreshCapProjection(results, risk, slippage);
+                const decisions = autoEntryEvaluate(results, {});
+                const sentTickers = {};   // ticker -> kind that was sent (or is maybe live)
+                for (const d of decisions) {
+                    if (sentTickers[d.ticker]) { run.results[d.ticker] = { status: 'skipped', msg: 'already sent as ' + sentTickers[d.ticker] }; continue; }
+                    if (!d.send) { run.results[d.ticker] = { status: 'skipped', msg: d.reason }; continue; }
+                    if (!autoEntryEnabled) { run.results[d.ticker] = { status: 'skipped', msg: 'disabled mid-run' }; continue; }
+                    if (!twsReady() || !twsConnected) { run.results[d.ticker] = { status: 'skipped', msg: 'TWS disconnected' }; continue; }
+                    if (!nyNow().isRTH) { run.results[d.ticker] = { status: 'skipped', msg: 'past market close' }; continue; }
+                    // A live-scan tick can swap lastRenderedSnapshot mid-loop —
+                    // re-pin ours so sendTwsOpen's item lookup can't miss.
+                    lastRenderedSnapshot = results;
+                    await sendTwsOpen(d.ticker, d.kind);
+                    const st = twsSendState[twsSendKey(d.ticker, 'entry', d.kind)] || 'idle';
+                    run.results[d.ticker] = { status: st === 'idle' ? 'error' : st, msg: '' };
+                    // 'sent' OR 'unknown' both mean a live order may exist — never
+                    // let the same ticker's other strategy leg double it up.
+                    if (st === 'sent' || st === 'unknown') sentTickers[d.ticker] = d.kind;
+                    autoEntryRunSave(run);
+                    await new Promise(r => setTimeout(r, 300));
+                }
+                autoEntryRunSave(run);
+                const vals = Object.values(run.results);
+                const sent = vals.filter(r => r.status === 'sent').length;
+                const skipped = vals.filter(r => r.status === 'skipped').length;
+                const flagged = vals.length - sent - skipped;
+                showInfoToast(`Auto-entry done: ${sent} sent · ${skipped} skipped${flagged ? ' · ' + flagged + ' need review' : ''}`, 8000);
+                updateAutoEntryStatus();
+            } finally {
+                autoEntryBusy = false;
+            }
+        }
         async function sendTwsEntry(ticker, kind) {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             const key = twsSendKey(ticker, 'entry', kind);
@@ -9752,16 +10004,34 @@
             if (!item) { showErrorToast('Ticker not found in snapshot'); return; }
             if (kind === 'pb') {
                 const f = getPbFields(item, currentRiskAndSlippage().slippage);
+                const timedOverride = f.exitDate ? { enabled: true, date: f.exitDate, time: '15:55' } : null;
                 const pos = twsPositionFor(ticker);
                 if (pos && pos.qty > 0) {
-                    if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another pullback bracket anyway?`)) return;
+                    // Position already held — a new entry would double it. Offer
+                    // exits-only recovery (protection for the held shares) first.
+                    if (confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)}.\n\nOK = send EXIT protection only for the held shares\nCancel = choose whether to send a full new bracket`)) {
+                        setTwsSendState(key, 'sending');
+                        try {
+                            // Same anchors as the exits-only card path: fresh signal
+                            // price/stop, sized to the actual held quantity.
+                            const result = await sendTwsExits(ticker, true, f.c, Math.abs(pos.qty), f.stop, 'lspb', [], false, item, { stratKind: 'pb', timedExit: timedOverride });
+                            if (result && result.ok && !result.unknown) setTwsSendState(key, 'sent', 'Protection sent for ' + pos.qty + ' shares');
+                            else if (result && result.unknown) setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
+                            else if (result) setTwsSendState(key, 'error', result.error || result.message || 'Protection send failed');
+                            else setTwsSendState(key, 'idle');
+                        } finally {
+                            if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
+                        }
+                        return;
+                    }
+                    if (!confirm(`Send a FULL new pullback bracket for ${ticker} anyway?`)) return;
                 }
                 if (!f.shares) { showErrorToast('No shares calculated'); return; }
                 setTwsSendState(key, 'sending');
-                const timedOverride = f.exitDate ? { enabled: true, date: f.exitDate, time: '15:55' } : null;
                 try {
                     const result = await sendTwsExits(ticker, true, f.c, f.shares, f.stop, 'lspb', [], true, item, { stratKind: 'pb', timedExit: timedOverride });
                     if (!result) setTwsSendState(key, 'idle');
+                    else if (result.entryFilled && !(result.ok && !result.unknown)) setTwsSendState(key, 'unknown', 'Entry filled ' + result.entryFilled + ' — exits failed; send exits to restore protection');
                     else if (result.ok && !result.unknown) setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
                     else if (result.unknown) setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
                     else setTwsSendState(key, 'error', result.error || result.message || 'Bracket failed');
@@ -9775,7 +10045,25 @@
             const f = getRealtimeFields(item, currentRiskAndSlippage().risk, currentRiskAndSlippage().slippage);
             const pos = twsPositionFor(ticker);
             if (pos && ((f.isGreenDay && pos.qty > 0) || (!f.isGreenDay && pos.qty < 0))) {
-                if (!confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)} — send another bracket anyway?`)) return;
+                // Position already held — a new entry would double it. Offer
+                // exits-only recovery (protection for the held shares) first.
+                if (confirm(`Already holding ${pos.qty} ${ticker} @ ${Number(pos.avgCost).toFixed(2)}.\n\nOK = send EXIT protection only for the held shares\nCancel = choose whether to send a full new bracket`)) {
+                    const recStrategy = twsAutoSendStrategyId(f.isGreenDay);
+                    setTwsSendState(key, 'sending');
+                    try {
+                        // Same anchors as the exits-only card path: fresh signal
+                        // price/stop, sized to the actual held quantity.
+                        const result = await sendTwsExits(ticker, pos.qty > 0, f.c, Math.abs(pos.qty), f.stopPrice, recStrategy, [], false, item);
+                        if (result && result.ok && !result.unknown) setTwsSendState(key, 'sent', 'Protection sent for ' + pos.qty + ' shares');
+                        else if (result && result.unknown) setTwsSendState(key, 'unknown', result.error || result.message || 'No confirmation from TWS');
+                        else if (result) setTwsSendState(key, 'error', result.error || result.message || 'Protection send failed');
+                        else setTwsSendState(key, 'idle');
+                    } finally {
+                        if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
+                    }
+                    return;
+                }
+                if (!confirm(`Send a FULL new bracket for ${ticker} anyway?`)) return;
             }
             if (!f.shares) { showErrorToast('No shares calculated'); return; }
             const strategyId = twsAutoSendStrategyId(f.isGreenDay);
@@ -9784,6 +10072,8 @@
                 const result = await sendTwsExits(ticker, f.isGreenDay, f.c, f.shares, f.stopPrice, strategyId, [], true, item);
                 if (!result) {
                     setTwsSendState(key, 'idle');
+                } else if (result.entryFilled && !(result.ok && !result.unknown)) {
+                    setTwsSendState(key, 'unknown', 'Entry filled ' + result.entryFilled + ' — exits failed; send exits to restore protection');
                 } else if (result.ok && !result.unknown) {
                     setTwsSendState(key, 'sent', result.results ? result.results.length + ' orders sent' : 'Bracket sent');
                 } else if (result.unknown) {
@@ -9831,6 +10121,7 @@
             // Lock before the first await — a second click during preflight must not
             // pass this check and double-send.
             setTwsSendState(key, 'sending');
+            let entryFill = null;   // {filled, avgFillPrice} — set once an attached entry is confirmed
             try {
                 let built = opts.built || buildExitLegs(ticker, isLong, entry, shares, stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
                 if (!built.ok) { showErrorToast(built.error); return; }
@@ -9860,14 +10151,19 @@
                         showErrorToast(`Entry ${entryRes.orderId || ''} sent but not filled — exit legs were NOT placed (they'd sit live with no position). Send exits from the card once it fills.`, 10000);
                         return { ok: true, unknown: true, message: 'Entry not filled — exits not sent', results: [entryRes] };
                     }
+                    entryFill = fill;
                     if (fill.filled !== shares) {
                         // Partial fill — rebuild the legs for the actual filled size.
                         built = buildExitLegs(ticker, isLong, fill.avgFillPrice || entry, Math.round(fill.filled), stop, strategyId, customTps, { timedExit: opts.timedExit || undefined });
-                        if (!built.ok) { showErrorToast(built.error); return built; }
+                        if (!built.ok) { showErrorToast(built.error); return { ok: false, error: built.error, entryFilled: fill.filled, entryAvg: fill.avgFillPrice }; }
                     }
                 }
                 const payload = buildExitOrdersPayload(built);
-                if (!payload.ok) { showErrorToast(payload.error); return; }
+                if (!payload.ok) {
+                    showErrorToast(payload.error);
+                    if (entryFill) return { ok: false, error: payload.error, entryFilled: entryFill.filled, entryAvg: entryFill.avgFillPrice };
+                    return;
+                }
                 const result = await bridgeRequest('/orders', { symbol: ticker, orders: payload.orders, orderRef: 'PSC-' + ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)) });
                 const firstFail = result.results ? result.results.find(r => !r.ok) : null;
                 const failMsg = firstFail ? (firstFail.error || firstFail.message) : null;
@@ -9883,7 +10179,18 @@
                     setTwsSendState(key, 'error', failMsg || result.error || result.message || 'Send failed');
                     showErrorToast('TWS send failed: ' + (failMsg || result.error || result.message || 'unknown'), 6000);
                 }
+                // Entry filled but exits did not land cleanly — flag it so sendTwsOpen
+                // gates the entry key behind the check-TWS confirm instead of a free
+                // 'error' resend that would double the position.
+                if (entryFill && !(result.ok && !result.unknown)) {
+                    result.entryFilled = entryFill.filled;
+                    result.entryAvg = entryFill.avgFillPrice;
+                }
                 return result;
+            } catch (e) {
+                // A throw after the entry filled is ambiguous — the exits may exist.
+                if (entryFill) return { ok: false, unknown: true, error: (e && e.message) || String(e), entryFilled: entryFill.filled, entryAvg: entryFill.avgFillPrice };
+                throw e;
             } finally {
                 if (twsSendState[key] === 'sending') setTwsSendState(key, 'idle');
             }
@@ -9958,6 +10265,9 @@
             if (!twsSyncAccount || !twsConnected || !twsReady()) return;
             try {
                 const d = await bridgeGet('/account');
+                // Ownership re-check after the await — a disable mid-request must
+                // not let the stale reply overwrite the user's account value.
+                if (!twsSyncAccount || !twsReady()) return;
                 const n = d && d.values ? parseFloat(d.values.NetLiquidation) : NaN;
                 if (Number.isFinite(n) && n > 0) {
                     if (n !== accountValue) applyTwsAccountValue('NetLiquidation', n);
@@ -9995,6 +10305,7 @@
             if (!twsPositionsEnabled || !twsConnected || !twsReady()) return;
             try {
                 const d = await bridgeGet('/positions');
+                if (!twsPositionsEnabled || !twsReady()) return;   // disabled mid-flight → discard
                 if (!d || !d.ok || !Array.isArray(d.positions)) return;
                 // An incomplete snapshot (timeout/disconnect mid-stream) is partial —
                 // replacing the map would drop unseen positions and falsely close trades.
@@ -10020,6 +10331,7 @@
             if (!twsOrdersEnabled || !twsConnected || !twsReady()) return;
             try {
                 const d = await bridgeGet('/orders');
+                if (!twsOrdersEnabled || !twsReady()) return;      // disabled mid-flight → discard
                 if (!d || !d.ok || !Array.isArray(d.orders)) return;
                 if (d.complete === false) return;   // partial snapshot — keep the last full list
                 twsOpenOrders = d.orders;
@@ -10093,6 +10405,7 @@
             if (!twsFillsJournalEnabled || !twsConnected || !twsReady()) return;
             try {
                 const d = await bridgeGet('/executions');
+                if (!twsFillsJournalEnabled || !twsReady()) return;   // disabled mid-flight → discard
                 if (!d || !d.ok || !Array.isArray(d.executions)) return;
                 for (const ex of d.executions) handleTwsExecution(ex);
             } catch (e) {}
@@ -10226,7 +10539,7 @@
                 // Entry fill (any origin — PSC or manual TWS order): journal at real price.
                 const isQld = ticker === 'QLD';
                 activeTradesLog.unshift({
-                    id: Date.now() + Math.random(),
+                    id: newTradeId(),
                     ticker, side: fillDir,
                     strategyId: isQld ? 'qld' : 'tws',
                     regime: isQld ? 'QLD Trend' : (isPscRef(ex.orderRef) ? 'TWS fill' : 'TWS fill (manual)'),
@@ -10254,33 +10567,59 @@
                 // Entry commission counts once, on the first realized leg.
                 const entryFees = open.entryCommissionCounted ? 0 : (open.commission || 0);
                 open.entryCommissionCounted = true;
-                // Estimated exits banked by position-sync first get a price correction,
-                // not a second full P&L leg.
+                const post = held ? Math.abs(held.qty) : null;
+                // Estimated exits banked by position-sync are DRAFTS. This exec
+                // "explains" them only when the broker position already equals the
+                // journal shares — i.e. the drop this fill caused was observed before
+                // the fill arrived. Covered drafts are rewritten in place (amendEvent)
+                // so the event ledger never double-counts the same shares; only the
+                // unexplained remainder books a new leg.
                 let remaining = qty;
-                if (open._estExitFills && open._estExitFills.length) {
+                let lastEstAmended = null;
+                let estConsumed = false;
+                if (post != null && post === open.shares && open._estExitFills && open._estExitFills.length) {
                     const still = [];
                     for (const ef of open._estExitFills) {
                         if (!remaining) { still.push(ef); continue; }
                         const cover = Math.min(remaining, ef.qty);
                         open.realizedPnl = (open.realizedPnl || 0) + dir * (price - ef.price) * cover;
                         remaining -= cover;
-                        if (ef.qty > cover) still.push({ qty: ef.qty - cover, price: ef.price });
+                        if (window.Ledger && ef.eventId) {
+                            if (ef.qty > cover) {
+                                // Partial coverage: shrink the draft to the confirmed
+                                // slice, then re-bank the leftover as a fresh draft.
+                                if (Ledger.amendEvent(open, ef.eventId, { qty: cover, price, execId: key, note: 'TWS fill' })) {
+                                    const rest = Ledger.onPositionDelta(open, 'Partial', ef.qty - cover, ef.price, 'TWS position delta (est)');
+                                    still.push({ qty: ef.qty - cover, price: ef.price, ts: ef.ts, eventId: rest && rest.id });
+                                } else {
+                                    still.push({ qty: ef.qty - cover, price: ef.price, ts: ef.ts });
+                                }
+                            } else if (Ledger.amendEvent(open, ef.eventId, { price, execId: key, note: 'TWS fill' })) {
+                                lastEstAmended = ef;
+                            }
+                        } else if (ef.qty > cover) {
+                            still.push({ qty: ef.qty - cover, price: ef.price, ts: ef.ts });
+                        }
                     }
                     open._estExitFills = still;
+                    estConsumed = remaining < qty;
                 }
                 open.realizedPnl = (open.realizedPnl || 0) + dir * (price - open.entryPrice) * remaining - fees - entryFees;
                 const afterQty = open.shares - qty;   // pre-decrement value in both paths
-                const post = held ? Math.abs(held.qty) : null;
                 if (trackByPosition) {
                     if (post != null && post < open.shares) {
                         // Broker already dropped — snap; the earlier sync already accounted
-                        // for the drop (estimate consumed above, or a prior fill's credit).
+                        // for the drop (the estimate stays a draft for its own fill).
                         open.shares = post;
+                        open._posQty = post;   // keep the reconcile baseline in step — a stale _posQty would phantom-delta the next sync
                     } else if (post != null && post === open.shares) {
                         // Ambiguous: either the fill is already reflected or the position
                         // event is still pending. Keep shares — the credit covers the
                         // incoming delta; if none arrives the credit expires harmlessly.
-                        (open._exitCredits = open._exitCredits || []).push({ qty, ts: Date.now() });
+                        // No credit when a draft was consumed: the drop was already
+                        // observed, so no delta is coming — a credit here would make the
+                        // next sync's self-heal subtract shares that were never missing.
+                        if (!estConsumed) (open._exitCredits = open._exitCredits || []).push({ qty, ts: Date.now() });
                     } else {
                         // No position data, or the position grew (fill not reflected) —
                         // decrement optimistically; the credit reconciles on the next event.
@@ -10301,12 +10640,35 @@
                     open.pnl = open.realizedPnl;
                 }
                 if (window.Ledger) {
-                    const _evQty = afterQty <= 0 ? Math.min(qty, _preShares) : qty;
-                    Ledger.onTwsFill(open, afterQty <= 0 ? 'Exit' : 'Partial', _evQty, price, key);
+                    if (remaining > 0) {
+                        // Unexplained remainder only — est-covered shares already carry
+                        // their (now-amended) events.
+                        const _evQty = afterQty <= 0 ? Math.min(remaining, _preShares) : remaining;
+                        if (_evQty > 0) Ledger.onTwsFill(open, afterQty <= 0 ? 'Exit' : 'Partial', _evQty, price, key);
+                    } else if (afterQty <= 0 && lastEstAmended && lastEstAmended.eventId) {
+                        // Fully covered by drafts and the position is flat — relabel the
+                        // last draft 'Exit' so the ledger reports the trade closed.
+                        Ledger.amendEvent(open, lastEstAmended.eventId, { kind: 'Exit' });
+                    }
+                }
+            } else if (isExit && !open) {
+                // The position-sync already closed the row on a draft Exit — a late
+                // confirmed fill rewrites that draft at the real price instead of
+                // being dropped (keeps reports accurate).
+                const closed = activeTradesLog.find(t => t.ticker === ticker && t.status === 'CLOSED' && t.fillSource === 'tws' && t._estExitEventId);
+                if (closed && window.Ledger && Ledger.amendEvent(closed, closed._estExitEventId, { price, execId: key, note: 'TWS fill' })) {
+                    const dir = closed.side === 'LONG' ? 1 : -1;
+                    const cq = Math.min(qty, closed.closedQty || qty);
+                    const dPnl = dir * (price - (closed.exitPrice || price)) * cq - fees;
+                    closed.realizedPnl = (closed.realizedPnl || 0) + dPnl;
+                    closed.pnl = (closed.pnl || 0) + dPnl;
+                    closed.exitPrice = price;
+                    closed.exitCommission = (closed.exitCommission || 0) + fees;
+                    delete closed._estExitEventId;
                 }
             }
-            // isExit without an open row = exit of an unjournaled position — the
-            // position reconcile handles the import; nothing to adjust here.
+            // isExit without an open row and no draft close = exit of an unjournaled
+            // position — the position reconcile handles the import; nothing to adjust.
             saveActiveTradesLog();
             updateActiveTradesCountBadge();
             renderActiveTradesPage();
@@ -10344,12 +10706,15 @@
                         const unexplained = -delta - covered;
                         if (unexplained > 0) {
                             // Fill never reached us — bank an estimate at market price.
+                            // The event is a DRAFT: when its confirmed execution arrives,
+                            // handleTwsExecution rewrites it (amendEvent) rather than
+                            // appending a second leg.
                             const dir = tr.side === 'LONG' ? 1 : -1;
                             const est = (p && Number.isFinite(p.mktPrice) && p.mktPrice > 0) ? p.mktPrice : tr.entryPrice;
                             tr.realizedPnl = (tr.realizedPnl || 0) + dir * (est - tr.entryPrice) * unexplained;
-                            (tr._estExitFills = tr._estExitFills || []).push({ qty: unexplained, price: est });
+                            const estEv = window.Ledger ? Ledger.onPositionDelta(tr, 'Partial', unexplained, est, 'TWS position delta (est)') : null;
+                            (tr._estExitFills = tr._estExitFills || []).push({ qty: unexplained, price: est, ts: Date.now(), eventId: estEv && estEv.id });
                             tr.note = (tr.note ? tr.note + ' ' : '') + `-${unexplained} closed in TWS (est)`;
-                            if (window.Ledger) Ledger.onPositionDelta(tr, 'Partial', unexplained, est, 'TWS position delta (est)');
                         }
                     } else {
                         const covered = consumeQtyCredit(tr._entryCredits || (tr._entryCredits = []), delta);
@@ -10388,7 +10753,8 @@
                     tr.pnl = (tr.realizedPnl || 0) + (tr.side === 'LONG' ? 1 : -1) * (tr.exitPrice - tr.entryPrice) * tr.shares - (tr.commission || 0);
                     tr.closedAtMs = Date.now();
                     tr.note = (tr.note ? tr.note + ' ' : '') + 'Closed in TWS — exit fill not seen, exit price estimated.';
-                    if (window.Ledger) Ledger.onPositionDelta(tr, 'Exit', tr.shares, tr.exitPrice, 'Closed in TWS — exit fill not seen (est)');
+                    const closeEv = window.Ledger ? Ledger.onPositionDelta(tr, 'Exit', tr.shares, tr.exitPrice, 'Closed in TWS — exit fill not seen (est)') : null;
+                    tr._estExitEventId = closeEv && closeEv.id;   // late fill amends this draft
                     changed = true;
                 }
             }
@@ -10409,7 +10775,7 @@
                 if (!(entry > 0)) continue;
                 const isQld = sym === 'QLD';
                 activeTradesLog.unshift({
-                    id: Date.now() + Math.random(),
+                    id: newTradeId(),
                     ticker: sym,
                     side: p.qty > 0 ? 'LONG' : 'SHORT',
                     strategyId: isQld ? 'qld' : 'tws',
@@ -10437,6 +10803,7 @@
             if (!twsPnlEnabled || !twsConnected || !twsReady()) return;
             try {
                 const d = await bridgeGet('/pnl');
+                if (!twsPnlEnabled || !twsReady()) return;       // disabled mid-flight → discard
                 if (d && d.ok) { twsLastPnl = d; updateTwsPnlChip(); }
             } catch (e) {}
         }
@@ -10657,6 +11024,13 @@
         // TWS Send modal functions
         function sendTwsModalExits() {
             if (!currentModalState) return;
+            // Strict reads — an empty/invalid field must block the send, never
+            // silently fall back to the values the modal opened with.
+            const entry = parseFloat(document.getElementById('modalEntryPrice')?.value);
+            const shares = parseInt(document.getElementById('modalShares')?.value, 10);
+            const stop = parseFloat(document.getElementById('modalStopPrice')?.value);
+            const err = validateTradeParams(currentModalState.isLong, entry, shares, stop);
+            if (err) { showErrorToast('Cannot send exits — ' + err); return; }
             const strategyId = document.getElementById('modalStrategySelect')?.value || currentModalState.strategyId;
             const customTps = readCustomTpsFromDom();
             const pbTimed = currentModalState.kind === 'pb'
@@ -10665,9 +11039,7 @@
             sendTwsExits(
                 currentModalState.ticker,
                 currentModalState.isLong,
-                parseFloat(document.getElementById('modalEntryPrice')?.value) || currentModalState.entryPrice,
-                parseInt(document.getElementById('modalShares')?.value) || currentModalState.shares,
-                parseFloat(document.getElementById('modalStopPrice')?.value) || currentModalState.stopPrice,
+                entry, shares, stop,
                 strategyId,
                 customTps,
                 false,

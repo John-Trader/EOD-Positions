@@ -214,8 +214,12 @@ var Ledger = (function () {
             if (d <= date && vals[d].marks && num(vals[d].marks[tid]) > 0 && (!best || d > best.d)) best = { d: d, v: num(vals[d].marks[tid]) };
         }
         if (best) return { price: best.v, asOf: best.d };
-        var live = _hooks.getPrice(t.ticker);
-        if (num(live) > 0) return { price: live, asOf: 'live' };
+        // Live quotes are honest marks for today only — valuing a historical
+        // date at today's price fabricates past P&L. Null → caller flags missing.
+        if (date === today()) {
+            var live = _hooks.getPrice(t.ticker);
+            if (num(live) > 0) return { price: live, asOf: 'live' };
+        }
         return null;
     }
     // Cumulative cash P&L through `when`; open remainder valued at its mark.
@@ -235,6 +239,32 @@ var Ledger = (function () {
             else { missing = true; cash += sign * qty * (num(t.entryPrice) || 0); }
         }
         return { pnl: cash, missing: missing, markAsOf: markAsOf, openQty: Math.max(0, qty) };
+    }
+
+    // Realized P&L bucketed by ISO month. Walks every trade's full event
+    // stream with average-cost inventory so Partial/Exit events date their
+    // own contribution — a cross-month trade attributes each reduction to
+    // the month it filled, not the final close month. Price-only, matching
+    // report attribution (commissions stay in the flat journal view).
+    function realizedByMonth() {
+        var out = {};
+        journal().forEach(function (t) {
+            var sign = tradeSide(t) === 'L' ? 1 : -1, qty = 0, cost = 0;
+            tradeEvents(t).forEach(function (e) {
+                if (e.kind === 'Entry' || e.kind === 'Add') { cost += e.qty * e.price; qty += e.qty; }
+                else if (e.kind === 'Split') { qty *= e.qty; }
+                else if ((e.kind === 'Partial' || e.kind === 'Exit') && qty > 1e-8 && e.qty > 0) {
+                    var q = Math.min(e.qty, qty), avg = cost / qty;
+                    var mk = monthOf(e.date);
+                    if (mk) out[mk] = (out[mk] || 0) + sign * q * (e.price - avg);
+                    cost -= avg * q; qty -= q;
+                }
+            });
+        });
+        return out;
+    }
+    function realizedInMonth(monthKey) {
+        return realizedByMonth()[monthKey] || 0;
     }
 
     // ---------- cash records & QLD dollar ledger ----------
@@ -269,10 +299,10 @@ var Ledger = (function () {
         var best = null;
         for (var d in vals) if (d <= date && vals[d].qldValue !== undefined && vals[d].qldValue !== null && (!best || d > best.d)) best = { d: d, v: num(vals[d].qldValue) };
         if (best) return { value: best.v, asOf: best.d };
-        var sh = qldSharesAt(date);
-        var px = num(_hooks.qldPrice());
-        if (sh !== null && px) return { value: sh * px, asOf: 'live' };
         if (date === today()) {
+            var sh = qldSharesAt(date);
+            var px = num(_hooks.qldPrice());
+            if (sh !== null && px) return { value: sh * px, asOf: 'live' };
             var pos = _hooks.twsPositionFor('QLD');
             if (pos && num(pos.qty) !== null && px) return { value: Math.abs(pos.qty) * px, asOf: 'live-tws' };
         }
@@ -289,6 +319,11 @@ var Ledger = (function () {
             if (t.date > start && t.date <= end && sum[t.kind] !== undefined) sum[t.kind] += num(t.amount) || 0;
         });
         var before = qldValueOn(start), after = qldValueOn(end);
+        // A missing mark must not silently substitute 0 — that fabricates P&L.
+        // Signal null → caller falls back to QLD journal trades.
+        if (before.asOf === 'missing' || after.asOf === 'missing') {
+            return { opening: null, current: null, buy: sum.Buy, sale: sum.Sale, distribution: sum.Distribution, pnl: null, valueAsOf: { start: before.asOf, end: after.asOf } };
+        }
         var opening = before.value || 0, current = after.value || 0;
         var fromLedger = txns.length > 0 || opening !== 0 || current !== 0
             || Object.keys(valuations()).some(function (d) { return valuations()[d].qldValue != null; });
@@ -663,11 +698,20 @@ var Ledger = (function () {
         keys.forEach(function (k) { stores[k] = _get ? _get(k) : (_mem[k] !== undefined ? _mem[k] : null); });
         return { stores: stores };
     }
-    // Undo the most recent audit entry: restores stores + journal trades.
+    // Undo the most recent UNDONE-able audit entry: restores stores + journal
+    // trades. Entries already rolled back (undoneBy) and entries with no undo
+    // payload (finalize, prior Undo markers) are skipped — repeated Undo walks
+    // back through real changes instead of reporting a phantom success.
     function undoLast(reason) {
         var log = auditLog();
-        if (!log.length) return { ok: false, error: 'There is no saved change to undo.' };
-        var entry = log[log.length - 1];
+        var entry = null;
+        for (var i = log.length - 1; i >= 0; i--) {
+            var e = log[i];
+            if (e.undoneBy) continue;
+            var uu = e.undo || {};
+            if ((uu.stores && Object.keys(uu.stores).length) || (uu.trades && uu.trades.length)) { entry = e; break; }
+        }
+        if (!entry) return { ok: false, error: 'There is no saved change to undo.' };
         var u = entry.undo || {};
         if (u.stores) {
             for (var k in u.stores) {
@@ -688,6 +732,10 @@ var Ledger = (function () {
             });
             saveJournal(arr);
         }
+        // Mark the entry consumed BEFORE pushing the audit marker (auditPush
+        // re-reads the store — the mark must already be persisted).
+        entry.undoneBy = true;
+        saveAuditLog(log);
         // The undo itself is audited (without an undo payload of its own).
         auditPush('Undo: ' + entry.action, reason || '', {});
         if (typeof window !== 'undefined' && typeof window.notifyLedgerDirty === 'function') window.notifyLedgerDirty();
@@ -790,10 +838,25 @@ var Ledger = (function () {
         if (!t || !qty) return null;
         return appendEvent(t, { kind: kind, qty: qty, price: num(estPrice) || num(t.entryPrice) || 0, note: note || 'TWS position delta (est)' });
     }
+    // Convert a banked draft (position-delta estimate) into its confirmed record
+    // in place — the event id and inventory deduction survive; only the fields
+    // in `patch` are rewritten. Returns the event or null when not found.
+    function amendEvent(t, eventId, patch) {
+        if (!t || !eventId || !patch) return null;
+        var e = (t.events || []).find(function (x) { return x.id === eventId; });
+        if (!e) return null;
+        if (patch.qty !== undefined) e.qty = num(patch.qty);
+        if (patch.price !== undefined) e.price = num(patch.price);
+        if (patch.amount !== undefined) e.amount = num(patch.amount);
+        if (patch.kind !== undefined && KINDS.includes(patch.kind)) e.kind = patch.kind;
+        if (patch.execId !== undefined) e.execId = String(patch.execId);
+        if (patch.note !== undefined) e.note = String(patch.note);
+        return e;
+    }
 
     // ---------- cloud sync ----------
     var PROVIDERS = {
-        none: { name: 'Off' },
+        none: { name: 'Off', fields: [] },
         appscript: { name: 'Google Apps Script', fields: ['url'], hint: 'Your own Google Drive. Deploy the script from SYNC.md, paste the web-app URL.' },
         jsonbin: { name: 'JSONBin.io', fields: ['binId', 'apiKey'], hint: 'Private bin. Create a bin, copy Bin ID + X-Master-Key.' },
         npoint: { name: 'npoint.io', fields: ['binId'], hint: 'Zero signup — create a bin and paste its ID. Public by URL.' },
@@ -833,16 +896,30 @@ var Ledger = (function () {
         saveSyncConfig(conf);
         return { ok: true, data: data };
     }
-    async function syncPush(fetchFn, payload) {
+    // opts.cas (appscript only): savedAt stamp of the remote envelope this push
+    // merged against — the script rejects when it drifted ({ok:false,conflict}).
+    async function syncPush(fetchFn, payload, opts) {
         var conf = syncConfig();
         var ep = syncEndpoints(conf);
         if (!conf.enabled || !ep) return { ok: false, error: 'Sync is off.' };
         payload.syncedAt = Date.now();
+        var body = (opts && opts.cas !== undefined) ? { cas: opts.cas, state: payload } : payload;
         var init = { method: ep.method || 'PUT', headers: ep.headers || {} };
-        if (ep.plain) { init.headers = { 'Content-Type': 'text/plain;charset=utf-8' }; init.body = JSON.stringify(payload); }
-        else init.body = JSON.stringify(payload);
+        if (ep.plain) { init.headers = { 'Content-Type': 'text/plain;charset=utf-8' }; init.body = JSON.stringify(body); }
+        else init.body = JSON.stringify(body);
         var res = await fetchFn(ep.put, init);
         if (!res.ok) throw new Error('Sync push failed: HTTP ' + res.status);
+        // CAS responders answer with a JSON body — surface conflicts so the
+        // caller can re-merge and retry instead of believing the write landed.
+        var reply = null;
+        if (opts && opts.cas !== undefined) {
+            try { reply = await res.json(); } catch (e) { reply = null; }
+            if (reply && reply.conflict) {
+                conf.lastError = 'conflict — remote changed';
+                saveSyncConfig(conf);
+                return { ok: false, conflict: true, currentSavedAt: reply.currentSavedAt };
+            }
+        }
         conf.lastPushed = Date.now();
         conf.remoteTime = payload.syncedAt;
         conf.lastError = '';
@@ -886,6 +963,7 @@ var Ledger = (function () {
         sleeveBucket: sleeveBucket, tradeSide: tradeSide, tradeId: tradeId,
         tradeEvents: tradeEvents, ensureEvents: ensureEvents, appendEvent: appendEvent, hasExecEvent: hasExecEvent,
         validateTradeEvents: validateTradeEvents, inventory: inventory, cumPnl: cumPnl, markFor: markFor, markNear: markNear,
+        realizedByMonth: realizedByMonth, realizedInMonth: realizedInMonth,
         flowsBetween: flowsBetween, incomeBetween: incomeBetween, equityAt: equityAt,
         pnlComponents: pnlComponents, performance: performance,
         buildMonthReport: buildMonthReport, reportTradeDetails: reportTradeDetails, statusLabel: statusLabel,
@@ -894,7 +972,7 @@ var Ledger = (function () {
         captureValuation: captureValuation, captureMarksFromQuotes: captureMarksFromQuotes, captureEquity: captureEquity,
         captureQldValue: captureQldValue, saveTodayClose: saveTodayClose,
         onTwsFill: onTwsFill, onTradeLogged: onTradeLogged, onTradeClosed: onTradeClosed,
-        onImportedPosition: onImportedPosition, onPositionDelta: onPositionDelta,
+        onImportedPosition: onImportedPosition, onPositionDelta: onPositionDelta, amendEvent: amendEvent,
         intervalContribution: intervalContribution,
         syncConfig: syncConfig, saveSyncConfig: saveSyncConfig, syncEndpoints: syncEndpoints,
         syncPull: syncPull, syncPush: syncPush,

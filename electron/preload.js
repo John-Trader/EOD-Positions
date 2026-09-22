@@ -1,45 +1,21 @@
-// Preload — runs before page scripts. Seeds the portable settings file's
-// scalar keys into localStorage synchronously so the app's top-level init
-// reads them natively; then exposes the settings-file IPC surface.
+// Preload — runs before page scripts. Exposes the state-file IPC surface only;
+// hydration itself happens in the page's StateStore.init via bootState(), which
+// returns the full decoded snapshot synchronously so the app's top-level init
+// already sees file values. No localStorage seeding — one state record, one read.
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Whitelist only: the settings file is user-editable, so arbitrary keys (and
-// the machine-local bridge url/token) must not leak into storage. Everything
-// else is applied post-load by the page's hydration via loadSettings().
-const SEED_KEYS = new Set([
-    'riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider',
-    'providerPriorityOrder', 'collapseAfterCalc', 'preferredViewMode',
-    'liveUpdateEnabled', 'enhancedLiveMode', 'setting_showFocus',
-    'setting_showVoice', 'setting_showAlerts', 'riskMode', 'accountValue',
-    'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct',
-    'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct',
-    'liqVolPeriod', 'twsEnabled', 'autoSendExitsOnOpen', 'twsQuotesEnabled',
-    'twsSyncAccount', 'twsPositionsEnabled', 'twsOrdersEnabled',
-    'twsFillsJournalEnabled', 'twsPnlEnabled', 'signalSyncMode', 'pbEtfUniverse',
-    'qldTargetPct', 'qldBandPct', 'twsExitStrategy', 'twsEntryOutsideRth',
-    'globalMarketRegime', 'settingsSectionsCollapsed',
-]);
-const API_KEY_SLOTS = new Set(['finnhub_key', 'twelvedata_key', 'stockdata_key', 'tiingo_key']);
-try {
-    const settings = ipcRenderer.sendSync('psc:settings-load') || {};
-    for (const k of SEED_KEYS) {
-        const v = settings[k];
-        if (typeof v === 'string') { try { localStorage.setItem(k, v); } catch (_) {} }
-    }
-    // API keys live under apiKeys — seed the known provider slots only.
-    if (settings.apiKeys && typeof settings.apiKeys === 'object') {
-        for (const k of API_KEY_SLOTS) {
-            const v = settings.apiKeys[k];
-            if (typeof v === 'string' && v) { try { localStorage.setItem(k, v); } catch (_) {} }
-            else if (v === null) { try { localStorage.removeItem(k); } catch (_) {} }
-        }
-    }
-} catch (_) {}
-
 contextBridge.exposeInMainWorld('pscBridge', {
-    loadSettings: () => ipcRenderer.invoke('psc:load-settings-async'),
-    saveSettings: (obj) => ipcRenderer.invoke('psc:settings-save', obj),
-    settingsStatus: () => ipcRenderer.invoke('psc:settings-status'),
+    // { installId, state|null, writable, location, error } — resolved in main
+    // before the window was created, so this read is consistent for the session.
+    bootState: () => ipcRenderer.sendSync('psc:boot-state'),
+    // { installId, state } — validated + written atomically in the main process.
+    saveState: (payload) => ipcRenderer.invoke('psc:state-save', payload),
+    // Synchronous variant for pagehide teardown where a promise can't be awaited.
+    saveStateSync: (payload) => ipcRenderer.sendSync('psc:state-save-sync', payload),
+    stateStatus: () => ipcRenderer.invoke('psc:state-status'),
+    // { ok } — prints a self-contained HTML document via a hidden window
+    // (window.open is denied on the app view, so reports print through here).
+    printHtml: (html) => ipcRenderer.invoke('psc:print-html', html),
 });

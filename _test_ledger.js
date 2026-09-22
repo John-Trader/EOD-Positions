@@ -77,6 +77,29 @@ try {
   const r3 = L.cumPnl(t2, '2026-09-15');
   assert(r3.missing === true, 'no mark, no quote → missing flag');
 
+  // ---------- realizedInMonth: partials + cross-month attribution ----------
+  const savedJ = J;
+  J = [
+    // Entry Aug → Partial Sep (+40×10=400) → Exit Oct (+60×5=300)
+    trade(30, 'X1', [
+      ev('Entry', '2026-08-25', 100, 50, 1),
+      ev('Partial', '2026-09-05', 40, 60, 2),
+      ev('Exit', '2026-10-02', 60, 55, 3)
+    ], { status: 'CLOSED', exitDate: '2026-10-02', exitPrice: 55, closedQty: 100 }),
+    // Add lifts average cost: avg 52 → Partial +100×4 = 400 in Sep
+    trade(31, 'X2', [
+      ev('Entry', '2026-09-01', 100, 50, 1),
+      ev('Add', '2026-09-02', 100, 54, 2),
+      ev('Partial', '2026-09-10', 100, 56, 3)
+    ], { status: 'ACTIVE', shares: 100 }),
+    // Event-less flat row: synth Entry+Exit dates all realized at exit month
+    { id: 32, ticker: 'X3', side: 'LONG', status: 'CLOSED', entryDate: '2026-08-28', entryPrice: 20, shares: 0, closedQty: 50, exitDate: '2026-09-15', exitPrice: 30 }
+  ];
+  near(L.realizedInMonth('2026-09'), 400 + 400 + 500, 'Sep = X1 partial 400 + X2 partial 400 + X3 close 500');
+  near(L.realizedInMonth('2026-10'), 300, 'Oct = X1 exit only (partial stays in Sep)');
+  near(L.realizedInMonth('2026-08'), 0, 'Aug = entries only, nothing realized');
+  J = savedJ;
+
   // ---------- short side ----------
   const t3 = trade(30, 'SHO', [ev('Entry', '2026-09-03', 40, 150, 1), ev('Exit', '2026-09-20', 40, 140, 2)], { side: 'SHORT' });
   near(L.cumPnl(t3, '2026-09-30').pnl, 400, 'short 150→140 = +400');
@@ -258,6 +281,45 @@ try {
   // ---------- regression: undo removes a key that did not exist ----------
   const missingUndo = L.captureStoreUndo(['dailyValuations']);   // key absent? → raw null
   assert(missingUndo.stores.dailyValuations !== undefined, 'captureStoreUndo records absent key');
+
+  // ---------- regression: live quote must NOT mark historical dates ----------
+  // A report for a past date with no stored mark must flag missing — silently
+  // valuing yesterday's position at today's quote fabricates historical P&L.
+  L.init({ hooks: { getPrice: () => 999 } });   // hooks merge — storage intact
+  const tHist = trade(60, 'HIST', [ev('Entry', '2026-09-03', 10, 50, 1)], { status: 'ACTIVE', shares: 10 });
+  const histMissing = L.cumPnl(tHist, '2026-09-15');   // no stored mark ≤ 09-15 for id 60
+  assert(histMissing.missing === true, 'historical date ignores live quote → missing');
+  const histToday = L.cumPnl(tHist, '2026-09-30');     // today → live mark allowed
+  assert(histToday.missing === false && histToday.markAsOf === 'live', 'today may use live mark');
+  near(histToday.pnl, (999 - 50) * 10, 'today pnl uses live 999');
+
+  // ---------- regression: qldValueOn live fallback gated to today ----------
+  // conf.qldOpeningShares unset → sharesAt null. Set it so the live path is armed.
+  const conf0 = L.config(); conf0.qldOpeningShares = 350; L.saveConfig(conf0);
+  const qvHist = L.qldValueOn('2026-08-30');           // before any stored qldValue mark
+  assert(qvHist.asOf === 'missing', 'historical qldValue: no live fallback → missing');
+  const qvPast = L.qldPnl('2026-08-01', '2026-08-15'); // window before any qld data
+  assert(qvPast.pnl === null, 'qldPnl missing marks → null (journal fallback), not fabricated');
+  // stored-mark path still works for historical dates
+  const qvStored = L.qldValueOn('2026-09-30');
+  assert(qvStored.asOf === '2026-09-30' && qvStored.value === 36400, 'stored mark wins on its date');
+  L.init({ hooks: { getPrice: () => null } });         // restore
+
+  // ---------- regression: repeated undo walks real changes, not phantom ----------
+  L.saveAuditLog([]);
+  const u1 = L.captureStoreUndo(['ledgerConfig']);
+  const cA = L.config(); cA.openingEquity = 111; L.saveConfig(cA);
+  L.auditPush('change A', '', u1);
+  const u2 = L.captureStoreUndo(['ledgerConfig']);
+  const cB = L.config(); cB.openingEquity = 222; L.saveConfig(cB);
+  L.auditPush('change B', '', u2);
+  assert(L.undoLast('').ok === true && L.config().openingEquity === 111, 'undo1 reverts B→A');
+  assert(L.undoLast('').ok === true && L.config().openingEquity === 100000, 'undo2 reverts A→pre-A (skips Undo marker)');
+  assert(L.undoLast('').ok === false, 'undo3: nothing left → honest error, no phantom ok');
+  // an entry with EMPTY undo payload (like finalize) must be skipped, not "succeed"
+  L.saveAuditLog([]);
+  L.auditPush('Finalize report 2026-09', '', {});
+  assert(L.undoLast('').ok === false, 'empty-undo entry → no phantom undo');
 
   console.log('_test_ledger OK');
 } catch (e) {

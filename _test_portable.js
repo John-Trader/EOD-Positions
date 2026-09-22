@@ -1,9 +1,11 @@
-﻿// Tests for the portable/backup state contract: scannerStores collection,
-// backup validation of real producer shapes (QLD rows, closed TWS rows,
-// pendingOrder), bridge-URL validation, the in-app QLD sleeve editor, and
-// confirmed-fill ledger application.
+﻿// Tests for the portable/backup state contract (schema-v1 envelope): portable
+// export content + secret stripping, envelope decode/restore round-trip,
+// bridge-URL validation, the in-app QLD sleeve editor, and confirmed-fill
+// ledger application. State modules are loaded for real — no legacy fallback.
 const fs = require('fs');
 const path = require('path');
+const StateSchema = require('./state-schema.js');
+const StateStore = require('./state-store.js');
 const h = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const code = h.slice(h.indexOf('<script>') + 8, h.lastIndexOf('</script>'));
 
@@ -19,7 +21,7 @@ function mockElement(id) {
 const document = { getElementById: mockElement, getElementsByName: () => [], querySelectorAll: () => [], querySelector: () => null, createElement: () => mockElement('e' + Math.random()), addEventListener: () => {}, body: mockElement('body') };
 const store = {};
 const localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
-const window = { speechSynthesis: { speak: () => {}, cancel: () => {} }, addEventListener: () => {} };
+const window = { speechSynthesis: { speak: () => {}, cancel: () => {} }, addEventListener: () => {}, StateSchema, StateStore };
 const navigator = { clipboard: { writeText: () => Promise.resolve() } };
 const sandbox = {
   elements, document, localStorage, window, navigator, console,
@@ -32,10 +34,10 @@ const sandbox = {
 };
 const fn = new Function(...Object.keys(sandbox), code + `
 return {
-  isValidBridgeUrl, collectScannerStore, collectScannerStores, prepareBackup,
-  collectPortableState, qldParseSleeveInput, qldApplySleeveEdit,
+  isValidBridgeUrl, prepareBackup, stateStoreReady,
+  qldParseSleeveInput, qldApplySleeveEdit,
   qldRecordPendingFill, qldApplyPendingFill, findElById, journalResult,
-  tradeReportQty, journalFees,
+  tradeReportQty, journalFees, rehydrateGlobalsFromStore, newTradeId,
   set signalSyncMode(v) { signalSyncMode = v; },
   set qldSleeve(v) { qldSleeve = v; }, get qldSleeve() { return qldSleeve; },
   set qldView(v) { qldView = v; },
@@ -65,80 +67,86 @@ try {
   assert(!api.isValidBridgeUrl('not a url'), 'garbage rejected');
   assert(!api.isValidBridgeUrl(''), 'empty rejected');
 
-  // ---------- collectScannerStore / collectScannerStores (B01) ----------
-  // Seed three independent stores; the collection must not depend on the DOM.
-  localStorage.setItem('ticker_0', 'SPY');
-  localStorage.setItem('trigger_0', '50');
-  localStorage.setItem('signalSides', JSON.stringify({ 0: 'LONG' }));
-  localStorage.setItem('visibleCount', '6');
-  localStorage.setItem('riskValue', '250');
-  localStorage.setItem('pg_lsv3_ticker_0', 'QQQ');
-  localStorage.setItem('pg_lsv3_riskValue', '100');
-  localStorage.setItem('pg_pb_pbSignals', JSON.stringify([{ ticker: 'xle', tf: 'weekly', cat: 'etf_w', atrOverride: null }]));
-  localStorage.setItem('pg_pb_visibleCount', '9');
+  // ---------- StateStore: scanner stores via the single envelope ----------
+  assert(api.stateStoreReady(), 'state store hydrated in sandbox');
+  StateStore.set('ticker_0', 'SPY');
+  StateStore.set('trigger_0', '50');
+  StateStore.set('signalSides', JSON.stringify({ 0: 'LONG' }));
+  StateStore.set('visibleCount', '6');
+  StateStore.set('pg_lsv3_ticker_0', 'QQQ');
+  StateStore.set('pg_lsv3_riskValue', '100');
+  StateStore.set('pg_pb_pbSignals', JSON.stringify([{ ticker: 'XLE', tf: 'weekly', cat: 'etf_w', atrOverride: null }]));
+  StateStore.set('pg_pb_visibleCount', '9');
+  StateStore.set('qldSleeve', JSON.stringify(flatSleeve({ shares: 12, inPos: true, entryPrice: 80 })));
+  StateStore.set('twsSeenExecs', JSON.stringify([['20260101|ex1', 1.0], ['20260101|ex2', null]]));
+  StateStore.set('finnhub_key', 'SECRET-KEY-1');
+  StateStore.set('twsBridgeToken', 'LOCAL-BRIDGE-TOKEN');
+  StateStore.set('twsBridgeUrl', 'http://127.0.0.1:8787');
+  StateStore.set('riskValue', '250');
 
-  const shared = api.collectScannerStore('');
-  assert(shared.tickers[0] === 'SPY' && shared.triggers[0] === '50', 'shared store reads storage not DOM');
-  assert(shared.sides[0] === 'LONG' && shared.visibleCount === 6 && shared.riskValue === 250, 'shared sides/visible/risk');
-  const all = api.collectScannerStores();
-  assert(all.scanner.tickers[0] === 'SPY', 'scanner store in collection');
-  assert(all.lsv3.tickers[0] === 'QQQ' && all.lsv3.riskValue === 100, 'lsv3 store independent');
-  assert(all.pullback.pb.length === 1 && all.pullback.pb[0].ticker === 'xle', 'pullback pb list collected');
-  assert(all.pullback.visibleCount === 9, 'pullback visibleCount collected');
+  // ---------- exportFor('portable'): full local state, bridge creds stripped ----------
+  const snap = StateStore.exportFor('portable');
+  assert(snap.format === 'positioncalc-state' && snap.schemaVersion === 1, 'portable is schema-v1 envelope');
+  assert(snap.purpose === 'portable', 'portable purpose tag');
+  assert(snap.data.scannerStores.scanner.tickers[0] === 'SPY', 'scanner store in portable data');
+  assert(snap.data.scannerStores.lsv3.tickers[0] === 'QQQ' && snap.data.scannerStores.lsv3.riskValue === 100, 'lsv3 store independent');
+  assert(snap.data.scannerStores.pullback.pb[0].ticker === 'XLE', 'pullback pb list present');
+  assert(snap.data.qldAllocation && snap.data.qldAllocation.shares === 12, 'qld sleeve in portable data');
+  assert(snap.local.apiKeys.finnhub_key === 'SECRET-KEY-1', 'api keys stay in portable file');
+  assert(!snap.local.bridge || !snap.local.bridge.twsBridgeToken, 'bridge token stripped from portable file');
+  assert(!snap.local.bridge || !snap.local.bridge.twsBridgeUrl, 'bridge url stripped from portable file');
+  assert(JSON.stringify(snap).indexOf('LOCAL-BRIDGE-TOKEN') === -1, 'no bridge token bytes anywhere in payload');
+  assert(Array.isArray(snap.local.execReceipts) && snap.local.execReceipts.length === 2, 'exec receipts in portable file');
 
-  // ---------- collectPortableState (B01/B07/B08) ----------
-  api.qldSleeve = flatSleeve({ shares: 12, inPos: true, entryPrice: 80 });
-  api.twsSeenExecs = new Map([['20260101|ex1', 1.0], ['20260101|ex2', null]]);
-  const snap = api.collectPortableState();
-  assert(snap.scannerStores && snap.scannerStores.lsv3.tickers[0] === 'QQQ', 'portable state includes scannerStores');
-  assert(snap.qldSleeve && snap.qldSleeve.shares === 12, 'portable state includes qldSleeve');
-  assert(Array.isArray(snap.twsSeenExecs) && snap.twsSeenExecs.length === 2, 'exec receipts serialized');
-  assert(snap.twsSeenExecs[0][0] === '20260101|ex1' && snap.twsSeenExecs[0][1] === 1.0, 'exec fee pairs serialized');
-  assert(!('twsBridgeUrl' in snap) || snap.twsBridgeUrl === undefined, 'bridge url excluded');
-  assert(!('twsBridgeToken' in snap) || snap.twsBridgeToken === undefined, 'bridge token excluded');
-  assert(snap.apiKeys && typeof snap.apiKeys === 'object', 'apiKeys object present');
-  assert(snap.version === '4.0.0', 'portable version synced');
+  // ---------- prepareBackup: envelopes only, real producer shapes ----------
+  const dec = api.prepareBackup(StateStore.exportFor('portable'));
+  assert(dec && dec.data && dec.data.qldAllocation.shares === 12, 'portable envelope decodes');
+  assertThrows(() => api.prepareBackup({ version: '4.0.0', activeTradesLog: [] }), 'old flat backup rejected outright');
+  assertThrows(() => api.prepareBackup({ activeTradesLog: [] }), 'unversioned object rejected');
+  assertThrows(() => api.prepareBackup({ format: 'positioncalc-state', schemaVersion: 99 }), 'future schema rejected');
+  assertThrows(() => api.prepareBackup('not json at all'), 'garbage rejected');
 
-  // ---------- prepareBackup: real producer shapes must validate (B02) ----------
-  const backup = {
-    version: '4.0.0',
-    activeTradesLog: [
-      // QLD journal row â€” no stop, no targets, null holdLimit.
-      { id: 1, ticker: 'QLD', side: 'LONG', sleeve: 'QLD', strategyId: 'qld', regime: 'QLD Trend',
-        holdLimit: null, holdUnit: 'week', targets: [], entryDate: '2026-01-05', entryPrice: 80,
-        shares: 12, stopPrice: null, tp1: null, tp2: null, status: 'ACTIVE' },
-      // Fully closed TWS row â€” shares drained to zero by broker fills.
-      { id: 2, ticker: 'AAPL', side: 'LONG', strategyId: 'opt1', regime: 'TWS fill', fillSource: 'tws',
-        entryDate: '2026-01-06', entryPrice: 100, shares: 0, stopPrice: 95, status: 'CLOSED',
-        exitDate: '2026-01-07', exitPrice: 110, totalQty: 50, closedQty: 50, realizedPnl: 496 }
-    ],
-    qldSleeve: flatSleeve({
-      inPos: true, shares: 12, entryPrice: 80, entryDate: '2026-01-05',
-      pendingOrder: {
-        orderRef: 'PSC-QLD-abc', orderId: 42, action: 'ADD', side: 'BUY', requestedQty: 10,
-        baseline: { shares: 12, entryPrice: 80, entryDate: '2026-01-05', cashValue: 0 },
-        execKeys: {}, filledQty: 0, avgFillPrice: 0, status: 'submitted'
-      }
-    }),
-    scannerStores: {
-      lsv3: { tickers: ['MSFT'], triggers: [''], visibleCount: 3, sides: {}, pb: [] },
-      pullback: { tickers: [], triggers: [], visibleCount: 3, sides: {}, pb: [{ ticker: 'SPY', tf: 'daily', cat: 'auto', atrOverride: 2.5 }] }
-    },
-    twsBridgeUrl: 'http://attacker.example',   // machine-local: dropped, not fatal
-    twsBridgeToken: 'stale-token'
-  };
-  const prepared = api.prepareBackup(backup);
-  assert(prepared.activeTradesLog, 'journal rows accepted');
-  const restored = JSON.parse(prepared.activeTradesLog);
-  assert(restored.length === 2 && restored[1].shares === 0 && restored[1].fillSource === 'tws', 'closed tws row preserved');
-  const rs = JSON.parse(prepared.qldSleeve);
-  assert(rs.pendingOrder && rs.pendingOrder.orderRef === 'PSC-QLD-abc' && rs.pendingOrder.status === 'submitted', 'pendingOrder roundtrips');
-  assert(rs.pendingOrder.baseline.shares === 12, 'pendingOrder baseline roundtrips');
-  assert(prepared['pg_lsv3_ticker_0'] === 'MSFT', 'scannerStores restore into prefixed keys');
-  assert(prepared['pg_pb_pbSignals'] && JSON.parse(prepared['pg_pb_pbSignals'])[0].ticker === 'SPY', 'pb store restored');
-  assert(!('twsBridgeUrl' in prepared) && !('twsBridgeToken' in prepared), 'bridge fields dropped from restore values');
-  assertThrows(() => api.prepareBackup({ version: '4.0.0', scannerStores: { bogus: {} } }), 'unknown scanner store rejected');
-  assertThrows(() => api.prepareBackup({ version: '4.0.0', activeTradesLog: [{ id: 1, ticker: 'XX', side: 'LONG', status: 'ACTIVE', shares: 'lots' }] }), 'malformed trade rejected');
+  // ---------- restore round-trip: applySnapshot is atomic ----------
+  const badTrades = [{ id: 7, ticker: 'XX', side: 'LONG', status: 'ACTIVE', shares: 'lots' }];   // numeric id + bad shares → invalid
+  const badEnv = StateStore.exportFor('portable');
+  badEnv.data.trades = badTrades;
+  badEnv.purpose = 'backup';
+  const beforeRev = StateStore.revision();
+  const r0 = StateStore.applySnapshot(badEnv, { source: 'backup' });
+  assert(!r0.ok, 'malformed envelope rejected by applySnapshot');
+  assert(StateStore.revision() === beforeRev, 'failed apply left revision untouched');
+  assert(JSON.parse(StateStore.get('activeTradesLog') || '[]').length === 0, 'failed apply wrote nothing');
+
+  const goodTrades = [
+    { id: 'tr-qld-1', ticker: 'QLD', side: 'LONG', sleeve: 'QLD', strategyId: 'qld', regime: 'QLD Trend',
+      holdLimit: null, holdUnit: 'week', targets: [], entryDate: '2026-01-05', entryPrice: 80,
+      shares: 12, stopPrice: null, tp1: null, tp2: null, status: 'ACTIVE' },
+    { id: 'tr-aapl-1', ticker: 'AAPL', side: 'LONG', strategyId: 'opt1', regime: 'TWS fill', fillSource: 'tws',
+      entryDate: '2026-01-06', entryPrice: 100, shares: 0, stopPrice: 95, status: 'CLOSED',
+      exitDate: '2026-01-07', exitPrice: 110, totalQty: 50, closedQty: 50, realizedPnl: 496 }
+  ];
+  const goodEnv = StateStore.exportFor('portable');
+  goodEnv.data.trades = goodTrades;
+  goodEnv.data.scannerStores.lsv3.tickers[1] = 'MSFT';
+  goodEnv.data.qldAllocation = flatSleeve({
+    inPos: true, shares: 12, entryPrice: 80, entryDate: '2026-01-05',
+    pendingOrder: {
+      orderRef: 'PSC-QLD-abc', orderId: 42, action: 'ADD', side: 'BUY', requestedQty: 10,
+      baseline: { shares: 12, entryPrice: 80, entryDate: '2026-01-05', cashValue: 0 },
+      execKeys: {}, filledQty: 0, avgFillPrice: 0, status: 'submitted'
+    }
+  });
+  const r1 = StateStore.applySnapshot(goodEnv, { source: 'backup' });
+  assert(r1.ok, 'valid snapshot applies');
+  const restoredTrades = JSON.parse(StateStore.get('activeTradesLog'));
+  assert(restoredTrades.length === 2 && restoredTrades[1].shares === 0 && restoredTrades[1].fillSource === 'tws', 'closed tws row restored');
+  assert(StateStore.get('pg_lsv3_ticker_1') === 'MSFT', 'scanner store key restored');
+  const restoredSleeve = JSON.parse(StateStore.get('qldSleeve'));
+  assert(restoredSleeve.pendingOrder && restoredSleeve.pendingOrder.orderRef === 'PSC-QLD-abc', 'pendingOrder roundtrips');
+  assert(StateStore.get('finnhub_key') === 'SECRET-KEY-1', 'local api keys preserved across restore');
+  api.rehydrateGlobalsFromStore();
+  assert(api.activeTradesLog.length === 2 && api.activeTradesLog[0].id === 'tr-qld-1', 'globals rehydrated');
+  assert(api.qldSleeve.shares === 12 && api.qldSleeve.pendingOrder, 'qld global rehydrated');
 
   // ---------- qldParseSleeveInput + qldApplySleeveEdit (B16) ----------
   let p = api.qldParseSleeveInput('300 @ 82.50', 0);

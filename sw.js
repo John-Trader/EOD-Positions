@@ -1,17 +1,23 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v4.0.0`;
+const CACHE_NAME = `${CACHE_PREFIX}v4.5.0`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;
 const ICON_URL = new URL('./icon.svg', SCOPE_URL).href;
 const LEDGER_URL = new URL('./ledger.js', SCOPE_URL).href;
+const STATE_SCHEMA_URL = new URL('./state-schema.js', SCOPE_URL).href;
+const STATE_STORE_URL = new URL('./state-store.js', SCOPE_URL).href;
+const SYNC_URL = new URL('./sync.js', SCOPE_URL).href;
 const TAILWIND_URL = 'https://cdn.tailwindcss.com/';
 const SHELL_ASSETS = new Map([
   [SCOPE_URL.href, { key: HTML_URL, type: 'text/html', html: true }],
   [HTML_URL, { key: HTML_URL, type: 'text/html', html: true }],
   [MANIFEST_URL, { key: MANIFEST_URL, type: 'application/manifest+json' }],
   [ICON_URL, { key: ICON_URL, type: 'image/svg+xml' }],
-  [LEDGER_URL, { key: LEDGER_URL, type: 'text/javascript' }]
+  [LEDGER_URL, { key: LEDGER_URL, type: 'text/javascript' }],
+  [STATE_SCHEMA_URL, { key: STATE_SCHEMA_URL, type: 'text/javascript' }],
+  [STATE_STORE_URL, { key: STATE_STORE_URL, type: 'text/javascript' }],
+  [SYNC_URL, { key: SYNC_URL, type: 'text/javascript' }]
 ]);
 const PRIVATE_HEADERS = ['authorization', 'proxy-authorization', 'x-api-key', 'api-key', 'apikey', 'x-auth-token', 'x-finnhub-token'];
 
@@ -53,7 +59,7 @@ async function storeResponse(key, response) {
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const entries = await Promise.all([HTML_URL, MANIFEST_URL, ICON_URL, LEDGER_URL].map(async url => {
+    const entries = await Promise.all([HTML_URL, MANIFEST_URL, ICON_URL, LEDGER_URL, STATE_SCHEMA_URL, STATE_STORE_URL, SYNC_URL].map(async url => {
       const response = await fetch(new Request(url, { cache: 'reload', credentials: 'omit', redirect: 'error' }));
       if (!isSafeShellResponse(response, url, SHELL_ASSETS.get(url))) {
         throw new Error('App shell resource unavailable');
