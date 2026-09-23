@@ -98,6 +98,7 @@ async function main() {
     assert(decL.ok && decL.value.data.settings.twelvedata_key === 'OLD-TD', 'legacy apiKey hoisted to settings');
     assert(decL.value.data.settings.finnhub_key === 'API-SECRET', 'existing setting beats stale local copy');
     assert(decL.value.local.apiKeys && Object.keys(decL.value.local.apiKeys).length === 0, 'local.apiKeys emptied after migration');
+    assert(decL.value.local.syncPending === '1', 'migration latches syncPending so hoisted keys reach the cloud');
     // scheduled auto-entry is machine-local: portable keeps it, backup/sync drop it
     S.setByKey(st, 'autoEntryEnabled', 'true');
     S.setByKey(st, 'autoEntryTime', '15:58');

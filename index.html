@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.3</span>
+                <span class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.4</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -786,8 +786,8 @@
                         <p class="text-[9px] text-amber-400/80">Sync merges per-record, newest stamp wins — don't edit on two devices at the same instant. Quote API keys sync too; TWS/bridge credentials never leave the device. URL-only providers are readable by anyone holding the URL.</p>
                         <div class="flex items-center gap-2">
                             <button onclick="saveSyncSettings()" class="bg-blue-700 text-white rounded px-3 py-1.5 font-bold text-[10px] uppercase">Save</button>
-                            <button onclick="syncPullAndApply()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Pull now</button>
-                            <button onclick="syncPushNow()" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Push now</button>
+                            <button onclick="syncPullAndApply(true)" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Pull now</button>
+                            <button onclick="syncPushNow(true)" class="bg-slate-800 text-cyan-300 border border-cyan-500/30 rounded px-3 py-1.5 font-bold text-[10px] uppercase">Push now</button>
                         </div>
                         <p id="syncStatusLine" class="text-[10px] text-gray-400"></p>
                     </div>
@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.3';
+        const PSC_VERSION = '4.7.4';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -2383,7 +2383,7 @@
                 if (document.getElementById('builderRows').children.length === 0) addBuilderRow();
                 else document.querySelectorAll('#builderRows .builder-row').forEach(refreshBuilderPreview);
             }
-            if (page === 'settings') { refreshStrategySelects(); renderStrategyEditor(); }
+            if (page === 'settings') { refreshStrategySelects(); renderStrategyEditor(); loadSyncSettings(); }
         }
 
         function toggleViewMode() {
@@ -9612,10 +9612,14 @@
                 renderActiveTradesPage();
             }
         }
-        async function syncPushNow() {
+        async function syncPushNow(fromForm) {
             if (!ledgerReady()) return;
+            // fromForm (button click): capture+persist the form first so Pull/Push
+            // work without a separate Save click. Internal callers (debounce,
+            // drain, boot) pass nothing — they must not read half-typed inputs.
+            if (fromForm && !syncFormToConfig()) return;
             const conf = Ledger.syncConfig();
-            if (!conf.enabled || conf.provider === 'none') return;
+            if (!conf.enabled || conf.provider === 'none') { updateSyncStatusLine('Sync is off — pick a provider and Save first.'); return; }
             if (_syncBusy) { _syncPendingPush = true; return; }
             _syncBusy = true;
             try {
@@ -9656,10 +9660,11 @@
                 updateSyncStatusLine();
             } finally { _syncBusy = false; _syncQueueDrain(); }
         }
-        async function syncPullAndApply() {
+        async function syncPullAndApply(fromForm) {
             if (!ledgerReady()) return;
+            if (fromForm && !syncFormToConfig()) return;
             const conf = Ledger.syncConfig();
-            if (!conf.enabled || conf.provider === 'none') return;
+            if (!conf.enabled || conf.provider === 'none') { updateSyncStatusLine('Sync is off — pick a provider and Save first.'); return; }
             if (_syncBusy) { _syncPendingPull = true; return; }
             _syncBusy = true;
             try {
@@ -9685,8 +9690,10 @@
                 ? 'Sync off.'
                 : `${(Ledger.PROVIDERS[c.provider] || {}).name || c.provider} · pushed ${fmt(c.lastPushed)} · pulled ${fmt(c.lastPulled)}${c.lastError ? ' · ⚠ ' + c.lastError : ''}`);
         }
-        function saveSyncSettings() {
-            if (!ledgerReady()) return;
+        // Read the sync form into the persisted config. Returns the saved conf,
+        // or null when the write failed (read-only window — another tab holds
+        // the state lock).
+        function syncFormToConfig() {
             const conf = Ledger.syncConfig();
             conf.provider = document.getElementById('syncProvider').value;
             conf.url = (document.getElementById('syncUrl') || { value: '' }).value.trim();
@@ -9694,7 +9701,16 @@
             conf.apiKey = (document.getElementById('syncApiKey') || { value: '' }).value.trim();
             conf.basket = (document.getElementById('syncBasket') || { value: '' }).value.trim();
             conf.enabled = conf.provider !== 'none';
-            Ledger.saveSyncConfig(conf);
+            if (!Ledger.saveSyncConfig(conf)) {
+                updateSyncStatusLine('⚠ Could not save — this window is read-only (close the other app tab).');
+                return null;
+            }
+            return conf;
+        }
+        function saveSyncSettings() {
+            if (!ledgerReady()) return;
+            const conf = syncFormToConfig();
+            if (!conf) return;
             updateSyncStatusLine('Sync settings saved.');
             if (conf.enabled) syncPullAndApply();
         }
@@ -9938,7 +9954,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.3';
+        const APP_VERSION = '4.7.4';
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
         async function bridgeHealth() {
@@ -11955,6 +11971,9 @@
                     isRTH: () => nyNow().isRTH
                 }
             });
+            // loadSettings() ran before Ledger.init bound storage — the sync
+            // form rendered defaults. Re-read now that syncConfig() is live.
+            if (typeof loadSyncSettings === 'function') loadSyncSettings();
             if (typeof ledgerOnBoot === 'function') ledgerOnBoot();
         }
         initSettingsSections();

@@ -46,6 +46,9 @@ safe: every push merges first, so nothing is lost.
 2. **Deploy → New deployment → Web app**: *Execute as: Me*, *Access: Anyone*.
 3. Copy the `.../exec` URL into the app's Endpoint URL field.
 
+The **Pull now**/**Push now** buttons apply whatever is typed in the form —
+no separate **Save** click is needed (the form is persisted on either action).
+
 The script stores the payload as `positioncalc-sync.json` in your Drive.
 "Anyone" access + the long random URL is the only protection — treat the URL
 like a password and never commit it. If you already deployed an older copy of

@@ -386,10 +386,15 @@
         if (!l || !isObj(l.apiKeys)) return;
         var s = state.data && state.data.settings;
         if (!s) return;
+        var moved = false;
         for (var k in l.apiKeys) {
-            if (API_KEYS.indexOf(k) >= 0 && isStr(l.apiKeys[k]) && s[k] === undefined) s[k] = l.apiKeys[k];
+            if (API_KEYS.indexOf(k) >= 0 && isStr(l.apiKeys[k]) && s[k] === undefined) { s[k] = l.apiKeys[k]; moved = true; }
         }
         l.apiKeys = {};
+        // Migrated keys arrive without a commit — nothing stamps them or marks
+        // the outbox, so they'd only upload on an unrelated edit. Latch the
+        // durable pending flag so the next boot pushes them.
+        if (moved) l.syncPending = '1';
     }
 
     // Parse + validate a serialized/foreign payload. Strict: unknown format,
