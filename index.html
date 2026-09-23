@@ -9971,7 +9971,7 @@
                 if (data && data.account) twsAccount = data.account;
                 if (data && data.liveTradingPort && !_livePortWarned) {
                     _livePortWarned = true;
-                    showErrorToast('Bridge targets a LIVE TWS port (' + data.twsPort + ') — switch to 7497/4002 for paper trading', 15000);
+                    showInfoToast('Bridge targets a LIVE TWS port (' + data.twsPort + ')', 15000);
                 }
                 if (data && data.version && data.version !== APP_VERSION && !_bridgeVersionWarned) {
                     // Another (older/newer) bridge instance is on this port — e.g. a stale
