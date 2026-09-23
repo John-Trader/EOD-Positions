@@ -1,6 +1,6 @@
 const SCOPE_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = `positioncalc-shell-${encodeURIComponent(SCOPE_URL.pathname)}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v4.7.2`;
+const CACHE_NAME = `${CACHE_PREFIX}v4.7.3`;
 const HTML_URL = new URL('./index.html', SCOPE_URL).href;
 const APP_CSS_URL = new URL('./app.css', SCOPE_URL).href;
 const MANIFEST_URL = new URL('./manifest.webmanifest', SCOPE_URL).href;

@@ -267,6 +267,14 @@
         if (_writable !== 'yes') return { ok: false, error: 'state is ' + _writable };
         if (!decoded || !S.isObj(decoded.data)) return { ok: false, error: 'snapshot missing data' };
         var draft = clone(_state);
+        // Backup files strip API keys at encode — keep this device's existing
+        // keys instead of wiping them. Sync merges are exempt: a missing key
+        // there is a real tombstone, not a strip.
+        if (opts.source === 'backup' && decoded.data.settings && draft.data.settings) {
+            (S.API_KEYS || []).forEach(function (k) {
+                if (decoded.data.settings[k] === undefined && draft.data.settings[k] !== undefined) decoded.data.settings[k] = draft.data.settings[k];
+            });
+        }
         draft.data = decoded.data;
         if (decoded.mergeMeta) draft.mergeMeta = decoded.mergeMeta;
         // adopt remote datasetId only when explicitly told (first sync adoption)

@@ -59,8 +59,11 @@ needs it (older copies still accept pushes but can't conflict-guard them).
 - A push that arrives while another sync is in flight is queued, not dropped.
 - Remote payloads are validated like imported backups before being applied;
   a corrupt remote copy cannot overwrite good local state.
+- Quote-provider API keys (Finnhub / Twelve Data / StockData / Tiingo) DO sync —
+  they travel as ordinary `setting/` records so a second device works without
+  re-entry. They are still stripped from downloaded backup files.
 - Machine-local intent never leaves the device: QLD pending orders, in-flight
-  TWS fill bookkeeping, bridge URL/token and API keys are excluded from the
+  TWS fill bookkeeping, and TWS/bridge/Flex credentials are excluded from the
   sync payload, and a merge restores your local intent fields even when the
   remote record wins.
 - Sync failures never block trading, journaling, or exports — the app works

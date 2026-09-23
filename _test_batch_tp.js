@@ -82,7 +82,7 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
 (async () => {
   try {
     const sandbox = { elements, document, localStorage, window, console, setTimeout, clearTimeout, setInterval, clearInterval, parseFloat, parseInt, Number, Array, Math, Date, String };
-    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { onBatchPreviewTpInput, renderBatchPreview, collectBatchTradesFromDom, buildExitLegs, batchVerifySent, collectBuilderTrades, renderBuilderOrdersPreview, sendTwsBuilderAll, brokerExitShares, tradeOrdersHtml, tradeExitStrategyId, tradeGroupKey, tradeGroups };');
+    const fn = new Function(...Object.keys(sandbox), code + '\nreturn { onBatchPreviewTpInput, renderBatchPreview, collectBatchTradesFromDom, buildExitLegs, batchVerifySent, collectBuilderTrades, renderBuilderOrdersPreview, sendTwsBuilderAll, brokerExitShares, tradeOrdersHtml, tradeExitStrategyId, tradeGroupKey, tradeGroups, builderPbTimed, portfolioOverviewStats };');
     const res = fn(...Object.values(sandbox));
 
     // Set the global batch strategy to opt1 and give it a custom LMT.
@@ -200,6 +200,69 @@ const assert = (cond, msg) => { if (!cond) throw new Error('ASSERT FAIL: ' + msg
     assert(grp.map(g => g.key).join(',') === 'qld,v3,pb', 'group order qld,v3,pb — got ' + grp.map(g => g.key).join(','));
     assert(grp[1].trades.map(t => t.ticker).join(',') === 'B,C', 'v3 bucket keeps log order');
     assert(res.tradeGroups([]).length === 0, 'empty -> no groups');
+
+    // Test 12: pb timed exits must honor the timedExitTime setting (default
+    // '15:45' in this harness), not the old '15:55' hardcode.
+    builderInputs['.b-opt'].value = 'lspb';
+    builderInputs['.b-pb-exit-date'].value = '2027-01-05';
+    const pbt = res.builderPbTimed(fakeBuilderRow);
+    assert(pbt && pbt.timedExit && pbt.timedExit.time === '15:45', 'pb timed exit uses timedExitTime setting, got ' + (pbt && pbt.timedExit && pbt.timedExit.time));
+    assert(pbt.timedExit.date === '2027-01-05' && pbt.holdUnit === 'day', 'pb timed exit keeps row date + day unit');
+    builderInputs['.b-pb-cat'].value = 'week';
+    assert(res.builderPbTimed(fakeBuilderRow).holdUnit === 'week', 'week cat -> week holdUnit');
+    builderInputs['.b-opt'].value = 'opt1';
+    builderInputs['.b-pb-cat'].value = 'day';
+    builderInputs['.b-pb-exit-date'].value = '';
+
+    // Test 13: portfolioOverviewStats — broker values when live (invested =
+    // Σ|mktValue|), margin/bp/cash/P&L from the /account map, 210% cap math
+    // excluding QLD, per-group notional split; journal fallback without broker.
+    const tr = [
+      { status: 'ACTIVE', shares: 100, entryPrice: 10, sleeve: 'QLD' },          // $1000
+      { status: 'ACTIVE', shares: 50, entryPrice: 20 },                          // v3 $1000
+      { status: 'ACTIVE', shares: 10, entryPrice: 30, sleeve: 'LS Pullback' },   // pb $300
+      { status: 'CLOSED', shares: 999, entryPrice: 99 },                         // ignored
+    ];
+    const s1 = res.portfolioOverviewStats(tr, {
+      positionsLive: true,
+      positions: { AAA: { qty: 5, mktPrice: 100, mktValue: 500 }, BBB: { qty: -2, mktPrice: 50 } },
+      accountValues: { NetLiquidation: '10000', MaintMarginReq: '3000', InitMarginReq: '4000', BuyingPower: '50000', AvailableFunds: '7000', TotalCashBalance: '1000', UnrealizedPnL: '250' },
+      manualEquity: 8000,
+      dailyPnL: -42.5,
+    });
+    assert(s1.netLiq === 10000 && s1.netLiqSrc === 'TWS', 'broker netliq wins over manual');
+    assert(s1.invested === 600 && s1.investedSrc === 'broker' && s1.positionsCount === 2, 'invested = Σ|mktValue| with qty*mktPrice fallback, got ' + s1.invested);
+    assert(s1.marginUsed === 3000 && s1.marginInit === 4000 && Math.abs(s1.marginPct - 0.3) < 1e-9, 'margin used + init + pct');
+    assert(s1.buyingPower === 50000 && s1.availFunds === 7000 && s1.cash === 1000, 'bp/avail/cash');
+    assert(s1.unrealized === 250 && s1.dailyPnl === -42.5, 'pnl fields');
+    assert(s1.groups.qld.notional === 1000 && s1.groups.v3.notional === 1000 && s1.groups.pb.notional === 300, 'group split');
+    assert(s1.bookedNotional === 1300 && Math.abs(s1.bookedPct - 0.13) < 1e-9, 'booked excludes QLD, pct vs netliq');
+
+    const s2 = res.portfolioOverviewStats(tr.slice(0, 2), { manualEquity: 5000 });
+    assert(s2.netLiq === 5000 && s2.netLiqSrc === 'manual', 'manual equity fallback');
+    assert(s2.invested === 2000 && s2.investedSrc === 'journal' && s2.positionsCount === 2, 'journal invested incl QLD');
+    assert(s2.marginUsed === null && s2.buyingPower === null && s2.unrealized === null, 'no broker cells without account map');
+    assert(Math.abs(s2.bookedPct - 0.2) < 1e-9, 'booked pct vs manual equity');
+
+    // Open P&L falls back to Σ per-position unrealizedPNL when the account tag
+    // is absent (or account sync is off while the positions feed is live).
+    const s2b = res.portfolioOverviewStats(tr, {
+      positionsLive: true,
+      positions: { AAA: { qty: 5, mktPrice: 100, mktValue: 500, unrealizedPNL: 30 }, BBB: { qty: -2, mktPrice: 50, unrealizedPNL: -12.5 } },
+      accountValues: { NetLiquidation: '10000' },   // no UnrealizedPnL tag
+      manualEquity: 8000,
+    });
+    assert(s2b.unrealized === 17.5, 'per-position P&L fallback sums, got ' + s2b.unrealized);
+    const s2c = res.portfolioOverviewStats(tr, {
+      positionsLive: true,
+      positions: { AAA: { qty: 5, mktPrice: 100, mktValue: 500, unrealizedPNL: 30 } },
+      manualEquity: 5000,
+    });
+    assert(s2c.unrealized === 30, 'positions-only unrealized without account map');
+    assert(s2c.marginUsed === null && s2c.netLiqSrc === 'manual', 'margin stays unavailable without NetLiquidation');
+
+    const s3 = res.portfolioOverviewStats([], {});
+    assert(s3.netLiq === null && s3.netLiqSrc === 'none' && s3.bookedPct === null && s3.invested === 0, 'empty state is all unavailable');
 
     console.log('Batch TP tests passed!');
     process.exit(0);

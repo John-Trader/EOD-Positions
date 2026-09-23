@@ -92,7 +92,11 @@ try {
   assert(snap.data.scannerStores.lsv3.tickers[0] === 'QQQ' && snap.data.scannerStores.lsv3.riskValue === 100, 'lsv3 store independent');
   assert(snap.data.scannerStores.pullback.pb[0].ticker === 'XLE', 'pullback pb list present');
   assert(snap.data.qldAllocation && snap.data.qldAllocation.shares === 12, 'qld sleeve in portable data');
-  assert(snap.local.apiKeys.finnhub_key === 'SECRET-KEY-1', 'api keys stay in portable file');
+  assert(snap.data.settings.finnhub_key === 'SECRET-KEY-1', 'api keys stay in portable file (as settings)');
+  const bakEnc = StateStore.exportFor('backup');
+  assert(JSON.stringify(bakEnc).indexOf('SECRET-KEY-1') === -1, 'api keys stripped from backup files');
+  const synEnc = StateStore.exportFor('sync');
+  assert(JSON.stringify(synEnc).indexOf('SECRET-KEY-1') >= 0, 'api keys ride the sync payload');
   assert(!snap.local.bridge || !snap.local.bridge.twsBridgeToken, 'bridge token stripped from portable file');
   assert(!snap.local.bridge || !snap.local.bridge.twsBridgeUrl, 'bridge url stripped from portable file');
   assert(JSON.stringify(snap).indexOf('LOCAL-BRIDGE-TOKEN') === -1, 'no bridge token bytes anywhere in payload');
@@ -144,6 +148,13 @@ try {
   const restoredSleeve = JSON.parse(StateStore.get('qldSleeve'));
   assert(restoredSleeve.pendingOrder && restoredSleeve.pendingOrder.orderRef === 'PSC-QLD-abc', 'pendingOrder roundtrips');
   assert(StateStore.get('finnhub_key') === 'SECRET-KEY-1', 'local api keys preserved across restore');
+  // Backup files strip API keys at encode — restoring one must not wipe the
+  // device's existing key (carry-forward), unlike sync where absent = tombstone.
+  StateStore.set('finnhub_key', 'SECRET-KEY-2');
+  const strippedBak = StateStore.exportFor('backup');
+  assert(JSON.stringify(strippedBak).indexOf('SECRET-KEY-2') === -1, 'backup excludes api key bytes');
+  const rBak = StateStore.applySnapshot(strippedBak, { source: 'backup' });
+  assert(rBak.ok && StateStore.get('finnhub_key') === 'SECRET-KEY-2', 'backup restore preserves local api key');
   api.rehydrateGlobalsFromStore();
   assert(api.activeTradesLog.length === 2 && api.activeTradesLog[0].id === 'tr-qld-1', 'globals rehydrated');
   assert(api.qldSleeve.shares === 12 && api.qldSleeve.pendingOrder, 'qld global rehydrated');

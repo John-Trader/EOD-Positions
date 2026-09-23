@@ -52,6 +52,11 @@
     //   local    → machine/broker/credential state (portable only, never backup/sync)
     //   cache    → ephemeral (local envelope only — not portable/backup/sync)
     // type: 'str' = stored string, 'json' = typed JSON value.
+    // Quote-provider API keys are ordinary synced settings (setting/<key>
+    // records) — they follow the journal to the user's own cloud store so a
+    // second device works without re-entry. TWS/bridge/flex credentials stay
+    // machine-local. API_KEYS also drives the backup strip + decode migration.
+    var API_KEYS = ['finnhub_key', 'twelvedata_key', 'stockdata_key', 'tiingo_key'];
     var SETTINGS_STR = [
         'riskValue', 'slippageValue', 'selectedProvider', 'enhancedSecondaryProvider',
         'collapseAfterCalc', 'preferredViewMode', 'liveUpdateEnabled', 'enhancedLiveMode',
@@ -59,7 +64,7 @@
         'accountValue', 'maxHoldDays', 'timedExitEnabled', 'timedExitTime', 'showRangePct',
         'earningsWarnEnabled', 'stopVolWarnEnabled', 'liqWarnEnabled', 'liqVolPct',
         'liqVolPeriod', 'signalSyncMode', 'qldTargetPct', 'qldBandPct', 'globalMarketRegime'
-    ];
+    ].concat(API_KEYS);
     var SETTINGS_JSON = ['providerPriorityOrder', 'pbEtfUniverse', 'settingsSectionsCollapsed'];
     var LOCAL_STR = [
         'twsEnabled', 'autoSendExitsOnOpen', 'twsQuotesEnabled', 'twsSyncAccount',
@@ -69,7 +74,6 @@
     ];
     var LOCAL_ROOT_STR = ['journalSyncedAt', 'syncPending'];
     var BRIDGE_STR = ['twsBridgeUrl', 'twsBridgeToken'];           // derived/local — not portable
-    var API_KEYS = ['finnhub_key', 'twelvedata_key', 'stockdata_key', 'tiingo_key'];
     var DATA_KEYS = {
         activeTradesLog: 'trades',
         customStrategies: 'customStrategies',
@@ -122,7 +126,6 @@
         if (LOCAL_STR.indexOf(key) >= 0) return { section: 'local', field: key, type: 'str', group: 'tws' };
         if (LOCAL_ROOT_STR.indexOf(key) >= 0) return { section: 'local', field: key, type: 'str' };
         if (BRIDGE_STR.indexOf(key) >= 0) return { section: 'local', field: key, type: 'str', group: 'bridge' };
-        if (API_KEYS.indexOf(key) >= 0) return { section: 'local', field: key, type: 'str', group: 'apiKeys' };
         if (has.call(LOCAL_JSON, key)) return { section: 'local', field: LOCAL_JSON[key], type: 'json' };
         if (has.call(CACHE_JSON, key)) return { section: 'cache', field: CACHE_JSON[key], type: 'json' };
         return null;
@@ -360,6 +363,11 @@
             data: purpose === 'sync' ? stripForSync(state.data) : clone(state.data),
             mergeMeta: clone(state.mergeMeta)
         };
+        // API keys ride the sync payload (user-chosen cloud store) but stay out
+        // of downloaded backup files — credentials never land in an exported file.
+        if (purpose === 'backup' && out.data && out.data.settings) {
+            API_KEYS.forEach(function (k) { delete out.data.settings[k]; });
+        }
         if (purpose === 'local' || purpose === 'portable') {
             var loc = clone(state.local) || {};
             if (purpose === 'portable' && loc.bridge) loc.bridge = {};   // bridge url/token are meta-derived per machine
@@ -367,6 +375,21 @@
         }
         if (purpose === 'local') out.cache = clone(state.cache) || {};
         return out;
+    }
+
+    // API keys lived in local.apiKeys before they became synced settings.
+    // Hoist legacy values on every decode — covers local hydrate, portable boot
+    // and file restores in one place; local.apiKeys stays a valid empty field.
+    // Existing settings win over stale local copies.
+    function migrateApiKeys(state) {
+        var l = state && state.local;
+        if (!l || !isObj(l.apiKeys)) return;
+        var s = state.data && state.data.settings;
+        if (!s) return;
+        for (var k in l.apiKeys) {
+            if (API_KEYS.indexOf(k) >= 0 && isStr(l.apiKeys[k]) && s[k] === undefined) s[k] = l.apiKeys[k];
+        }
+        l.apiKeys = {};
     }
 
     // Parse + validate a serialized/foreign payload. Strict: unknown format,
@@ -383,6 +406,7 @@
         if (obj.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'unsupported schemaVersion ' + JSON.stringify(obj.schemaVersion) };
         var v = validate(obj, opts);
         if (!v.ok) return { ok: false, error: 'invalid state: ' + v.errors[0], errors: v.errors };
+        migrateApiKeys(obj);
         return { ok: true, value: obj };
     }
 
@@ -400,8 +424,7 @@
             v = info.index !== undefined ? (s[info.field] || [])[info.index] : s[info.field];
         } else if (info.section === 'local') {
             var l = state.local || {};
-            if (info.group === 'apiKeys') v = l.apiKeys ? l.apiKeys[info.field] : undefined;
-            else if (info.group === 'bridge') v = l.bridge ? l.bridge[info.field] : undefined;
+            if (info.group === 'bridge') v = l.bridge ? l.bridge[info.field] : undefined;
             else if (info.group === 'tws') v = l.tws ? l.tws[info.field] : undefined;
             else v = l[info.field];
         } else if (info.section === 'cache') v = state.cache ? state.cache[info.field] : undefined;
@@ -445,8 +468,7 @@
         }
         if (info.section === 'local') {
             var l = state.local;
-            if (info.group === 'apiKeys') (l.apiKeys = l.apiKeys || {})[info.field] = v;
-            else if (info.group === 'bridge') (l.bridge = l.bridge || {})[info.field] = v;
+            if (info.group === 'bridge') (l.bridge = l.bridge || {})[info.field] = v;
             else if (info.group === 'tws') (l.tws = l.tws || {})[info.field] = v;
             else l[info.field] = v;
             return true;
@@ -471,7 +493,6 @@
         if (info.section === 'ledger') { state.data.ledger[info.field] = clone(defaultLedger()[info.field]); return true; }
         if (info.section === 'local') {
             var l = state.local;
-            if (info.group === 'apiKeys') { if (l.apiKeys) delete l.apiKeys[info.field]; return true; }
             if (info.group === 'bridge') { if (l.bridge) delete l.bridge[info.field]; return true; }
             if (info.group === 'tws') { if (l.tws) delete l.tws[info.field]; return true; }
             delete l[info.field]; return true;

@@ -84,8 +84,20 @@ async function main() {
     assert(backup.data.trades.length === 1, 'backup carries trades');
     const portable = S.encode(st, { purpose: 'portable' });
     assert(portable.local && portable.local.tws.twsEnabled === 'true', 'portable keeps tws prefs');
-    assert(portable.local.apiKeys.finnhub_key === 'API-SECRET', 'portable keeps api keys');
+    assert(portable.data.settings.finnhub_key === 'API-SECRET', 'portable keeps api keys (in settings)');
     assert(!portable.local.bridge || !portable.local.bridge.twsBridgeToken, 'portable strips bridge token');
+    // api keys are ordinary synced settings: sync payload carries them, backup strips them
+    const syncEnv = S.encode(st, { purpose: 'sync' });
+    assert(syncEnv.data.settings.finnhub_key === 'API-SECRET', 'sync payload carries api key');
+    const stRecs = S.recordIndex(st);
+    assert(stRecs['setting/finnhub_key'] && stRecs['setting/finnhub_key'].value === 'API-SECRET', 'api key is a syncable setting record');
+    // legacy envelopes holding local.apiKeys migrate into settings on decode
+    const legacy = S.encode(st, { purpose: 'local' });
+    legacy.local.apiKeys = { twelvedata_key: 'OLD-TD', finnhub_key: 'STALE-LOCAL' };
+    const decL = S.decode(JSON.stringify(legacy));
+    assert(decL.ok && decL.value.data.settings.twelvedata_key === 'OLD-TD', 'legacy apiKey hoisted to settings');
+    assert(decL.value.data.settings.finnhub_key === 'API-SECRET', 'existing setting beats stale local copy');
+    assert(decL.value.local.apiKeys && Object.keys(decL.value.local.apiKeys).length === 0, 'local.apiKeys emptied after migration');
     // scheduled auto-entry is machine-local: portable keeps it, backup/sync drop it
     S.setByKey(st, 'autoEntryEnabled', 'true');
     S.setByKey(st, 'autoEntryTime', '15:58');
