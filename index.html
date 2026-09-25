@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.4';
+        const PSC_VERSION = '4.7.5';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -3016,9 +3016,12 @@
                     const each = remainder / implicitLegs.length;
                     implicitLegs.forEach(l => l.pct = each);
                 } else if (remainder > 0) {
-                    // All legs explicit but total < 100; add remainder to last leg.
-                    legs[legs.length - 1].pct += remainder;
-                    warnings.push(`${ticker}: leg percentages total ${sumPct}%; remainder added to last leg.`);
+                    // All legs explicit but total < 100: the printed percentages are
+                    // the coverage — the leftover has NO target and rides the stop
+                    // as its own stop-only leg (a "(25% Partial)" paste must not
+                    // silently inflate to 100%).
+                    legs.push({ pct: remainder, tp: 0, label: 'Stop only', action: legs[0].action, stopOnly: true });
+                    warnings.push(`${ticker}: leg percentages total ${sumPct}%; remainder covered by the stop only.`);
                 }
 
                 // Round and force the total to exactly 100% on the last leg.
@@ -9954,7 +9957,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.4';
+        const APP_VERSION = '4.7.5';
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
         async function bridgeHealth() {

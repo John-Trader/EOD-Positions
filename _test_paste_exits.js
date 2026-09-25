@@ -171,18 +171,31 @@ try {
   assert(r.trades[0].legs[0].pct === 40, 'first pct 40');
   assert(r.trades[0].legs[1].pct === 60, 'second pct 60, not 1');
 
-  // Case 12: two explicit 40% get remainder added to last
+  // Case 12: two explicit 40% leave a 20% stop-only remainder leg
   const twoForty = `1) $AMPL - Stop: $13.15 - (40% Partial) Sell LMT: $15.34 - (40% TP) Sell LMT: $20.82`;
   r = api.parseExitOrderText(twoForty);
+  assert(r.trades[0].legs.length === 3, 'three legs incl. remainder');
   assert(r.trades[0].legs[0].pct === 40, 'first 40');
-  assert(r.trades[0].legs[1].pct === 60, 'last gets remainder');
-  assert(r.warnings.some(w => w.includes('remainder')), 'warn remainder added');
+  assert(r.trades[0].legs[1].pct === 40, 'second stays 40');
+  assert(r.trades[0].legs[2].pct === 20 && r.trades[0].legs[2].stopOnly === true, 'remainder 20% stop-only');
+  assert(r.warnings.some(w => w.includes('remainder')), 'warn remainder stop-only');
 
   // Case 13: commas in prices
   const comma = `1) $AMPL - Stop (GTC): $1,234.56 - (40% Partial) Sell LMT: $1,234.57`;
   r = api.parseExitOrderText(comma);
   assert(r.trades[0].stop === 1234.56, 'comma stop');
   assert(r.trades[0].legs[0].tp === 1234.57, 'comma target');
+
+  // Case 13a: a lone "(25% Partial)" leg keeps its 25% — the rest rides the stop
+  const pbPaste = `Stops & TP orders:**\nPB Pullbacks\n1) $XLF - Stop (GTC): $53.24 - (25% Partial) Sell LMT: $56.41`;
+  r = api.parseExitOrderText(pbPaste);
+  assert(r.trades.length === 1, 'PB paste yields one trade');
+  assert(r.trades[0].ticker === 'XLF', 'ticker XLF');
+  assert(r.trades[0].stop === 53.24, 'stop 53.24');
+  assert(r.trades[0].legs.length === 2, 'two legs: partial + stop-only remainder');
+  assert(r.trades[0].legs[0].pct === 25 && r.trades[0].legs[0].tp === 56.41, '25% leg stays 25%');
+  assert(r.trades[0].legs[1].pct === 75 && r.trades[0].legs[1].stopOnly === true, '75% stop-only remainder');
+  assert(r.warnings.some(w => w.includes('remainder')), 'warns about stop-only remainder');
 
   // Integration case: buildExitLegs with explicit legs
   const intLegs = [{ pct: 40, tp: 15.34, label: '40% Partial' }, { pct: 60, tp: 20.82, label: '1:6 TP' }];
@@ -215,6 +228,23 @@ try {
   assert(b3.rows.length === 4, 'CSV rows still generated without entry');
   assert(b3.rows[0][0] === 'SELL' && b3.rows[0][7] === 'STP' && b3.rows[0][9] === '13.15', 'STP row without entry');
   assert(b3.rows[1][0] === 'SELL' && b3.rows[1][7] === 'LMT' && b3.rows[1][8] === '15.34', 'LMT row without entry');
+
+  // Reported scenario: "(25% Partial)" paste on 400 shares must send
+  // STP 100 + LMT 100 for leg 1 and a lone STP 300 for the remainder leg —
+  // never LMT 400.
+  const pbParsed = api.parseExitOrderText(`Stops & TP orders:**\nPB Pullbacks\n1) $XLF - Stop (GTC): $53.24 - (25% Partial) Sell LMT: $56.41`);
+  const b4 = api.buildExitLegs('XLF', true, 0, 400, 53.24, null, null, { explicitLegs: pbParsed.trades[0].legs });
+  assert(b4.ok === true, 'XLF buildExitLegs ok');
+  assert(b4.preview.length === 2, 'two legs for XLF');
+  assert(b4.preview[0].qty === 100 && b4.preview[0].tp === 56.41, 'leg1: 100 shares with LMT 56.41');
+  assert(b4.preview[1].qty === 300 && b4.preview[1].stopOnly === true, 'leg2: 300 shares stop-only');
+  assert(b4.rows.length === 3, 'three order rows (STP/LMT/STP)');
+  assert(b4.rows[0][1] === 100 && b4.rows[0][7] === 'STP' && b4.rows[0][9] === '53.24', 'leg1 STP 100');
+  assert(b4.rows[1][1] === 100 && b4.rows[1][7] === 'LMT' && b4.rows[1][8] === '56.41', 'leg1 LMT 100');
+  assert(b4.rows[2][1] === 300 && b4.rows[2][7] === 'STP' && b4.rows[2][9] === '53.24', 'leg2 STP 300');
+  const oca1 = b4.rows[0][11], oca2 = b4.rows[2][11];
+  assert(b4.rows[0][11] === b4.rows[1][11], 'leg1 pair shares one OCA group');
+  assert(oca1 !== oca2, 'remainder leg gets its own OCA group');
 
   console.log('\nAll paste exit tests passed');
   process.exit(0);
