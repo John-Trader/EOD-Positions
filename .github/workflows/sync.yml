@@ -29,6 +29,8 @@ jobs:
           # Map every branch/tag ref to its commit TREE sha. Trees ignore the
           # rewritten author/committer idents, so primary and backup trees are
           # directly comparable (raw commit SHAs always differ by design).
+          # main is special-cased below: its backup tree carries this embedded
+          # workflow file, so its raw tree SHA can never match the primary's.
           ref_trees() {
             local repo="$1" token="$2" refname short tree
             git ls-remote "https://x-access-token:${token}@github.com/${repo}.git" \
@@ -56,7 +58,27 @@ jobs:
           prim_rel=$(rel_sig "$PRIMARY" "$PRIMARY_READ_TOKEN")
           back_rel=$(rel_sig "$BACKUP" "$MIRROR_PAT")
 
-          if [ "$prim_refs" = "$back_refs" ] && [ "$prim_rel" = "$back_rel" ]; then
+          # Compare main by file list, ignoring the embedded workflow file
+          # path; every other ref compares by raw tree SHA.
+          main_same=false
+          prim_main_tree=$(echo "$prim_refs" | awk '$1 == "refs/heads/main" {print $2}')
+          back_main_tree=$(echo "$back_refs" | awk '$1 == "refs/heads/main" {print $2}')
+          if [ -n "$prim_main_tree" ] && [ -n "$back_main_tree" ]; then
+            prim_json=$(GH_TOKEN="$PRIMARY_READ_TOKEN" gh api "repos/$PRIMARY/git/trees/$prim_main_tree?recursive=1")
+            back_json=$(GH_TOKEN="$MIRROR_PAT" gh api "repos/$BACKUP/git/trees/$back_main_tree?recursive=1")
+            tree_files() {
+              echo "$1" | jq -r '[.tree[] | select(.path != ".github/workflows/sync.yml") | "\(.mode) \(.type) \(.sha) \(.path)"] | sort | join("\n")'
+            }
+            if [ "$(echo "$prim_json" | jq -r '.truncated')" != "true" ] \
+               && [ "$(echo "$back_json" | jq -r '.truncated')" != "true" ] \
+               && [ "$(tree_files "$prim_json")" = "$(tree_files "$back_json")" ]; then
+              main_same=true
+            fi
+          fi
+          prim_rest=$(echo "$prim_refs" | grep -v '^refs/heads/main ' || true)
+          back_rest=$(echo "$back_refs" | grep -v '^refs/heads/main ' || true)
+
+          if [ "$prim_rest" = "$back_rest" ] && [ "$main_same" = "true" ] && [ "$prim_rel" = "$back_rel" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes detected; skipping sync."
           else
