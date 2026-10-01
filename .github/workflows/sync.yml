@@ -12,7 +12,60 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      - name: Detect changes (cheap check; skips everything when idle)
+        id: detect
+        env:
+          PRIMARY_READ_TOKEN: ${{ secrets.PRIMARY_READ_TOKEN }}
+          PRIMARY_REPO: ${{ secrets.PRIMARY_REPO }}
+          MIRROR_PAT: ${{ secrets.MIRROR_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "${PRIMARY_READ_TOKEN:-}" || { echo "missing PRIMARY_READ_TOKEN secret"; exit 1; }
+          test -n "${PRIMARY_REPO:-}" || { echo "missing PRIMARY_REPO secret"; exit 1; }
+          test -n "${MIRROR_PAT:-}" || { echo "missing MIRROR_PAT secret"; exit 1; }
+          BACKUP="John-Trader/EOD-Positions"
+          PRIMARY="${PRIMARY_REPO:?missing PRIMARY_REPO secret}"
+
+          # Map every branch/tag ref to its commit TREE sha. Trees ignore the
+          # rewritten author/committer idents, so primary and backup trees are
+          # directly comparable (raw commit SHAs always differ by design).
+          ref_trees() {
+            local repo="$1" token="$2" refname short tree
+            git ls-remote "https://x-access-token:${token}@github.com/${repo}.git" \
+              'refs/heads/*' 'refs/tags/*' \
+              | grep -v '\^{}' | awk '{print $2}' | sort -u | while read -r refname; do
+                short="${refname#refs/heads/}"
+                short="${short#refs/tags/}"
+                tree=$(GH_TOKEN="$token" gh api "repos/${repo}/commits/${short}" --jq '.commit.tree.sha' 2>/dev/null || echo "ERR")
+                printf '%s %s\n' "$refname" "$tree"
+              done | sort
+          }
+
+          # Canonical release signature; bodies normalized so a stored
+          # trailing newline can never read as a diff and cause a perpetual
+          # delete/recreate loop.
+          rel_sig() {
+            local repo="$1" token="$2"
+            GH_TOKEN="$token" gh api "repos/${repo}/releases?per_page=100" --jq '
+              sort_by(.tag_name) | .[] |
+              "\(.tag_name)	\(.name // "")	\((.body // "") | sub("\\s+$"; ""))	\(.draft)	\(.prerelease)	\([(.assets // [])[] | "\(.name) \(.size)"] | sort | join(","))"'
+          }
+
+          prim_refs=$(ref_trees "$PRIMARY" "$PRIMARY_READ_TOKEN")
+          back_refs=$(ref_trees "$BACKUP" "$MIRROR_PAT")
+          prim_rel=$(rel_sig "$PRIMARY" "$PRIMARY_READ_TOKEN")
+          back_rel=$(rel_sig "$BACKUP" "$MIRROR_PAT")
+
+          if [ "$prim_refs" = "$back_refs" ] && [ "$prim_rel" = "$back_rel" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes detected; skipping sync."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected; running full sync."
+          fi
+
       - name: Save this workflow file (fallback copy for the build step)
+        if: steps.detect.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -24,6 +77,7 @@ jobs:
           gh api "repos/John-Trader/EOD-Positions/contents/.github/workflows/sync.yml?ref=main" --jq '.content' 2>/dev/null | base64 -d > /tmp/sync.yml.bak 2>/dev/null || true
 
       - name: Build mirrored repo (no push yet)
+        if: steps.detect.outputs.changed == 'true'
         id: build
         env:
           PRIMARY_READ_TOKEN: ${{ secrets.PRIMARY_READ_TOKEN }}
@@ -75,7 +129,7 @@ jobs:
             blob=$(git hash-object -w /tmp/sync_current.yml)
             echo "embedding sync.yml from current main"
           elif test -s /tmp/sync.yml.bak; then
-            blob=$(git hash-object -w /tmp/sync.yml.bak)
+            blob=$(git hash-object -w /tmp/sync_current.yml)
             echo "sync.yml missing on main; restoring fallback copy"
           else
             echo "sync.yml missing on main and no fallback copy; refusing to push"
@@ -104,6 +158,7 @@ jobs:
           echo "Mirror built; single push pending."
 
       - name: Sync releases (notes and assets)
+        if: steps.detect.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRIMARY_READ_TOKEN: ${{ secrets.PRIMARY_READ_TOKEN }}
@@ -133,10 +188,13 @@ jobs:
           # on the newest version instead of the oldest.
           tags=$(papi "repos/$PRIMARY/releases?per_page=100" --jq 'reverse | .[].tag_name')
 
-          # Canonical signature of a release JSON blob: name, body, flags,
-          # and asset names+sizes. Used to skip releases that already match.
+          # Canonical signature of a release JSON blob: name, body (trailing
+          # whitespace normalized so a stored trailing newline never reads as
+          # a diff), flags, and asset names+sizes. Releases already matching
+          # on the backup are skipped, so only new or genuinely changed
+          # versions are synced -- never the whole list.
           sig() {
-            jq -r '[.name // "", .body // "", .draft, .prerelease, (.assets | map("\(.name) \(.size)") | sort | join("\n"))] | join("\u0000")'
+            jq -r '[.name // "", ((.body // "") | sub("\\s+$"; "")), .draft, .prerelease, ([(.assets // [])[] | "\(.name) \(.size)"] | sort | join(","))] | join("\u001f")'
           }
 
           for tag in $tags; do
@@ -159,7 +217,10 @@ jobs:
             name=$(echo "$meta" | jq -r '.name // empty')
             draft=$(echo "$meta" | jq -r '.draft')
             prerelease=$(echo "$meta" | jq -r '.prerelease')
-            echo "$meta" | jq -r '.body // ""' > /tmp/notes.md
+            # -j adds no trailing newline, and trailing whitespace is
+            # stripped, so the stored body byte-matches the primary and
+            # future runs see it as unchanged.
+            echo "$meta" | jq -j '((.body // "") | sub("\\s+$"; ""))' > /tmp/notes.md
 
             work=$(mktemp -d)
             pdl "$tag" -R "$PRIMARY" -D "$work" --clobber >/dev/null 2>&1 || true
@@ -189,7 +250,7 @@ jobs:
         # Runs even if release sync failed: the workflow file travels inside
         # this same push, so a failed run can never wipe it and orphan the
         # 15-minute schedule the way the old two-push design could.
-        if: always()
+        if: always() && steps.detect.outputs.changed == 'true'
         env:
           MIRROR_PAT: ${{ secrets.MIRROR_PAT }}
         run: |
