@@ -67,7 +67,12 @@ jobs:
             prim_json=$(GH_TOKEN="$PRIMARY_READ_TOKEN" gh api "repos/$PRIMARY/git/trees/$prim_main_tree?recursive=1")
             back_json=$(GH_TOKEN="$MIRROR_PAT" gh api "repos/$BACKUP/git/trees/$back_main_tree?recursive=1")
             tree_files() {
-              echo "$1" | jq -r '[.tree[] | select(.path != ".github/workflows/sync.yml") | "\(.mode) \(.type) \(.sha) \(.path)"] | sort | join("\n")'
+              # Compare file blobs only (plus submodule commits): the tree
+              # objects for .github/ and .github/workflows/ exist on the
+              # backup solely to hold the embedded workflow file, so their
+              # SHAs can never match the primary. Blob SHAs are content-based
+              # and comparable on both sides.
+              echo "$1" | jq -r '[.tree[] | select((.type == "blob" and .path != ".github/workflows/sync.yml") or .type == "commit") | "\(.mode) \(.type) \(.sha) \(.path)"] | sort | join("\n")'
             }
             if [ "$(echo "$prim_json" | jq -r '.truncated')" != "true" ] \
                && [ "$(echo "$back_json" | jq -r '.truncated')" != "true" ] \
