@@ -189,7 +189,7 @@ let account = '';
 let appVersion = 'dev';
 try { appVersion = require('../package.json').version; } catch (_) {}
 let nextOrderId = 0;
-let nextReqId = 1000;                  // data-request ids — separate space from order ids
+let nextReqId = 1000000;               // data-request ids — disjoint from order ids (TWS uses ONE shared id namespace; nextValidId order ids routinely exceed 1000)
 let lastError = '';
 let clientIdConflict = false;
 let reconnectTimer = null;
@@ -525,7 +525,10 @@ function connect() {
             const ph = pendingHistory.get(reqId);
             if (ph) {
                 pendingHistory.delete(reqId); clearTimeout(ph.timer);
-                ph.resolve(ph.bars.length ? ph.bars : null);
+                // Never hand back a truncated series as complete — a mid-stream
+                // error (e.g. 162 pacing) would silently corrupt ATR/sizing.
+                // Null fails the fetch so the app falls through to the next provider.
+                ph.resolve(null);
                 return;
             }
             const pe = pendingExec.get(reqId);
