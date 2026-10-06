@@ -3540,13 +3540,19 @@
                 }
                 if (pc === null) throw new Error(`Incomplete quote: no previous close for ${ticker}`);
                 // h/l may be missing pre-market — fall back to pc/c rather than failing.
+                // Flag fabricated values so later ticks/resyncs replace them instead
+                // of ratcheting around them (min/max can never correct a bad band).
+                const hFab = !(Number.isFinite(h) && h > 0);
+                const lFab = !(Number.isFinite(l) && l > 0);
                 return {
                     c,
-                    h: (Number.isFinite(h) && h > 0) ? h : Math.max(c, pc),
-                    l: (Number.isFinite(l) && l > 0) ? l : Math.min(c, pc),
+                    h: hFab ? Math.max(c, pc) : h,
+                    l: lFab ? Math.min(c, pc) : l,
                     pc,
                     bid: (Number.isFinite(q.bid) && q.bid > 0) ? Number(q.bid) : null,
                     ask: (Number.isFinite(q.ask) && q.ask > 0) ? Number(q.ask) : null,
+                    hFab,
+                    lFab,
                 };
             }
             throw new Error("Unknown provider");
@@ -3845,37 +3851,12 @@
             if (!tickers.length) return;
             // use the active fetch session if present, else a fresh controller
             const controller = activeFetchSession || new AbortController();
-            const missingBars = (t) => {
-                const v = volatilityCache[t];
-                return !v || !Array.isArray(v.bars) || v.bars.length < 21;
-            };
-            // Stagger history requests: firing one 430-day /history per ticker in a
-            // parallel burst trips TWS pacing limits (error 162 / empty history),
-            // which used to leave pullback cards stuck at 0 shares with no ATR.
-            for (const t of tickers) {
+            await Promise.all(tickers.map(async (t) => {
                 if (requestId !== volatilityRequestId) return;
                 try {
                     await fetchVolatilityData(t, controller.signal);
-                } catch (e) { /* non-fatal — retried below */ }
-                await new Promise(r => setTimeout(r, 350));
-            }
-            // One delayed retry for tickers that still have no usable bars
-            // (transient TWS pacing/farm errors). Anything still missing keeps
-            // the clickable ATR-missing warning on its card.
-            if (requestId === volatilityRequestId) {
-                const failed = tickers.filter(missingBars);
-                if (failed.length) await new Promise(r => setTimeout(r, 2500));
-                for (const t of failed) {
-                    if (requestId !== volatilityRequestId) return;
-                    // Force a real refetch: a partial 'ok' result (e.g. NATR% without
-                    // bars) would otherwise be served from the 5-minute cache.
-                    delete volatilityCache[t];
-                    try {
-                        await fetchVolatilityData(t, controller.signal);
-                    } catch (e) { /* non-fatal — card shows the ATR-missing warning */ }
-                    await new Promise(r => setTimeout(r, 350));
-                }
-            }
+                } catch (e) { /* non-fatal */ }
+            }));
             if (requestId === volatilityRequestId) {
                 const container = activeResultsContainer();
                 if (container) refreshAllVisible(container);
@@ -4016,13 +3997,20 @@
             const prev = realtimeQuotes[ticker];
             if (!prev || !Number.isFinite(price) || price <= 0) return false;
             const rth = nyNow().isRTH;
+            // True session h/l from the tick replace fabricated baselines outright;
+            // the old min/max ratchet could never correct a fabricated band.
+            const tickH = Number(extra.h), tickL = Number(extra.l);
+            const tickHOk = Number.isFinite(tickH) && tickH > 0;
+            const tickLOk = Number.isFinite(tickL) && tickL > 0;
             realtimeQuotes[ticker] = {
                 c: price,
-                h: rth ? (prev.h > 0 ? Math.max(prev.h, price) : price) : prev.h,
-                l: rth ? (prev.l > 0 ? Math.min(prev.l, price) : price) : prev.l,
+                h: tickHOk ? tickH : (rth ? (prev.h > 0 ? Math.max(prev.h, price) : price) : prev.h),
+                l: tickLOk ? tickL : (rth ? (prev.l > 0 ? Math.min(prev.l, price) : price) : prev.l),
                 pc: prev.pc,
                 bid: (extra.bid && extra.bid > 0) ? extra.bid : prev.bid,
-                ask: (extra.ask && extra.ask > 0) ? extra.ask : prev.ask
+                ask: (extra.ask && extra.ask > 0) ? extra.ask : prev.ask,
+                hFab: tickHOk ? false : !!prev.hFab,
+                lFab: tickLOk ? false : !!prev.lFab
             };
             lastTradeAt[ticker] = Date.now();
             return true;
@@ -4080,13 +4068,19 @@
             // A changed previous-close marks a new session — the old day's
             // high/low/last must not carry into the fresh session's quote.
             const newSession = data.pc > 0 && prev.pc > 0 && data.pc !== prev.pc;
+            // A fabricated h/l (TWS early snapshot) is replaced by the first real
+            // values instead of ratcheted — min/max can never fix a bad band.
+            const fixH = !newSession && prev.hFab && data.h > 0;
+            const fixL = !newSession && prev.lFab && data.l > 0;
             const next = {
                 c: (newSession || socketQuiet) && data.c > 0 ? data.c : prev.c,
-                h: newSession ? (data.h > 0 ? data.h : prev.h) : (Math.max(prev.h > 0 ? prev.h : 0, data.h > 0 ? data.h : 0) || prev.h),
-                l: newSession ? (data.l > 0 ? data.l : prev.l) : ((prev.l > 0 && data.l > 0) ? Math.min(prev.l, data.l) : (data.l > 0 ? data.l : prev.l)),
+                h: newSession ? (data.h > 0 ? data.h : prev.h) : fixH ? data.h : (Math.max(prev.h > 0 ? prev.h : 0, data.h > 0 ? data.h : 0) || prev.h),
+                l: newSession ? (data.l > 0 ? data.l : prev.l) : fixL ? data.l : ((prev.l > 0 && data.l > 0) ? Math.min(prev.l, data.l) : (data.l > 0 ? data.l : prev.l)),
                 pc: data.pc > 0 ? data.pc : prev.pc,
                 bid: (data.bid && data.bid > 0) ? data.bid : prev.bid,
-                ask: (data.ask && data.ask > 0) ? data.ask : prev.ask
+                ask: (data.ask && data.ask > 0) ? data.ask : prev.ask,
+                hFab: fixH ? false : !!prev.hFab,
+                lFab: fixL ? false : !!prev.lFab
             };
             const changed = ['c', 'h', 'l', 'pc', 'bid', 'ask'].some(k => next[k] !== prev[k]);
             realtimeQuotes[ticker] = next;
@@ -4229,10 +4223,6 @@
         }
 
         const pbCatChip = (f) => f.cat ? `<span class="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300 border border-teal-500/40">${f.cat.name}</span>` : `<span class="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40">No category</span>`;
-        // Amber "ATR missing" warning — clicking it focuses the card's manual ATR
-        // input so a failed volatility fetch never silently leaves shares at 0.
-        const pbAtrWarnHtml = (ticker, label) => `<button onclick="focusPbAtrInput('${ticker}')" class="atr-missing-warn text-amber-300 font-bold underline decoration-dotted underline-offset-2" title="ATR unavailable — click to enter it manually">${label}</button>`;
-        const pbAtrCellHtml = (f) => f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : pbAtrWarnHtml(f.ticker, '⚠ ATR MISSING');
         const pbCardClass = 'result-card glass-card rounded-xl px-3 py-2';
         const pbExitBtnClass = 'shrink-0 w-[4.4rem] bg-teal-950/60 border-teal-500/40 text-teal-300 border rounded-md text-[9px] font-bold uppercase leading-tight px-1';
 
@@ -4288,7 +4278,7 @@
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">Stop −1 ATR</div>
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.hasAtr ? f.stop.toFixed(2) : '--'}</div>
-                        <div data-field="atr" class="text-[8px] text-gray-500 font-mono-num leading-none" title="${escapeHtml(f.atrSource || 'no ATR')}">${pbAtrCellHtml(f)}</div>
+                        <div data-field="atr" class="text-[8px] text-gray-500 font-mono-num leading-none" title="${escapeHtml(f.atrSource || 'no ATR')}">${f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : 'ATR n/a'}</div>
                     </div>
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">TP1 +1R · 25%</div>
@@ -4343,12 +4333,9 @@
             const liqWarn = q('liqWarn');
             if (liqWarn) { setTextIfChanged(liqWarn, f.liqWarn ? '⚠ ' + f.liqWarn.text : ''); setHidden(liqWarn, !f.liqWarn); }
             setTextAndFlash(q('stopPrice'), f.hasAtr ? f.stop.toFixed(2) : '--');
+            setTextIfChanged(q('atr'), f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : 'ATR n/a');
             const atrEl = q('atr');
-            if (atrEl) {
-                atrEl.title = f.atrSource || 'no ATR';
-                if (f.hasAtr) setTextIfChanged(atrEl, 'ATR $' + f.atr.toFixed(2));
-                else if (!atrEl.querySelector('.atr-missing-warn')) atrEl.innerHTML = pbAtrCellHtml(f);
-            }
+            if (atrEl) atrEl.title = f.atrSource || 'no ATR';
             setTextAndFlash(q('tp1'), f.hasAtr ? f.tp1.toFixed(2) : '--');
             setTextIfChanged(q('exitNote'), `${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}`);
             setTextIfChanged(q('riskDollars'), `Risk $${f.riskDollars ? f.riskDollars.toFixed(0) : '--'}${f.cat ? ' (' + f.cat.riskPct + '%)' : ''}`);
@@ -4425,7 +4412,7 @@
                     ${pbCatChip(f)}
                     <span class="text-[9px] text-gray-500 uppercase">${f.tf || '?'}</span>
                     <span class="ml-auto font-mono-num text-teal-300 font-bold" data-field="px">$${f.c.toFixed(2)}</span>
-                    <span class="font-mono-num text-[10px] text-gray-300" data-field="sh">${f.shares.toLocaleString()} sh${f.hasAtr ? '' : ' ' + pbAtrWarnHtml(f.ticker, '⚠')}</span>
+                    <span class="font-mono-num text-[10px] text-gray-300" data-field="sh">${f.shares.toLocaleString()} sh</span>
                     <span class="font-mono-num text-[10px] text-red-400" data-field="stp">STP ${f.hasAtr ? f.stop.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[10px] text-emerald-400" data-field="tp1">TP1 ${f.hasAtr ? f.tp1.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[9px] text-gray-500" data-field="xn">${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}</span>
@@ -4472,19 +4459,6 @@
             });
         }
 
-        // Clicking the "ATR MISSING" warning focuses the card's manual ATR input.
-        function focusPbAtrInput(ticker) {
-            const container = activeResultsContainer();
-            const card = container && findElById(container, 'pbcard-' + ticker);
-            const input = card && card.querySelector('.pb-atr-override');
-            if (input) {
-                try { input.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-                input.focus();
-                if (input.select) input.select();
-            } else {
-                showInfoToast('The manual ATR input is on the card view for ' + ticker + '.', 4000);
-            }
-        }
         function onPbAtrOverride(input) {
             const v = parseFloat(input.value);
             const sig = pbSignals.find(s => s.ticker === input.dataset.ticker);
@@ -4531,11 +4505,7 @@
                     const q = (s) => row.querySelector(`[data-field="${s}"]`);
                     setCapBadge(q('cap'), capBadgeFor('pb', f.ticker));
                     setTextAndFlash(q('px'), '$' + f.c.toFixed(2));
-                    const shEl = q('sh');
-                    if (shEl) {
-                        if (f.hasAtr) setTextAndFlash(shEl, f.shares.toLocaleString() + ' sh');
-                        else if (!shEl.querySelector('.atr-missing-warn')) shEl.innerHTML = f.shares.toLocaleString() + ' sh ' + pbAtrWarnHtml(f.ticker, '⚠');
-                    }
+                    setTextAndFlash(q('sh'), f.shares.toLocaleString() + ' sh');
                     setTextIfChanged(q('stp'), 'STP ' + (f.hasAtr ? f.stop.toFixed(2) : '--'));
                     setTextIfChanged(q('tp1'), 'TP1 ' + (f.hasAtr ? f.tp1.toFixed(2) : '--'));
                     setTextIfChanged(q('xn'), `${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}`);
@@ -6017,7 +5987,7 @@
                         // The bridge echoes the client symbol string — no normalization needed.
                         if (response.type === 'tick' && response.s) {
                             const tkr = String(response.s).toUpperCase();
-                            const extra = { bid: Number(response.bid), ask: Number(response.ask) };
+                            const extra = { bid: Number(response.bid), ask: Number(response.ask), h: Number(response.h), l: Number(response.l) };
                             const applied = isEnhanced
                                 ? applyLivePriceIfNewer(tkr, Number(response.c), Number(response.t), extra)
                                 : applyLivePrice(tkr, Number(response.c), extra);
