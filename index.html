@@ -3867,6 +3867,9 @@
                 if (failed.length) await new Promise(r => setTimeout(r, 2500));
                 for (const t of failed) {
                     if (requestId !== volatilityRequestId) return;
+                    // Force a real refetch: a partial 'ok' result (e.g. NATR% without
+                    // bars) would otherwise be served from the 5-minute cache.
+                    delete volatilityCache[t];
                     try {
                         await fetchVolatilityData(t, controller.signal);
                     } catch (e) { /* non-fatal — card shows the ATR-missing warning */ }
