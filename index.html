@@ -3845,12 +3845,34 @@
             if (!tickers.length) return;
             // use the active fetch session if present, else a fresh controller
             const controller = activeFetchSession || new AbortController();
-            await Promise.all(tickers.map(async (t) => {
+            const missingBars = (t) => {
+                const v = volatilityCache[t];
+                return !v || !Array.isArray(v.bars) || v.bars.length < 21;
+            };
+            // Stagger history requests: firing one 430-day /history per ticker in a
+            // parallel burst trips TWS pacing limits (error 162 / empty history),
+            // which used to leave pullback cards stuck at 0 shares with no ATR.
+            for (const t of tickers) {
                 if (requestId !== volatilityRequestId) return;
                 try {
                     await fetchVolatilityData(t, controller.signal);
-                } catch (e) { /* non-fatal */ }
-            }));
+                } catch (e) { /* non-fatal — retried below */ }
+                await new Promise(r => setTimeout(r, 350));
+            }
+            // One delayed retry for tickers that still have no usable bars
+            // (transient TWS pacing/farm errors). Anything still missing keeps
+            // the clickable ATR-missing warning on its card.
+            if (requestId === volatilityRequestId) {
+                const failed = tickers.filter(missingBars);
+                if (failed.length) await new Promise(r => setTimeout(r, 2500));
+                for (const t of failed) {
+                    if (requestId !== volatilityRequestId) return;
+                    try {
+                        await fetchVolatilityData(t, controller.signal);
+                    } catch (e) { /* non-fatal — card shows the ATR-missing warning */ }
+                    await new Promise(r => setTimeout(r, 350));
+                }
+            }
             if (requestId === volatilityRequestId) {
                 const container = activeResultsContainer();
                 if (container) refreshAllVisible(container);
@@ -4204,6 +4226,10 @@
         }
 
         const pbCatChip = (f) => f.cat ? `<span class="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300 border border-teal-500/40">${f.cat.name}</span>` : `<span class="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40">No category</span>`;
+        // Amber "ATR missing" warning — clicking it focuses the card's manual ATR
+        // input so a failed volatility fetch never silently leaves shares at 0.
+        const pbAtrWarnHtml = (ticker, label) => `<button onclick="focusPbAtrInput('${ticker}')" class="atr-missing-warn text-amber-300 font-bold underline decoration-dotted underline-offset-2" title="ATR unavailable — click to enter it manually">${label}</button>`;
+        const pbAtrCellHtml = (f) => f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : pbAtrWarnHtml(f.ticker, '⚠ ATR MISSING');
         const pbCardClass = 'result-card glass-card rounded-xl px-3 py-2';
         const pbExitBtnClass = 'shrink-0 w-[4.4rem] bg-teal-950/60 border-teal-500/40 text-teal-300 border rounded-md text-[9px] font-bold uppercase leading-tight px-1';
 
@@ -4259,7 +4285,7 @@
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">Stop −1 ATR</div>
                         <div data-field="stopPrice" class="text-[15px] font-mono-num font-bold text-red-400/90 leading-tight">${f.hasAtr ? f.stop.toFixed(2) : '--'}</div>
-                        <div data-field="atr" class="text-[8px] text-gray-500 font-mono-num leading-none" title="${escapeHtml(f.atrSource || 'no ATR')}">${f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : 'ATR n/a'}</div>
+                        <div data-field="atr" class="text-[8px] text-gray-500 font-mono-num leading-none" title="${escapeHtml(f.atrSource || 'no ATR')}">${pbAtrCellHtml(f)}</div>
                     </div>
                     <div class="flex-1 min-w-0 bg-slate-900/30 rounded-md py-1 text-center border border-white/5">
                         <div class="text-[8px] text-gray-500 uppercase font-bold">TP1 +1R · 25%</div>
@@ -4314,9 +4340,12 @@
             const liqWarn = q('liqWarn');
             if (liqWarn) { setTextIfChanged(liqWarn, f.liqWarn ? '⚠ ' + f.liqWarn.text : ''); setHidden(liqWarn, !f.liqWarn); }
             setTextAndFlash(q('stopPrice'), f.hasAtr ? f.stop.toFixed(2) : '--');
-            setTextIfChanged(q('atr'), f.hasAtr ? 'ATR $' + f.atr.toFixed(2) : 'ATR n/a');
             const atrEl = q('atr');
-            if (atrEl) atrEl.title = f.atrSource || 'no ATR';
+            if (atrEl) {
+                atrEl.title = f.atrSource || 'no ATR';
+                if (f.hasAtr) setTextIfChanged(atrEl, 'ATR $' + f.atr.toFixed(2));
+                else if (!atrEl.querySelector('.atr-missing-warn')) atrEl.innerHTML = pbAtrCellHtml(f);
+            }
             setTextAndFlash(q('tp1'), f.hasAtr ? f.tp1.toFixed(2) : '--');
             setTextIfChanged(q('exitNote'), `${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}`);
             setTextIfChanged(q('riskDollars'), `Risk $${f.riskDollars ? f.riskDollars.toFixed(0) : '--'}${f.cat ? ' (' + f.cat.riskPct + '%)' : ''}`);
@@ -4393,7 +4422,7 @@
                     ${pbCatChip(f)}
                     <span class="text-[9px] text-gray-500 uppercase">${f.tf || '?'}</span>
                     <span class="ml-auto font-mono-num text-teal-300 font-bold" data-field="px">$${f.c.toFixed(2)}</span>
-                    <span class="font-mono-num text-[10px] text-gray-300" data-field="sh">${f.shares.toLocaleString()} sh</span>
+                    <span class="font-mono-num text-[10px] text-gray-300" data-field="sh">${f.shares.toLocaleString()} sh${f.hasAtr ? '' : ' ' + pbAtrWarnHtml(f.ticker, '⚠')}</span>
                     <span class="font-mono-num text-[10px] text-red-400" data-field="stp">STP ${f.hasAtr ? f.stop.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[10px] text-emerald-400" data-field="tp1">TP1 ${f.hasAtr ? f.tp1.toFixed(2) : '--'}</span>
                     <span class="font-mono-num text-[9px] text-gray-500" data-field="xn">${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}</span>
@@ -4440,6 +4469,19 @@
             });
         }
 
+        // Clicking the "ATR MISSING" warning focuses the card's manual ATR input.
+        function focusPbAtrInput(ticker) {
+            const container = activeResultsContainer();
+            const card = container && findElById(container, 'pbcard-' + ticker);
+            const input = card && card.querySelector('.pb-atr-override');
+            if (input) {
+                try { input.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+                input.focus();
+                if (input.select) input.select();
+            } else {
+                showInfoToast('The manual ATR input is on the card view for ' + ticker + '.', 4000);
+            }
+        }
         function onPbAtrOverride(input) {
             const v = parseFloat(input.value);
             const sig = pbSignals.find(s => s.ticker === input.dataset.ticker);
@@ -4486,7 +4528,11 @@
                     const q = (s) => row.querySelector(`[data-field="${s}"]`);
                     setCapBadge(q('cap'), capBadgeFor('pb', f.ticker));
                     setTextAndFlash(q('px'), '$' + f.c.toFixed(2));
-                    setTextAndFlash(q('sh'), f.shares.toLocaleString() + ' sh');
+                    const shEl = q('sh');
+                    if (shEl) {
+                        if (f.hasAtr) setTextAndFlash(shEl, f.shares.toLocaleString() + ' sh');
+                        else if (!shEl.querySelector('.atr-missing-warn')) shEl.innerHTML = f.shares.toLocaleString() + ' sh ' + pbAtrWarnHtml(f.ticker, '⚠');
+                    }
                     setTextIfChanged(q('stp'), 'STP ' + (f.hasAtr ? f.stop.toFixed(2) : '--'));
                     setTextIfChanged(q('tp1'), 'TP1 ' + (f.hasAtr ? f.tp1.toFixed(2) : '--'));
                     setTextIfChanged(q('xn'), `${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}`);
