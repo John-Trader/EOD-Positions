@@ -3,7 +3,7 @@
 // into the page, so first run is zero-config.
 'use strict';
 
-const { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog, powerSaveBlocker } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -393,6 +393,12 @@ let bridge = null;
 let quitting = false;
 
 app.whenReady().then(async () => {
+    // Keep the OS from suspending the app while idle: a suspended renderer drops
+    // the first keystrokes after idle (frozen textbox, no caret blink) and a
+    // suspended main process — which hosts the bridge — refuses the first order
+    // POSTs with "Failed to fetch". Display sleep is unaffected.
+    try { powerSaveBlocker.start('prevent-app-suspension'); }
+    catch (e) { console.warn('[electron] powerSaveBlocker failed:', e && e.message); }
     loadWindowState();
     if (await initializeSettingsFile() === false) return; // user chose Quit during recovery
     const token = loadOrCreateToken();
