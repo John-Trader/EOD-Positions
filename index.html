@@ -588,6 +588,19 @@
                                 <p class="text-[10px] text-gray-500">Default off — the Open Long/Short button then sends entry + active exit strategy as a TWS bracket.</p>
                                 <div class="text-[10px] text-amber-300" id="twsActiveStrategyDisplay"></div>
                                 <select id="twsExitStrategySetting" onchange="saveTwsSettings()" title="Long-side exit strategy for auto-send brackets. 'Auto' follows the market regime; a regime change resets a manual pick back to Auto." class="w-full bg-slate-950 border border-white/10 rounded px-2 py-1 text-[10px] text-white"></select>
+                                <div class="border-t border-white/5 pt-1.5 space-y-1.5">
+                                    <div class="text-[10px] font-bold text-gray-400 uppercase">Scheduled exits</div>
+                                    <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
+                                        <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1 text-center">
+                                    </label>
+                                    <label class="flex items-start gap-2 text-xs" title="Adds a Good-After-Time market exit to every TWS exit order set and to CSV exports, at the scheduled date and time below. It rides OCA with the targets and stop, so it cancels if any of them fill first. Pullback signals use their own category hold period instead of the days above."><input id="timedExitSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveFeatureSettings()"> Include scheduled exit in orders + CSV</label>
+                                    <label class="flex items-center justify-between text-xs">Exit time in New York
+                                        <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1">
+                                            <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
+                                        </select>
+                                    </label>
+                                    <p class="text-[10px] text-slate-400">Exits only, not entry orders. Review the date in each export.</p>
+                                </div>
                                 <div class="border-t border-white/5 pt-1.5 space-y-1">
                                     <div class="text-[10px] font-bold text-gray-400 uppercase">TWS data (each optional)</div>
                                     <div class="grid grid-cols-2 gap-x-2 gap-y-1">
@@ -664,18 +677,7 @@
                             <span>-day avg volume</span>
                         </div>
                         <p id="earningsStatus" class="text-[10px] text-gray-400" aria-live="polite">Requires a saved Finnhub key and calendar access. Unavailable data is not an all-clear.</p>
-                        <div class="border-t border-white/5 pt-2 space-y-2">
-                            <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
-                                <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1 text-center">
-                            </label>
-                            <label class="flex items-center gap-2 text-xs"><input id="timedExitSetting" type="checkbox" class="custom-checkbox" onchange="saveFeatureSettings()">Include scheduled exit in CSV</label>
-                            <label class="flex items-center justify-between text-xs">Exit time in New York
-                                <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1">
-                                    <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
-                                </select>
-                            </label>
-                            <p class="text-[10px] text-slate-400">Exits only, not entry orders. Review the date in each export.</p>
-                        </div>
+                        
                     </div>
                 </details>
                 <!-- LS Pullback & QLD sleeves -->
