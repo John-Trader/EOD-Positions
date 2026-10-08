@@ -3630,27 +3630,11 @@
 
         async function fetchTwelveDataVolatility(ticker, apiKey, signal) {
             const result = { atrPct: null, adrPct: null, latestClose: null, avgVol: null, bars: null };
-            // 1) NATR for ATR%
+            // Single time_series call — no separate NATR request (ATR% is computed from the
+            // bars below, same as every other provider). outputsize=130 (~6 months) fully warms
+            // up Wilder's ATR(5) on daily bars and weekly resamples while staying light for rate limits.
             try {
-                const natrRes = await fetchWithTimeout(`https://api.twelvedata.com/natr?symbol=${encodeURIComponent(ticker)}&interval=1day&time_period=20&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
-                if (natrRes.ok) {
-                    const natrData = await natrRes.json();
-                    if (natrData.status !== 'error' && Array.isArray(natrData.values) && natrData.values.length) {
-                        const sorted = sortBars(natrData.values);
-                        const latest = sorted[sorted.length - 1];
-                        const natr = parseFloat(latest?.natr);
-                        if (Number.isFinite(natr) && natr > 0) {
-                            result.atrPct = natr;
-                            // include_ohlc not set, so we don't have a close; use time_series below for latestClose
-                        }
-                    }
-                }
-            } catch (e) { console.warn('Twelve Data NATR failed:', e.message); }
-
-            // 2) time_series for ADR%, latest close, and the OHLC bar series used by the
-            //    pullback ATR(5)/weekly-resample pipeline (~14 months covers ATR(5) weekly).
-            try {
-                const tsRes = await fetchWithTimeout(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=310&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
+                const tsRes = await fetchWithTimeout(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(ticker)}&interval=1day&outputsize=130&apikey=${encodeURIComponent(apiKey)}`, null, 10000, signal);
                 if (tsRes.ok) {
                     const tsData = await tsRes.json();
                     if (tsData.status !== 'error' && Array.isArray(tsData.values) && tsData.values.length >= 20) {
@@ -3664,25 +3648,18 @@
                             result.bars = normalizeBars(sorted);
                             const adrPct = computeAdrPct(bars, close);
                             if (adrPct !== null) result.adrPct = adrPct;
-                            if (result.atrPct === null) {
-                                const atrPct = computeAtrPct(bars, close);
-                                if (atrPct !== null) result.atrPct = atrPct;
-                            }
+                            const atrPct = computeAtrPct(bars, close);
+                            if (atrPct !== null) result.atrPct = atrPct;
                         }
                     }
                 }
             } catch (e) { console.warn('Twelve Data time_series failed:', e.message); }
 
-            // If we only have NATR% and a latest close, convert NATR% to an ATR% relative to that close
-            if (result.atrPct !== null && result.latestClose !== null && result.adrPct === null) {
-                // keep as-is, ADR still missing
-            }
-
             return result;
         }
 
         async function fetchTiingoVolatility(ticker, apiKey, signal) {
-            const start = addCalendarDays(nyDateStr(), -430); // ~14 months: weekly ATR(5) needs depth
+            const start = addCalendarDays(nyDateStr(), -200); // ~6-7 months: enough to fully warm up Wilder's ATR(5) incl. weekly resample
             const res = await fetchWithTimeout(`https://api.tiingo.com/tiingo/daily/${encodeURIComponent(ticker)}/prices?startDate=${encodeURIComponent(start)}`, { headers: { 'Authorization': 'Token ' + apiKey, 'Accept': 'application/json' } }, 10000, signal);
             if (!res.ok) throw new Error('Tiingo history error');
             const data = await res.json();
@@ -3701,7 +3678,7 @@
 
         async function fetchFinnhubVolatility(ticker, apiKey, signal) {
             const to = Math.floor(Date.now() / 1000);
-            const from = to - 60 * 60 * 24 * 430; // ~14 calendar months back for weekly ATR
+            const from = to - 60 * 60 * 24 * 200; // ~6-7 months back: fully warms up Wilder's ATR(5) incl. weekly resample
             const res = await fetchWithTimeout(`https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${from}&to=${to}&token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
             if (!res.ok) throw new Error('Finnhub candles error');
             const d = await res.json();
@@ -3745,7 +3722,7 @@
         }
 
         async function fetchStockDataVolatility(ticker, apiKey, signal) {
-            const start = addCalendarDays(nyDateStr(), -430);
+            const start = addCalendarDays(nyDateStr(), -200); // ~6-7 months: fully warms up Wilder's ATR(5) incl. weekly resample
             const res = await fetchWithTimeout(`https://api.stockdata.org/v1/data/eod?symbols=${encodeURIComponent(ticker)}&date_from=${encodeURIComponent(start)}&api_token=${encodeURIComponent(apiKey)}`, null, 10000, signal);
             if (!res.ok) throw new Error('StockData EOD error');
             const d = await res.json();
@@ -3850,12 +3827,19 @@
             if (!tickers.length) return;
             // use the active fetch session if present, else a fresh controller
             const controller = activeFetchSession || new AbortController();
-            await Promise.all(tickers.map(async (t) => {
-                if (requestId !== volatilityRequestId) return;
-                try {
-                    await fetchVolatilityData(t, controller.signal);
-                } catch (e) { /* non-fatal */ }
-            }));
+            // Chunked, not Promise.all over everything: a 30-ticker burst trips per-minute
+            // rate limits (TwelveData free: 8/min). 5 concurrent + a short pause per chunk.
+            const CHUNK = 5, PAUSE_MS = 1000;
+            for (let i = 0; i < tickers.length && requestId === volatilityRequestId; i += CHUNK) {
+                await Promise.all(tickers.slice(i, i + CHUNK).map(async (t) => {
+                    try {
+                        await fetchVolatilityData(t, controller.signal);
+                    } catch (e) { /* non-fatal */ }
+                }));
+                if (i + CHUNK < tickers.length && requestId === volatilityRequestId) {
+                    await new Promise(r => setTimeout(r, PAUSE_MS));
+                }
+            }
             if (requestId === volatilityRequestId) {
                 const container = activeResultsContainer();
                 if (container) refreshAllVisible(container);
