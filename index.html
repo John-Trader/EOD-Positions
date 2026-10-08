@@ -3757,7 +3757,7 @@
         }
 
         async function fetchTwsVolatility(ticker, signal) {
-            const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}&duration=${encodeURIComponent('430 D')}`, signal);
+            const d = await bridgeGet(`/history?symbol=${encodeURIComponent(ticker)}&duration=${encodeURIComponent('200 D')}`, signal); // 200d fully warms up Wilder's ATR(5); 430 was provably identical (seed influence 1e-19)
             if (!d || !d.ok || !Array.isArray(d.bars) || d.bars.length < 21) throw new Error('TWS history too short');
             const bars = normalizeBars(d.bars);
             if (bars.length < 21) throw new Error('TWS history too short after filter');
