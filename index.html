@@ -593,11 +593,9 @@
                                     <label class="flex items-center justify-between text-xs">Trading days after entry (entry = day 0)
                                         <input id="maxHoldDaysSetting" type="number" min="1" max="60" step="1" value="5" onchange="saveFeatureSettings()" class="w-16 bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1 text-center">
                                     </label>
-                                    <label class="flex items-start gap-2 text-xs" title="Adds a Good-After-Time market exit to every TWS exit order set and to CSV exports, at the scheduled date and time below. It rides OCA with the targets and stop, so it cancels if any of them fill first. Pullback signals use their own category hold period instead of the days above."><input id="timedExitSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveFeatureSettings()"> Include scheduled exit in orders + CSV</label>
+                                    <label class="flex items-start gap-2 text-xs" title="Adds a Good-After-Time market exit to every TWS exit order set and to CSV exports, at the scheduled date and time below. It rides OCA with the targets and stop, so it cancels if any of them fill first. Pullback signals use their own category hold period instead of the days above."><input id="timedExitSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveFeatureSettings()"> Include scheduled exit in exit orders & CSV</label>
                                     <label class="flex items-center justify-between text-xs">Exit time in New York
-                                        <select id="timedExitTimeSetting" onchange="saveFeatureSettings()" class="bg-slate-800 text-white font-bold text-sm border border-slate-600 rounded px-1.5 py-1">
-                                            <option value="15:30">3:30 PM</option><option value="15:40">3:40 PM</option><option value="15:45">3:45 PM</option><option value="15:50">3:50 PM</option><option value="15:55">3:55 PM</option>
-                                        </select>
+                                        <input id="timedExitTimeSetting" type="time" value="15:45" onchange="saveFeatureSettings()" class="bg-slate-800 text-white font-bold text-xs border border-slate-600 rounded px-1.5 py-0.5">
                                     </label>
                                     <p class="text-[10px] text-slate-400">Exits only, not entry orders. Review the date in each export.</p>
                                 </div>
@@ -1469,7 +1467,6 @@
         let timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
         let timedExitTime = safeStorageGet('timedExitTime') || '15:45';   // 'HH:MM' or 'MOC'
         let timedExitDate = null;                                              // 'YYYY-MM-DD', set when an export UI opens
-        const TIMED_EXIT_TIMES = ['15:30', '15:40', '15:45', '15:50', '15:55'];
 
         // Optional card fields / warnings (opt-in, default OFF)
         let showRangePct = safeStorageGet('showRangePct') === 'true';
@@ -2062,7 +2059,7 @@
             maxHoldDays = boundedHoldDays(safeStorageGet('maxHoldDays'));
             timedExitEnabled = safeStorageGet('timedExitEnabled') === 'true';
             timedExitTime = safeStorageGet('timedExitTime') || '15:45';
-            if (!TIMED_EXIT_TIMES.includes(timedExitTime)) timedExitTime = '15:45';
+            if (!/^\d{2}:\d{2}$/.test(timedExitTime)) timedExitTime = '15:45';
             showRangePct = safeStorageGet('showRangePct') === 'true';
             earningsWarnEnabled = safeStorageGet('earningsWarnEnabled') === 'true';
             stopVolWarnEnabled = safeStorageGet('stopVolWarnEnabled') !== 'false';
@@ -2088,7 +2085,7 @@
             days.value = maxHoldDays;
             timedExitEnabled = document.getElementById('timedExitSetting').checked;
             const time = document.getElementById('timedExitTimeSetting');
-            timedExitTime = TIMED_EXIT_TIMES.includes(time.value) ? time.value : '15:45';
+            timedExitTime = /^\d{2}:\d{2}$/.test(time.value) ? time.value : '15:45';
             time.disabled = !timedExitEnabled;
             showRangePct = document.getElementById('showRangePctSetting').checked;
             earningsWarnEnabled = document.getElementById('earningsWarnSetting').checked;
@@ -7142,7 +7139,7 @@
             // A 1 PM early close can't host a 15:xx market exit — the GAT moves to 12:50 ET.
             const timedEarly = timedEnabled && NYSE_EARLY_CLOSE.has(timed.date);
             const timedTime = timedEnabled ? (timedEarly ? '12:50' : timed.time) : null;
-            if (timedEnabled && (!isNYSEMarketOpenDay(timed.date) || !TIMED_EXIT_TIMES.includes(timed.time) || Number(String(timed.date).slice(0, 4)) > 2030)) {
+            if (timedEnabled && (!isNYSEMarketOpenDay(timed.date) || !/^\d{2}:\d{2}$/.test(timed.time) || Number(String(timed.date).slice(0, 4)) > 2030)) {
                 return { ok: false, error: 'Choose a valid trading date through 2030 and a scheduled market-exit time.', rows: [], preview: [] };
             }
             if (timedEnabled && (timed.date < nyDateStr() || (timed.date === nyDateStr() && timedTime <= `${String(nyNow().h).padStart(2, '0')}:${String(nyNow().m).padStart(2, '0')}`))) {
