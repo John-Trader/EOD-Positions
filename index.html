@@ -4183,6 +4183,7 @@
             const atrs = pullbackAtrs(ticker, item.data);
             let atr = cat ? (cat.tf === 'daily' ? atrs.daily : atrs.weekly) : null;
             let atrSource = atr !== null ? (cat && cat.tf === 'daily' ? 'daily ATR(5)' : 'weekly ATR(5)') : null;
+            const atrComputed = atr; // pre-override value, shown next to the override input
             if (Number.isFinite(item.atrOverride) && item.atrOverride > 0) { atr = item.atrOverride; atrSource = 'manual'; }
             const hasAtr = Number.isFinite(atr) && atr > 0;
             const riskDollars = cat ? accountValue * cat.riskPct / 100 : 0;
@@ -4201,7 +4202,7 @@
             const hasBidAsk = !!(bid && bid > 0 && ask && ask > 0);
             const bidText = (bid && bid > 0) ? bid.toFixed(2) : '--';
             const askText = (ask && ask > 0) ? ask.toFixed(2) : '--';
-            return { c, h, l, pc, bid, ask, ticker, catId, cat, tf: cat ? cat.tf : (item.tf || null), atr, atrSource, hasAtr, riskDollars, shares, stop, tp1, tp1Shares, timedShares,
+            return { c, h, l, pc, bid, ask, ticker, catId, cat, tf: cat ? cat.tf : (item.tf || null), atr, atrSource, atrComputed, hasAtr, riskDollars, shares, stop, tp1, tp1Shares, timedShares,
                      notional, psPct, exitDate, exitLabel, earn, liqWarn, changePct, hasBidAsk, bidText, askText, missingCat: !cat };
         }
 
@@ -4272,7 +4273,7 @@
                 </div>
                 <div class="flex items-center gap-2 mt-1.5 text-[8px] font-mono-num text-gray-500">
                     <span data-field="riskDollars">Risk $${f.riskDollars ? f.riskDollars.toFixed(0) : '--'}${f.cat ? ' (' + f.cat.riskPct + '%)' : ''}</span>
-                    <span class="ml-auto">ATR5 override <input type="number" min="0" step="0.01" class="pb-atr-override bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-14 text-gray-200" data-ticker="${f.ticker}" placeholder="auto" value="${f.atrSource === 'manual' ? f.atr : ''}" onchange="onPbAtrOverride(this)"></span>
+                    <span class="ml-auto"><span data-field="atrComputed">ATR5: ${Number.isFinite(f.atrComputed) ? f.atrComputed.toFixed(2) : '--'}</span> override <input type="number" min="0" step="0.01" class="pb-atr-override bg-slate-800 border border-slate-600 rounded px-1 py-0.5 w-14 text-gray-200" data-ticker="${f.ticker}" placeholder="auto" value="${f.atrSource === 'manual' ? f.atr : ''}" onchange="onPbAtrOverride(this)"></span>
                     ${f.atrSource === 'manual' ? `<button class="text-amber-300 font-bold" onclick="clearPbAtrOverride('${f.ticker}')" title="Back to computed ATR">reset</button>` : ''}
                 </div>
             `;
@@ -4322,6 +4323,7 @@
             setTextAndFlash(q('tp1'), f.hasAtr ? f.tp1.toFixed(2) : '--');
             setTextIfChanged(q('exitNote'), `${f.exitLabel}${f.exitDate ? ' ' + f.exitDate.slice(5) : ''}`);
             setTextIfChanged(q('riskDollars'), `Risk $${f.riskDollars ? f.riskDollars.toFixed(0) : '--'}${f.cat ? ' (' + f.cat.riskPct + '%)' : ''}`);
+            setTextIfChanged(q('atrComputed'), `ATR5: ${Number.isFinite(f.atrComputed) ? f.atrComputed.toFixed(2) : '--'}`);
         }
 
         // Section order: weekly first, then daily; within each timeframe ETF before NAS;
