@@ -104,12 +104,9 @@ try {
   let result = await api.fetchVolatilityData('NOKEY');
   assertTrue(result.status === 'error' || (result.atrPct === null && result.adrPct === null), 'no keys returns empty volatility');
 
-  // Twelve Data NATR returns a value and time_series returns ADR
+  // Twelve Data time_series returns bars; ATR% is computed from the bars (same as every other provider)
   localStorage.setItem('twelvedata_key', 'td_key');
   fetchResponse = (url) => {
-    if (url.includes('/natr')) {
-      return { ok: true, json: async () => ({ status: 'ok', values: [{ datetime: '2024-01-22', natr: '2.50' }] }) };
-    }
     if (url.includes('/time_series')) {
       const values = [];
       for (let i = 0; i < 25; i++) values.push({ datetime: `2024-01-0${i+1}`.slice(-10), open: '100', high: '102', low: '100', close: '101', volume: '1000000' });
@@ -119,7 +116,7 @@ try {
   };
   result = await api.fetchVolatilityData('TDTD');
   assertTrue(result.status === 'ok', 'Twelve Data provides OK volatility');
-  assertApprox(result.atrPct, 2.5, 0.0001, 'Twelve Data NATR used as ATR%');
+  assertApprox(result.atrPct, 2 / 101 * 100, 0.01, 'Twelve Data ATR% computed from bars');
   assertApprox(result.adrPct, 2 / 101 * 100, 0.01, 'Twelve Data time_series ADR%');
 
   // Tiingo fallback when Twelve Data fails
