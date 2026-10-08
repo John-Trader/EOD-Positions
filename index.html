@@ -3769,7 +3769,7 @@
         async function fetchVolatilityData(ticker, signal) {
             const now = Date.now();
             const cache = volatilityCache[ticker];
-            if (cache && cache.status === 'ok' && (now - cache.checkedAt) < 300000) return cache;
+            if (cache && cache.status === 'ok' && (now - cache.checkedAt) < 600000) return cache; // 10 min: daily bars don't change intraday
 
             let atrPct = null;
             let adrPct = null;
