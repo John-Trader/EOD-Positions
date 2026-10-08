@@ -9911,16 +9911,20 @@
             const blocked = isHttpsPageToLocalBridge() && e instanceof TypeError;
             return { ok: false, error: blocked ? 'Browser blocked local-network access' : (e.message || 'Network error'), blocked: blocked ? 'local-network' : undefined };
         }
-        // One retry on a dead pooled socket: Node's keep-alive race kills the fetch
-        // with a TypeError before the request ever arrives. orderRef dedupe makes
-        // the POST retry safe — a duplicate attempt returns the original result.
+        // Dead pooled socket: a stale keep-alive socket kills the fetch with a
+        // TypeError before the request ever arrives. After the app sits idle,
+        // several pooled sockets can be stale at once, so callers retry up to
+        // 3 times. orderRef dedupe makes the POST retry safe — a duplicate
+        // attempt returns the original result instead of double-sending.
         function isDeadSocket(e) { return e instanceof TypeError; }
         async function bridgeRequest(path, body) {
             if (!twsReady()) return { ok: false, error: 'TWS bridge not configured' };
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = { 'Content-Type': 'application/json' };
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            for (let attempt = 0; attempt < 2; attempt++) {
+            // 1 initial try + 3 retries: after idle, several pooled sockets can be
+            // stale at once, so a single retry can still grab a dead socket.
+            for (let attempt = 0; attempt < 4; attempt++) {
                 try {
                     const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
                     return await res.json();
@@ -9931,7 +9935,7 @@
                     // Callers must treat it like a TWS timeout: keep pending state, gate
                     // resends behind the "check TWS first" confirmation.
                     if (path === '/order' || path === '/orders') err.unknown = true;
-                    if (isDeadSocket(e) && !err.blocked && attempt === 0) {
+                    if (isDeadSocket(e) && !err.blocked && attempt < 3) {
                         await new Promise(r => setTimeout(r, 300));
                         continue;
                     }
@@ -9944,12 +9948,12 @@
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = {};
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            for (let attempt = 0; attempt < 2; attempt++) {
+            for (let attempt = 0; attempt < 4; attempt++) {
                 try {
                     const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
                     return await res.json();
                 } catch (e) {
-                    if (isDeadSocket(e) && attempt === 0 && !(signal && signal.aborted)) {
+                    if (isDeadSocket(e) && attempt < 3 && !(signal && signal.aborted)) {
                         await new Promise(r => setTimeout(r, 300));
                         continue;
                     }
@@ -9963,14 +9967,14 @@
             const url = twsBridgeUrl.replace(/\/$/, '') + path;
             const headers = {};
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
-            for (let attempt = 0; attempt < 2; attempt++) {
+            for (let attempt = 0; attempt < 4; attempt++) {
                 try {
                     const res = await fetchWithTimeout(url, { method: 'GET', headers }, 10000, signal);
                     let json = null;
                     try { json = await res.json(); } catch (e) {}
                     return { status: res.status, json };
                 } catch (e) {
-                    if (isDeadSocket(e) && attempt === 0 && !(signal && signal.aborted)) {
+                    if (isDeadSocket(e) && attempt < 3 && !(signal && signal.aborted)) {
                         await new Promise(r => setTimeout(r, 300));
                         continue;
                     }
@@ -9982,14 +9986,16 @@
         try { var _vb = document.getElementById('appVersionBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION; } catch (e) {}
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
+        let _healthFailStreak = 0;   // consecutive /health failures; status flips only after 2
         async function bridgeHealth() {
-            if (!twsReady()) { twsConnected = false; twsBridgeUp = false; return { ok: false, connected: false }; }
+            if (!twsReady()) { twsConnected = false; twsBridgeUp = false; _healthFailStreak = 0; return { ok: false, connected: false }; }
             try {
                 const headers = {};
                 if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
                 const res = await fetchWithTimeout(twsBridgeUrl.replace(/\/$/, '') + '/health', { method: 'GET', headers }, 4000);
                 const data = await res.json();
                 twsBridgeUp = true;
+                _healthFailStreak = 0;
                 const wasConnected = twsConnected;
                 twsConnected = !!(data && data.connected);
                 if (twsConnected && !wasConnected && twsOrdersEnabled) refreshTwsOrders();
@@ -10006,9 +10012,13 @@
                 }
                 return data;
             } catch (e) {
-                twsConnected = false;
-                twsBridgeUp = false;
+                _healthFailStreak++;
                 const err = bridgeNetError(e);
+                if (_healthFailStreak >= 2) {
+                    // Two failures in a row — genuinely down, not one transient blip.
+                    twsConnected = false;
+                    twsBridgeUp = false;
+                }
                 return { ...err, connected: false, bridgeDown: true };
             }
         }
