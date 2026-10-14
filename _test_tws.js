@@ -125,7 +125,26 @@ function assertTrue(cond, label) {
 
   console.log('Script loaded successfully');
 
+  // ---- twsEntryOrderSpec (after-hours handling) ----
+  // Default is ON (never persisted 'false' in the mock storage): after-hours
+  // entries go out as LMT at the last price — IB kills MKT outside RTH.
+  let eos = api.twsEntryOrderSpec(15.00, false);
+  assertEq(eos.orderType, 'LMT', 'after-hours entry -> LMT by default');
+  assertEq(eos.lmtPrice, 15.00, 'after-hours entry LMT at last price');
+  assertEq(eos.outsideRth, true, 'after-hours entry outsideRth');
+  eos = api.twsEntryOrderSpec(15.00, true);
+  assertEq(eos.orderType, 'MKT', 'RTH entry stays MKT');
+  eos = api.twsEntryOrderSpec(0, false);
+  assertEq(eos.orderType, 'MKT', 'after-hours entry w/o price falls back to MKT');
+  // Explicit opt-out still honored.
+  api.twsEntryOutsideRth = false;
+  eos = api.twsEntryOrderSpec(15.00, false);
+  assertEq(eos.orderType, 'MKT', 'opted-out after-hours entry stays MKT');
+  assertEq(eos.outsideRth, false, 'opted-out after-hours entry not outsideRth');
+
   // ---- buildEntryOrderPayload ----
+  // Pin the opt-out so the assertions below are time-independent.
+  api.twsEntryOutsideRth = false;
   const longItem = { ticker: 'AMPL', data: { c: 15.00, h: 15.50, l: 14.50, pc: 14.00, bid: 14.99, ask: 15.01 }, trigger: 14.00, success: true };
   const longPayload = api.buildEntryOrderPayload(longItem);
   assertTrue(longPayload.ok, 'entry payload ok');
