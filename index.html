@@ -11060,7 +11060,15 @@
             const ready = enabled && twsBridgeToken && twsBridgeUrl && twsConnected;
             [].forEach.call(document.querySelectorAll('[data-tws-key], .tws-send-btn'), el => {
                 el.style.display = enabled ? '' : 'none';
-                if (el.dataset.twsState === 'sending') return; // don't un-disable a button mid-send
+                const k = el.getAttribute('data-tws-key');
+                // Reconcile the DOM flag against in-memory state (the source of truth:
+                // every send path settles twsSendState via try/finally). A stale
+                // 'sending' attribute self-heals here; a genuine in-flight send
+                // keeps the mid-send guard below.
+                if (el.dataset.twsState === 'sending' && k && twsSendState[k] && twsSendState[k] !== 'sending') {
+                    setTwsSendState(k, twsSendState[k]);
+                }
+                if (el.dataset.twsState === 'sending') return; // a send really is in flight
                 el.disabled = !ready;
                 toggleCls(el, 'opacity-50', !ready);
                 toggleCls(el, 'cursor-not-allowed', !ready);
