@@ -10268,14 +10268,29 @@
                 orderRef: 'PSC-' + f.ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)),
             };
         }
-        function buildExitOrdersPayload(built) {
+        function buildExitOrdersPayload(built, refPx) {
             if (!built || !built.ok || !built.rows || !built.rows.length) return { ok: false, error: 'No exit legs' };
             const orders = [];
             const suffix = (globalThis.crypto?.randomUUID?.() || Date.now().toString(36));
+            // IB rejects MKT orders outside RTH (they flash in TWS, then die). After
+            // hours, MKT legs go out as LMT at the last price with outside-RTH
+            // enabled — mirroring the entry-order handling in twsEntryOrderSpec.
+            // During RTH nothing changes.
+            const isRth = nyNow().isRTH;
+            const px = Number(refPx);
+            const canConvert = !isRth && Number.isFinite(px) && px > 0;
             let n = 0;
             for (const row of built.rows) {
-                const orderType = row[7];
-                if (!orderType) continue;
+                const rawType = row[7];
+                if (!rawType) continue;
+                // No price to convert with: a post-RTH MKT leg is a guaranteed TWS
+                // rejection — fail loudly instead of sending a doomed order.
+                if (rawType === 'MKT' && !isRth && !canConvert) {
+                    return { ok: false, error: 'No last price for ' + row[2] + ' — IB rejects MKT orders outside RTH. Check the bridge connection and retry, or send during market hours.' };
+                }
+                let orderType = rawType;
+                let lmtPx = null;
+                if (rawType === 'MKT' && canConvert) { orderType = 'LMT'; lmtPx = px; }
                 n++;
                 const order = {
                     symbol: row[2],
@@ -10292,7 +10307,8 @@
                 };
                 if (orderType === 'STP' && row[9]) order.auxPrice = parseFloat(row[9]);
                 if (orderType === 'LMT' && row[8]) order.lmtPrice = parseFloat(row[8]);
-                if (orderType === 'MOC' || orderType === 'MKT') { if (row[12]) order.goodAfterTime = row[12]; }
+                if (lmtPx != null) order.lmtPrice = lmtPx;
+                if (rawType === 'MOC' || rawType === 'MKT') { if (row[12]) order.goodAfterTime = row[12]; }
                 if (row[13]) { // adjustable stop
                     order.adjustedOrderType = row[13];
                     if (row[14]) order.triggerPrice = parseFloat(row[14]);
@@ -10947,7 +10963,18 @@
                         if (!built.ok) { showErrorToast(built.error); return { ok: false, error: built.error, entryFilled: fill.filled, entryAvg: fill.avgFillPrice }; }
                     }
                 }
-                const payload = buildExitOrdersPayload(built);
+                // After-hours MKT legs convert to LMT — they need the last price.
+                // Best-effort fetch: without it the payload builder fails loudly
+                // instead of sending orders TWS will kill.
+                let refPx = null;
+                if (!nyNow().isRTH && built.rows.some(r => r[7] === 'MKT')) {
+                    try {
+                        const q = await bridgeGet('/quote?symbol=' + encodeURIComponent(ticker));
+                        const c = q && Number(q.c);
+                        if (q && q.ok && Number.isFinite(c) && c > 0) refPx = c;
+                    } catch (e) { /* handled by the payload builder's loud failure */ }
+                }
+                const payload = buildExitOrdersPayload(built, refPx);
                 if (!payload.ok) {
                     showErrorToast(payload.error);
                     if (entryFill) return { ok: false, error: payload.error, entryFilled: entryFill.filled, entryAvg: entryFill.avgFillPrice };
