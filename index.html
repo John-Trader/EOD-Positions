@@ -1244,7 +1244,10 @@
         let autoSendExitsOnOpen = safeStorageGet('autoSendExitsOnOpen') === 'true';
         // '__auto' = AUTO_STRATEGY (follow regime) — declared before that const exists.
         let twsExitStrategy = safeStorageGet('twsExitStrategy') || '__auto';
-        let twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
+        // Default ON: a MKT entry sent after hours dies in TWS (IB rejects MKT
+        // outside RTH), so after-hours entries go out as LMT at the last price.
+        // An explicit 'false' still opts out.
+        let twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') !== 'false';
         // Scheduled auto-entry (v4.5.0) — TWS-local: fires once per trading day at
         // autoEntryTime (NY), only while the app is open and the bridge is ready.
         let autoEntryEnabled = safeStorageGet('autoEntryEnabled') === 'true';
@@ -10159,7 +10162,7 @@
             twsOrdersEnabled = safeStorageGet('twsOrdersEnabled') === 'true';
             twsFillsJournalEnabled = safeStorageGet('twsFillsJournalEnabled') === 'true';
             twsPnlEnabled = safeStorageGet('twsPnlEnabled') === 'true';
-            twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') === 'true';
+            twsEntryOutsideRth = safeStorageGet('twsEntryOutsideRth') !== 'false';
             autoEntryEnabled = safeStorageGet('autoEntryEnabled') === 'true';
             const storedAeTime = safeStorageGet('autoEntryTime');
             autoEntryTime = parseAutoEntryTime(storedAeTime) !== null ? storedAeTime : '15:55';
@@ -10917,7 +10920,12 @@
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             opts = opts || {};
             const key = twsSendKey(ticker, 'exits', opts.stratKind);
-            if (twsSendState[key] === 'sending') return;
+            if (twsSendState[key] === 'sending') {
+                // Was a silent no-op: a latched 'sending' (e.g. from an interrupted
+                // earlier send) made batch tickers vanish with no explanation.
+                showErrorToast(`${ticker}: skipped — a send is already marked in progress. If nothing is actually sending, reload the app to clear it.`, 8000);
+                return { ok: false, error: 'send already in progress' };
+            }
             // attachEntry calls come through sendTwsOpen, which already confirmed a
             // resend on its own key — don't double-prompt here.
             if (!attachEntry && twsSendState[key] === 'sent' && !confirm(`Exit orders were already sent for ${ticker} — send another?`)) return;
