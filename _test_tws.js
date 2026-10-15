@@ -45,7 +45,7 @@ const document = {
   addEventListener: () => {},
   hidden: false
 };
-const store = {};
+const store = { riskMode: 'fixed', riskValue: '500' };
 const localStorage = {
   getItem: (k) => (store[k] !== undefined ? store[k] : null),
   setItem: (k, v) => { store[k] = String(v); },
@@ -120,7 +120,7 @@ function assertTrue(cond, label) {
     parseFloat, parseInt, Number, Array, Math, Date, String, JSON, RegExp, Object, Map, Set, Error, Promise, Blob,
     globalThis: { crypto }
   };
-  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, get twsOpenOrders() { return twsOpenOrders; }, handleTwsExecution, twsSeenExecs, twsExecKey, get activeTradesLog() { return activeTradesLog; }, saveActiveTradesLog, syncJournalToPositions, twsEntryOrderSpec, twsAutoSendStrategyId, AUTO_STRATEGY, defaultStrategyId, setGlobalRegime, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, get globalMarketRegime() { return globalMarketRegime; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, cancelTwsOrder, set twsEntryOutsideRth(v) { twsEntryOutsideRth = v; }, set twsExitStrategy(v) { twsExitStrategy = v; }, get twsExitStrategy() { return twsExitStrategy; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; }, sendTwsOpen, qldSendTws, set autoSendExitsOnOpen(v) { autoSendExitsOnOpen = v; }, set lastRenderedSnapshot(v) { lastRenderedSnapshot = v; }, set qldSleeve(v) { qldSleeve = v; }, get qldSleeve() { return qldSleeve; }, set qldView(v) { qldView = v; }, set accountValue(v) { accountValue = v; }, set twsSyncAccount(v) { twsSyncAccount = v; } };');
+  const fn = new Function(...Object.keys(sandbox), code + '; return { buildEntryOrderPayload, buildExitOrdersPayload, buildExitLegs, getRealtimeFields, currentRiskAndSlippage, twsReady, twsSendKey, setTwsSendState, resetTwsSendState, sendTwsEntry, sendTwsExits, twsSendState, splitSharesByPct, sanitizeTicker, API_CONFIGS, providerUsable, resolveProviders, demoteProvider, demotedProviders, delayedByTicker, applyTwsAccountValue, twsPositionFor, upsertTwsPosition, findDuplicatePscOrders, preflightContract, twsValidatedContracts, get twsOpenOrders() { return twsOpenOrders; }, handleTwsExecution, twsSeenExecs, twsExecKey, get activeTradesLog() { return activeTradesLog; }, saveActiveTradesLog, syncJournalToPositions, twsEntryOrderSpec, twsAutoSendStrategyId, AUTO_STRATEGY, defaultStrategyId, setGlobalRegime, get accountValue() { return accountValue; }, get twsLastAccountValue() { return twsLastAccountValue; }, get globalMarketRegime() { return globalMarketRegime; }, set twsEnabled(v) { twsEnabled = v; }, set twsQuotesEnabled(v) { twsQuotesEnabled = v; }, set twsConnected(v) { twsConnected = v; }, set twsBridgeUrl(v) { twsBridgeUrl = v; }, set twsBridgeToken(v) { twsBridgeToken = v; }, set twsPositionsEnabled(v) { twsPositionsEnabled = v; }, set twsOrdersEnabled(v) { twsOrdersEnabled = v; }, set twsFillsJournalEnabled(v) { twsFillsJournalEnabled = v; }, cancelTwsOrder, set twsEntryOutsideRth(v) { twsEntryOutsideRth = v; }, stampEntryOrder, set timedExitEnabled(v) { timedExitEnabled = v; }, set twsExitStrategy(v) { twsExitStrategy = v; }, get twsExitStrategy() { return twsExitStrategy; }, get twsPositions() { return twsPositions; }, set twsLastPositionsAt(v) { twsLastPositionsAt = v; }, sendTwsOpen, qldSendTws, set autoSendExitsOnOpen(v) { autoSendExitsOnOpen = v; }, set lastRenderedSnapshot(v) { lastRenderedSnapshot = v; }, set qldSleeve(v) { qldSleeve = v; }, get qldSleeve() { return qldSleeve; }, set qldView(v) { qldView = v; }, set accountValue(v) { accountValue = v; }, set twsSyncAccount(v) { twsSyncAccount = v; } };');
   const api = fn(...Object.values(sandbox));
 
   console.log('Script loaded successfully');
@@ -404,9 +404,31 @@ function assertTrue(cond, label) {
   assertEq(spec.orderType, 'LMT', 'toggle on, outside RTH -> LMT');
   assertEq(spec.lmtPrice, 15, 'LMT at last price');
   assertEq(spec.outsideRth, true, 'LMT order carries outsideRth');
+  const lmt = api.stampEntryOrder(api.twsEntryOrderSpec(15, false));
+  assertEq(lmt.orderType, 'LMT', 'outside-RTH spec is LMT');
+  assertEq(lmt.adaptive, false, 'outside-RTH LMT is not Adaptive');
+  const mkt = api.stampEntryOrder(api.twsEntryOrderSpec(15, true));
+  assertEq(mkt.orderType, 'MKT', 'RTH spec stays MKT');
+  assertEq(mkt.adaptive, true, 'RTH MKT stays Adaptive');
   spec = api.twsEntryOrderSpec(0, false);
   assertEq(spec.orderType, 'MKT', 'no price -> stays MKT (cannot price a limit)');
   api.twsEntryOutsideRth = false;
+
+  // Day-5 rides Option 1 / Option 2 / shorts only when scheduled exits or auto-send is on.
+  api.timedExitEnabled = false;
+  api.autoSendExitsOnOpen = false;
+  const plainOpt = api.buildExitLegs('TST', true, 100, 100, 95, 'opt1');
+  assertTrue(plainOpt.ok && !plainOpt.rows.some(r => r[7] === 'MKT'), 'opt1 has no day-5 until a scheduled-exit switch is on');
+  api.autoSendExitsOnOpen = true;
+  const autoOpt = api.buildExitLegs('TST', true, 100, 100, 95, 'opt1');
+  const autoShort = api.buildExitLegs('TST', false, 95, 100, 100, 'short16');
+  assertTrue(autoOpt.rows.some(r => r[7] === 'MKT'), 'auto-send opt1 includes a day-5 market exit');
+  assertTrue(autoShort.rows.some(r => r[7] === 'MKT'), 'auto-send short16 includes a day-5 market exit');
+  api.autoSendExitsOnOpen = false;
+  api.timedExitEnabled = true;
+  const schedOpt = api.buildExitLegs('TST', true, 100, 100, 95, 'opt2');
+  assertTrue(schedOpt.rows.some(r => r[7] === 'MKT'), 'scheduled-exit checkbox includes day-5 on opt2');
+  api.timedExitEnabled = false;
 
   // ---- twsAutoSendStrategyId: auto follows regime, manual overrides, shorts fixed ----
   api.twsExitStrategy = '__auto';

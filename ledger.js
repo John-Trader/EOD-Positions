@@ -331,6 +331,18 @@ var Ledger = (function () {
         if (before.asOf === 'missing' || after.asOf === 'missing') {
             return { opening: null, current: null, buy: sum.Buy, sale: sum.Sale, distribution: sum.Distribution, pnl: null, valueAsOf: { start: before.asOf, end: after.asOf } };
         }
+        // A live mark with no stored sleeve history is not an opening of 0.
+        // current − 0 would book the whole position as profit and pnlComponents
+        // would skip the journal trades that actually explain it.
+        var storedMark = false;
+        var valMap = valuations();
+        for (var vd in valMap) {
+            if (valMap[vd] && valMap[vd].qldValue !== undefined && valMap[vd].qldValue !== null) { storedMark = true; break; }
+        }
+        var liveMark = before.asOf === 'live' || before.asOf === 'live-tws' || after.asOf === 'live' || after.asOf === 'live-tws';
+        if (!txns.length && !storedMark && liveMark && (before.asOf === 'none' || after.asOf === 'none')) {
+            return { opening: null, current: null, buy: sum.Buy, sale: sum.Sale, distribution: sum.Distribution, pnl: null, valueAsOf: { start: before.asOf, end: after.asOf } };
+        }
         var opening = before.value || 0, current = after.value || 0;
         var fromLedger = txns.length > 0 || opening !== 0 || current !== 0
             || Object.keys(valuations()).some(function (d) { return valuations()[d].qldValue != null; });

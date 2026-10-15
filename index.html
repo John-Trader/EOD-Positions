@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.5</span>
+                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.8</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -290,9 +290,9 @@
             </div>
             <div id="scannerFormBody" data-role="scannerFormBody">
             <div data-role="riskInputWrap" class="space-y-0.5 flex flex-col items-center">
-                <label for="riskValue" data-role="riskLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade ($)</label>
+                <label for="riskValue" data-role="riskLabel" class="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">Risk Per Trade (%)</label>
                 <div class="w-full max-w-[140px]">
-                    <input type="number" id="riskValue" data-role="riskValue" autocomplete="off" class="super-input risk-input" placeholder="500" value="500" oninput="updateRiskInputUI()">
+                    <input type="number" id="riskValue" data-role="riskValue" autocomplete="off" class="super-input risk-input" placeholder="1.0" value="1" step="0.01" oninput="updateRiskInputUI()">
                 </div>
                 <div id="riskDollarDisplay" data-role="riskDollarDisplay" class="text-[9px] text-gray-400 font-mono-num h-4"></div>
             </div>
@@ -529,7 +529,7 @@
                                 <span>Fixed dollar amount</span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer text-xs">
-                                <input type="radio" name="riskModeSetting" value="percent" onchange="saveRiskSettings()" class="custom-checkbox">
+                                <input type="radio" name="riskModeSetting" value="percent" onchange="saveRiskSettings()" class="custom-checkbox" checked>
                                 <span>Percent of account</span>
                             </label>
                         </div>
@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.5';
+        const PSC_VERSION = '4.7.8';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -1479,7 +1479,11 @@
         let liqVolPct = Math.max(0.01, parseFloat(safeStorageGet('liqVolPct')) || 1.0);     // % of avg volume
         let liqVolPeriod = Math.min(250, Math.max(1, parseInt(safeStorageGet('liqVolPeriod'), 10) || 20));
         let alertEnabled = safeStorageGet('setting_showAlerts') === 'true';
-        let riskMode = safeStorageGet('riskMode') || 'fixed';
+        // Fresh install: 1% of account (LS v3). A saved dollar risk with no mode
+        // is a pre-percent install and stays fixed so 500 does not become 500%.
+        let riskMode = (safeStorageGet('riskMode') === 'percent' || safeStorageGet('riskMode') === 'fixed')
+            ? safeStorageGet('riskMode')
+            : (safeStorageGet('riskValue') ? 'fixed' : 'percent');
         let accountValue = parseFloat(safeStorageGet('accountValue')) || 0;
         let earningsCache = {};   // ticker -> next earnings date 'YYYY-MM-DD' within the hold window, or null
         let earningsRequestId = 0;
@@ -1990,7 +1994,9 @@
             const savedRisk = safeStorageGet('riskValue');
             const savedSlippage = safeStorageGet('slippageValue');
             const savedCount = safeStorageGet('visibleCount');
-            const savedRiskMode = safeStorageGet('riskMode') || 'fixed';
+            const savedRiskMode = (safeStorageGet('riskMode') === 'percent' || safeStorageGet('riskMode') === 'fixed')
+                ? safeStorageGet('riskMode')
+                : (savedRisk ? 'fixed' : 'percent');
             const savedAccount = safeStorageGet('accountValue');
 
             providerPriorityOrder = loadProviderPriorityOrder();
@@ -3297,7 +3303,7 @@
 
         function currentRiskAndSlippage() {
             const input = pel('riskValue');
-            const raw = !input || input.value === '' ? (riskMode === 'fixed' ? 500 : 0) : (parseFloat(input.value) || 0);
+            const raw = !input || input.value === '' ? (riskMode === 'percent' ? 1 : 500) : (parseFloat(input.value) || 0);
             const slipEl = document.getElementById('slippageValue');
             return {
                 risk: getEffectiveRisk(raw),
@@ -5580,8 +5586,7 @@
                 if (!qldSaveSleeve()) { qldSleeve.pendingOrder = null; showErrorToast('Could not save pending order — not sending.'); return; }
                 const result = await bridgeRequest('/order', {
                     symbol: 'QLD', action: spec.side, quantity: spec.shares,
-                    ...twsEntryOrderSpec(px, nyNow().isRTH),
-                    adaptive: true, adaptivePriority: 'Normal',
+                    ...stampEntryOrder(twsEntryOrderSpec(px, nyNow().isRTH)),
                     tif: 'DAY',
                     orderRef
                 });
@@ -7083,9 +7088,13 @@
             return `_${unique}`;
         }
 
-        function timedExitConfig(override) {
+        function timedExitConfig(override, strategyId) {
             if (override) return override;
-            if (!timedExitEnabled) return null;
+            // Day-5 is part of Option 1, Option 2, and the short strategy when
+            // scheduled exits are included, or when auto-send brackets are on.
+            // Every other strategy follows the scheduled-exit checkbox alone.
+            const builtinDay5 = strategyId === 'opt1' || strategyId === 'opt2' || strategyId === 'short16';
+            if (!timedExitEnabled && !(builtinDay5 && autoSendExitsOnOpen)) return null;
             const date = timedExitDate ?? addTradingDays(nyDateStr(), maxHoldDays);
             return { enabled: true, date, time: timedExitTime };
         }
@@ -7123,7 +7132,7 @@
             const pcts = strat.legs.map(l => Number(l.pct) || 0);
             const qtys = splitSharesByPct(shares, pcts);
             const suffix = opts.ocaSuffix !== undefined ? opts.ocaSuffix : ocaSuffix();
-            const timed = timedExitConfig(opts.timedExit);
+            const timed = timedExitConfig(opts.timedExit, explicit ? null : (strat && strat.id));
             const timedEnabled = !!(timed && timed.enabled);
             // A 1 PM early close can't host a 15:xx market exit — the GAT moves to 12:50 ET.
             const timedEarly = timedEnabled && NYSE_EARLY_CLOSE.has(timed.date);
@@ -9968,7 +9977,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.6';
+        const APP_VERSION = '4.7.8';
         try { var _vb = document.getElementById('appVersionBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION; } catch (e) {}
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
@@ -10253,6 +10262,14 @@
             }
             return { orderType: 'MKT', outsideRth: allowOutside };
         }
+        // IB rejects Adaptive outside regular hours, so the extended-hours limit
+        // must go out as a plain LMT. Market entries stay Adaptive.
+        function stampEntryOrder(spec) {
+            const lmt = spec.orderType === 'LMT';
+            return lmt
+                ? { ...spec, adaptive: false }
+                : { ...spec, adaptive: true, adaptivePriority: 'Normal' };
+        }
         function buildEntryOrderPayload(item) {
             const f = item.kind === 'pb'
                 ? getPbFields(item, currentRiskAndSlippage().slippage)
@@ -10264,9 +10281,7 @@
                 // Pullbacks are long-only; v3 derives direction from green/red day.
                 action: item.kind === 'pb' ? 'BUY' : (f.isGreenDay ? 'BUY' : 'SELL'),
                 quantity: f.shares,
-                ...twsEntryOrderSpec(f.c, nyNow().isRTH),
-                adaptive: true,
-                adaptivePriority: 'Normal',
+                ...stampEntryOrder(twsEntryOrderSpec(f.c, nyNow().isRTH)),
                 tif: 'DAY',
                 orderRef: 'PSC-' + f.ticker + '-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)),
             };
@@ -10286,14 +10301,16 @@
             for (const row of built.rows) {
                 const rawType = row[7];
                 if (!rawType) continue;
-                // No price to convert with: a post-RTH MKT leg is a guaranteed TWS
-                // rejection — fail loudly instead of sending a doomed order.
-                if (rawType === 'MKT' && !isRth && !canConvert) {
+                // A GoodAfter market is a future regular-hours exit (day-5). Leave it
+                // as MKT. Only a market that would try to trade right now is illegal
+                // outside RTH, and that one becomes a limit at the last price.
+                const scheduledMkt = rawType === 'MKT' && !!row[12];
+                if (rawType === 'MKT' && !scheduledMkt && !isRth && !canConvert) {
                     return { ok: false, error: 'No last price for ' + row[2] + ' — IB rejects MKT orders outside RTH. Check the bridge connection and retry, or send during market hours.' };
                 }
                 let orderType = rawType;
                 let lmtPx = null;
-                if (rawType === 'MKT' && canConvert) { orderType = 'LMT'; lmtPx = px; }
+                if (rawType === 'MKT' && !scheduledMkt && canConvert) { orderType = 'LMT'; lmtPx = px; }
                 n++;
                 const order = {
                     symbol: row[2],
@@ -10984,6 +11001,7 @@
                 }
                 const payload = buildExitOrdersPayload(built, refPx);
                 if (!payload.ok) {
+                    setTwsSendState(key, 'error', payload.error || 'Exit send failed');
                     showErrorToast(payload.error);
                     if (entryFill) return { ok: false, error: payload.error, entryFilled: entryFill.filled, entryAvg: entryFill.avgFillPrice };
                     return { ok: false, error: payload.error };

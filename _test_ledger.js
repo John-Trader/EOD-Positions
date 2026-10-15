@@ -337,6 +337,22 @@ try {
   assert(qvStored.asOf === '2026-09-30' && qvStored.value === 36400, 'stored mark wins on its date');
   L.init({ hooks: { getPrice: () => null } });         // restore
 
+  // Live QLD mark with no txns and no stored qldValue must not book the
+  // position as profit (opening synthetic 0, current = shares × price).
+  const txnSave = L.qldTxns().slice();
+  const valSave = JSON.parse(JSON.stringify(L.valuations()));
+  L.saveQldTxns([]);
+  const clearedVals = L.valuations();
+  Object.keys(clearedVals).forEach(function (d) { delete clearedVals[d].qldValue; });
+  L.saveValuations(clearedVals);
+  const confLive = L.config(); confLive.qldOpeningShares = 350; L.saveConfig(confLive);
+  L.init({ hooks: { qldPrice: () => 100, nyDate: () => '2026-09-30' } });
+  const liveOnly = L.qldPnl('2026-08-31', '2026-09-30');
+  assert(liveOnly.pnl === null, 'live QLD mark without a baseline falls through to the journal');
+  L.saveQldTxns(txnSave);
+  L.saveValuations(valSave);
+  L.init({ hooks: { qldPrice: () => 100, getPrice: () => null, nyDate: () => '2026-09-30' } });
+
   // ---------- regression: repeated undo walks real changes, not phantom ----------
   L.saveAuditLog([]);
   const u1 = L.captureStoreUndo(['ledgerConfig']);
