@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.8</span>
+                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.9</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -614,8 +614,8 @@
                                         <label class="flex items-start gap-1.5 text-xs" title="WORKING-order badges, orders drawer with per-order cancel and PSC cancel-all.">
                                             <input id="twsOrdersEnabledSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Open orders
                                         </label>
-                                        <label class="flex items-start gap-1.5 text-xs" title="PSC-* fills toast + journal entries with real quantity/price/commission.">
-                                            <input id="twsFillsJournalEnabledSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Fills → journal
+                                        <label class="flex items-start gap-1.5 text-xs" title="Imports TWS fills and positions into the journal on connect and while connected; pairs with Flex for older closed trades. Changes sync to cloud when Cloud Sync is on.">
+                                            <input id="twsFillsJournalEnabledSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Fills → journal (auto)
                                         </label>
                                         <label class="flex items-start gap-1.5 text-xs" title="Daily P&L chip in the header.">
                                             <input id="twsPnlEnabledSetting" type="checkbox" class="custom-checkbox mt-0.5" onchange="saveTwsSettings()"> Daily P&L chip
@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.8';
+        const PSC_VERSION = '4.7.9';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -5998,7 +5998,7 @@
                         } else if (response.type === 'status') {
                             const wasConn = twsConnected;
                             twsConnected = !!response.connected;
-                            if (twsConnected && !wasConn && twsOrdersEnabled) refreshTwsOrders();
+                            if (twsConnected && !wasConn) onTwsJustConnected();
                             renderProviderPriorityList();
                         } else if (response.type === 'account' && twsSyncAccount) {
                             applyTwsAccountValue(response.key, response.value);
@@ -9573,9 +9573,13 @@
             // Cloud sync pull — merged before the first render. A durable
             // outbox flag re-arms a push when the last session died mid-queue.
             const conf = Ledger.syncConfig();
-            if (!conf.enabled || conf.provider === 'none') return;
-            syncPullAndApply();
-            if (safeStorageGet('syncPending') === '1') _syncPendingPush = true;
+            if (conf.enabled && conf.provider !== 'none') {
+                syncPullAndApply();
+                if (safeStorageGet('syncPending') === '1') _syncPendingPush = true;
+            }
+            // Broker journal import runs after cloud merge so fills already on
+            // another device are not duplicated locally.
+            autoSyncJournalFromBroker({ boot: true }).catch(e => console.warn('journal sync:', e && e.message));
         }
 
         // ---------- Cloud sync (optional — Settings → Sync) ----------
@@ -9977,7 +9981,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.8';
+        const APP_VERSION = '4.7.9';
         try { var _vb = document.getElementById('appVersionBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION; } catch (e) {}
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
@@ -9993,7 +9997,7 @@
                 _healthFailStreak = 0;
                 const wasConnected = twsConnected;
                 twsConnected = !!(data && data.connected);
-                if (twsConnected && !wasConnected && twsOrdersEnabled) refreshTwsOrders();
+                if (twsConnected && !wasConnected) onTwsJustConnected();
                 if (data && data.account) twsAccount = data.account;
                 if (data && data.liveTradingPort && !_livePortWarned) {
                     _livePortWarned = true;
@@ -10132,7 +10136,10 @@
             const fTime = document.getElementById('flexSyncTimeSetting');
             flexToken = fTok ? fTok.value.trim() : flexToken;
             flexQueryId = fQid ? fQid.value.trim() : flexQueryId;
-            flexAutoSync = !!(fAuto && fAuto.checked);
+            if (flexToken && flexQueryId && safeStorageGet('flexAutoSync') === null) {
+                flexAutoSync = true;
+                if (fAuto) fAuto.checked = true;
+            } else flexAutoSync = !!(fAuto && fAuto.checked);
             flexSyncTime = parseAutoEntryTime(fTime ? fTime.value : '') !== null ? fTime.value : '18:00';
             if (fTime) { fTime.value = flexSyncTime; fTime.disabled = !flexAutoSync; }
             safeStorageSet('flexToken', flexToken);
@@ -10178,7 +10185,8 @@
             try { autoEntryState = JSON.parse(safeStorageGet('autoEntryRun') || 'null'); } catch (e) { autoEntryState = null; }
             flexToken = safeStorageGet('flexToken') || '';
             flexQueryId = safeStorageGet('flexQueryId') || '';
-            flexAutoSync = safeStorageGet('flexAutoSync') === 'true';
+            if (flexToken && flexQueryId && safeStorageGet('flexAutoSync') === null) flexAutoSync = true;
+            else flexAutoSync = safeStorageGet('flexAutoSync') === 'true';
             const storedFlexTime = safeStorageGet('flexSyncTime');
             flexSyncTime = parseAutoEntryTime(storedFlexTime) !== null ? storedFlexTime : '18:00';
             try { flexSyncState = JSON.parse(safeStorageGet('flexSyncState') || 'null'); } catch (e) { flexSyncState = null; }
@@ -11299,6 +11307,41 @@
             await refreshTwsOrders();
         }
         // --- Fills -> journal ---
+        let _journalBrokerSyncBusy = false;
+        let _journalBrokerFlexOnConnectDone = false;
+        function onTwsJustConnected() {
+            if (twsOrdersEnabled) refreshTwsOrders();
+            autoSyncJournalFromBroker({ connect: true }).catch(e => console.warn('journal sync:', e && e.message));
+        }
+        // Pull open + recent fills from TWS, mirror positions, and import IBKR Flex
+        // history when configured. Saves journal + cloud push follow saveActiveTradesLog.
+        async function autoSyncJournalFromBroker(opts) {
+            if (_journalBrokerSyncBusy) return;
+            if (!twsFillsJournalEnabled) return;
+            _journalBrokerSyncBusy = true;
+            try {
+                if (twsReady() && twsConnected) {
+                    await refreshTwsExecutions();
+                    if (twsPositionsEnabled) {
+                        await refreshTwsPositions();
+                        syncJournalToPositions();
+                    }
+                }
+                if (flexConfigured() && !flexBusy) {
+                    const st = flexStateLoad() || {};
+                    const today = nyDateStr();
+                    const onConnect = !!(opts && opts.connect);
+                    const wantFlex = st.lastRunDate !== today
+                        || (onConnect && !_journalBrokerFlexOnConnectDone);
+                    if (wantFlex) {
+                        if (onConnect) _journalBrokerFlexOnConnectDone = true;
+                        await flexReconcileNow(false);
+                    }
+                }
+            } finally {
+                _journalBrokerSyncBusy = false;
+            }
+        }
         async function refreshTwsExecutions() {
             if (!twsFillsJournalEnabled || !twsConnected || !twsReady()) return;
             try {
@@ -11385,6 +11428,12 @@
                     saveTwsSeenExecs();
                     applyLateCommission(ticker0, fees0 - recorded);
                 }
+                return 'seen';
+            }
+            if (window.Ledger && Ledger.findExecEvent(key)) {
+                twsSeenExecs.set(key, fees0);
+                saveTwsSeenExecs();
+                if (fees0) Ledger.setEventCommissionByExec(key, fees0);
                 return 'seen';
             }
             twsSeenExecs.set(key, fees0);

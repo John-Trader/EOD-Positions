@@ -291,6 +291,10 @@ function assertTrue(cond, label) {
   assertEq(api.activeTradesLog[0].side, 'LONG', 'BOT → LONG');
   api.handleTwsExecution({ execId: 'e1', orderRef: 'PSC-AMPL-x', symbol: 'AMPL', side: 'BOT', shares: 100, price: 15.0 });
   assertEq(api.activeTradesLog.length, beforeLog + 1, 'duplicate execId deduped');
+  const beforeCloud = api.activeTradesLog.length;
+  api.twsSeenExecs.clear();
+  api.handleTwsExecution({ execId: 'e1', orderRef: 'PSC-AMPL-x', symbol: 'AMPL', side: 'BOT', shares: 100, price: 15.0 });
+  assertEq(api.activeTradesLog.length, beforeCloud, 'execId on ledger event dedupes without seen-map');
   api.handleTwsExecution({ execId: 'e2', orderRef: 'OTHER-1', symbol: 'AMPL', side: 'BOT', shares: 50, price: 15.0 });
   assertEq(api.activeTradesLog.length, beforeLog + 1, 'non-PSC same-side fill merges into existing row');
   assertEq(api.activeTradesLog[0].shares, 150, 'manual entry fill merges shares');
