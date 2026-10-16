@@ -260,8 +260,16 @@ function abortPositionSnapshot() {
     while (positionSnapshotWaiters.length) positionSnapshotWaiters.shift()({ list, complete: false });
 }
 
+let orderPlacementDepth = 0;
 function requestOrdersSnapshot() {
     return new Promise((resolve) => {
+        // reqAllOpenOrders during placeOrder stalls the next ticker's acks:
+        // the client aborts at 15s and the browser reports "Failed to fetch".
+        // Serve the cache until the in-flight placement finishes.
+        if (orderPlacementDepth > 0) {
+            resolve({ list: Array.from(openOrdersCache.values()), complete: false });
+            return;
+        }
         orderSnapshotWaiters.push(resolve);
         if (orderSnapshotSeen) return;                 // join the in-flight snapshot
         orderSnapshotSeen = new Set();
@@ -1271,7 +1279,13 @@ const server = http.createServer(async (req, res) => {
             const out = await inflight.work;
             return sendJson(res, 200, { ...out, deduped: true }, corsHeaders);
         }
-        const out = await dedupeInflight(body.orderRef, sig, orderResult(body));
+        orderPlacementDepth++;
+        let out;
+        try {
+            out = await dedupeInflight(body.orderRef, sig, orderResult(body));
+        } finally {
+            orderPlacementDepth--;
+        }
         // Only record real TWS outcomes — a local error (bridge down, no order id)
         // must not pin the ref for the TTL; the client may retry deliberately.
         if (out.orderId != null) recordDedupe(body.orderRef, out, sig);
@@ -1348,7 +1362,13 @@ const server = http.createServer(async (req, res) => {
             if (hasUnknown) out.unknown = true;
             return out;
         })();
-        const out = await dedupeInflight(body.orderRef, sig, work);
+        orderPlacementDepth++;
+        let out;
+        try {
+            out = await dedupeInflight(body.orderRef, sig, work);
+        } finally {
+            orderPlacementDepth--;
+        }
         if (out.results) recordDedupe(body.orderRef, out, sig);
         return sendJson(res, 200, out, corsHeaders);
     }
@@ -1390,8 +1410,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 function sendJson(res, code, obj, extraHeaders = {}) {
-    res.writeHead(code, { 'Content-Type': 'application/json', ...extraHeaders });
-    res.end(JSON.stringify(obj));
+    // The client may have aborted a slow batch; writing the response must not
+    // throw — an unhandled rejection here drops the next ticker's connection.
+    if (!res || res.writableEnded || res.destroyed) return;
+    try {
+        res.writeHead(code, { 'Content-Type': 'application/json', ...extraHeaders });
+        res.end(JSON.stringify(obj));
+    } catch (_) {}
 }
 
 const MAX_BODY_BYTES = 256 * 1024;   // order batches are small JSON — cap floods

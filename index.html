@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.10</span>
+                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.8.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.10';
+        const PSC_VERSION = '4.8.0';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -6009,8 +6009,10 @@
                             // absent symbol be closed as flat.
                             twsPositionDeltaAt[normalizeTwsSymbol(response.symbol)] = Date.now();
                             syncJournalToPositions();
-                        } else if (response.type === 'order' && twsOrdersEnabled) {
+                        } else if (response.type === 'order' && twsOrdersEnabled && !twsSendBusy()) {
                             // openOrder cache keeps the canonical list; this just marks a quick change.
+                            // Skip while a send is in flight — a snapshot between tickers
+                            // stalls the next placeOrder and the browser aborts it.
                             refreshTwsOrders();
                         } else if (response.type === 'exec' && twsFillsJournalEnabled) {
                             handleTwsExecution(response);
@@ -9923,9 +9925,15 @@
             if (twsBridgeToken) headers['X-Bridge-Token'] = twsBridgeToken;
             // 1 initial try + 3 retries: after idle, several pooled sockets can be
             // stale at once, so a single retry can still grab a dead socket.
+            // A multi-leg exit waits up to ~5s per leg on the bridge. The old 15s
+            // cap aborted ticker 2 (Electron reports that abort as "Failed to fetch")
+            // while ticker 1 had already completed.
+            const legs = body && Array.isArray(body.orders) ? body.orders.length : 1;
+            const timeoutMs = (path === '/order' || path === '/orders') ? (12000 + legs * 7000) : 15000;
+            if (path === '/order' || path === '/orders') headers.Connection = 'close';
             for (let attempt = 0; attempt < 4; attempt++) {
                 try {
-                    const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, 15000);
+                    const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(body) }, timeoutMs);
                     return await res.json();
                 } catch (e) {
                     const err = bridgeNetError(e);
@@ -9981,7 +9989,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.10';
+        const APP_VERSION = '4.8.0';
         try { var _vb = document.getElementById('appVersionBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION; } catch (e) {}
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
@@ -11046,6 +11054,9 @@
             }
         }
         let batchSending = false;   // re-entry lock — a second click must not double-place
+        function twsSendBusy() {
+            return batchSending || Object.keys(twsSendState).some(k => twsSendState[k] === 'sending');
+        }
         async function sendTwsBatchAll() {
             if (!twsReady()) { showErrorToast('TWS bridge not configured — enable it in Settings and set the token.'); return; }
             if (batchSending) return;
@@ -11798,7 +11809,8 @@
             if (!twsReady() || !twsConnected) { updateTwsAccountTag(); updateTwsPnlChip(); renderPortfolioOverview(); return; }
             twsAuxPollCount++;
             // Orders first, unawaited — a slow account/positions call must not delay the badge.
-            if (twsOrdersEnabled) refreshTwsOrders();
+            // Not during a send: reqAllOpenOrders between batch tickers stalls the next placeOrder.
+            if (twsOrdersEnabled && !twsSendBusy()) refreshTwsOrders();
             if (twsSyncAccount) await pollTwsAccount();
             if (twsPositionsEnabled && twsAuxPollCount % 2 === 0) refreshTwsPositions();
             if (twsFillsJournalEnabled && twsAuxPollCount % 4 === 0) refreshTwsExecutions();
