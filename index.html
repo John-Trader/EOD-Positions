@@ -264,7 +264,7 @@
             <div class="flex items-center gap-2 min-w-0">
                 <button aria-label="Open menu" onclick="openNavMenu()" class="shrink-0 h-8 w-8 rounded-lg bg-slate-800 border border-white/10 text-white hover:bg-slate-700 font-black text-lg leading-none">☰</button>
                 <h1 data-role="pageTitle" class="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">Position Size Calculator</h1>
-                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.9</span>
+                <span id="appVersionBadge" class="text-[9px] font-mono font-bold text-gray-500 shrink-0">v4.7.10</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
                 <div id="liveStatusIndicator" data-role="liveStatusIndicator" aria-live="polite" class="hidden items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/60 border border-white/10 text-[9px] font-mono font-bold">
@@ -1030,7 +1030,7 @@
         // 'pscBridge' binding — a top-level const with the same name is a SyntaxError.
         const pscBridgeApi = (typeof window !== 'undefined' && window.pscBridge) || null;
 
-        const PSC_VERSION = '4.7.9';
+        const PSC_VERSION = '4.7.10';
 
         // ---- State store (schema v1) ----
         // The whole app state lives in ONE storage record (psc:state:v1); every
@@ -9981,7 +9981,7 @@
                 }
             }
         }
-        const APP_VERSION = '4.7.9';
+        const APP_VERSION = '4.7.10';
         try { var _vb = document.getElementById('appVersionBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION; } catch (e) {}
         let _bridgeVersionWarned = false;
         let _livePortWarned = false;
