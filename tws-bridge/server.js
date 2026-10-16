@@ -1254,63 +1254,57 @@ const server = http.createServer(async (req, res) => {
 
     // POST /order — single order
     if (req.method === 'POST' && url.pathname === '/order') {
-        // Diagnostic for the batch 2nd-ticker 'Failed to fetch': never reuse a
-        // keep-alive socket for order sends — a stale pooled socket kills the
-        // POST with a TypeError the client retry can't always purge.
-        const noKeepAlive = { ...corsHeaders, Connection: 'close' };
+        console.log('[bridge] POST /order received at ' + new Date().toISOString());
         const body = await readBody(req);
-        if (!body) return sendJson(res, 400, { ok: false, error: 'Invalid JSON body' }, noKeepAlive);
+        if (!body) return sendJson(res, 400, { ok: false, error: 'Invalid JSON body' }, corsHeaders);
         const specErr = validateOrderSpec(body);
-        if (specErr) return sendJson(res, 400, { ok: false, error: specErr }, noKeepAlive);
+        if (specErr) return sendJson(res, 400, { ok: false, error: specErr }, corsHeaders);
         const sig = JSON.stringify(body);
         const dup = checkDedupe(body.orderRef);
         if (dup) {
-            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, noKeepAlive);
-            return sendJson(res, 200, { ...dup.result, deduped: true }, noKeepAlive);
+            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, corsHeaders);
+            return sendJson(res, 200, { ...dup.result, deduped: true }, corsHeaders);
         }
         const inflight = inflightByRef.get(body.orderRef);
         if (inflight) {
-            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, noKeepAlive);
+            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, corsHeaders);
             const out = await inflight.work;
-            return sendJson(res, 200, { ...out, deduped: true }, noKeepAlive);
+            return sendJson(res, 200, { ...out, deduped: true }, corsHeaders);
         }
         const out = await dedupeInflight(body.orderRef, sig, orderResult(body));
         // Only record real TWS outcomes — a local error (bridge down, no order id)
         // must not pin the ref for the TTL; the client may retry deliberately.
         if (out.orderId != null) recordDedupe(body.orderRef, out, sig);
-        return sendJson(res, 200, out, noKeepAlive);
+        return sendJson(res, 200, out, corsHeaders);
     }
 
     // POST /orders — batch of orders (OCA/parentRef-chained or independent)
     if (req.method === 'POST' && url.pathname === '/orders') {
-        // Diagnostic for the batch 2nd-ticker 'Failed to fetch': never reuse a
-        // keep-alive socket for order sends — a stale pooled socket kills the
-        // POST with a TypeError the client retry can't always purge.
-        const noKeepAlive = { ...corsHeaders, Connection: 'close' };
+        console.log('[bridge] POST /orders received at ' + new Date().toISOString());
         const body = await readBody(req);
-        if (!body || !Array.isArray(body.orders)) return sendJson(res, 400, { ok: false, error: 'Expected {orders:[]}' }, noKeepAlive);
+        if (!body || !Array.isArray(body.orders)) return sendJson(res, 400, { ok: false, error: 'Expected {orders:[]}' }, corsHeaders);
         if (body.orders.length > MAX_BATCH_ORDERS) {
-            return sendJson(res, 400, { ok: false, error: 'Batch too large (max ' + MAX_BATCH_ORDERS + ')' }, noKeepAlive);
+            return sendJson(res, 400, { ok: false, error: 'Batch too large (max ' + MAX_BATCH_ORDERS + ')' }, corsHeaders);
         }
         for (let i = 0; i < body.orders.length; i++) {
             const specErr = validateOrderSpec(body.orders[i]);
-            if (specErr) return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: ' + specErr }, noKeepAlive);
+            if (specErr) return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: ' + specErr }, corsHeaders);
             const pr = body.orders[i].parentRef;
             if (pr != null && !body.orders.some(s => s.ref === pr)) {
-                return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: unknown parentRef' }, noKeepAlive);
+                return sendJson(res, 400, { ok: false, error: 'orders[' + i + ']: unknown parentRef' }, corsHeaders);
             }
         }
         const sig = JSON.stringify(body.orders);
         const dup = checkDedupe(body.orderRef);
         if (dup) {
-            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, noKeepAlive);
-            return sendJson(res, 200, { ...dup.result, deduped: true }, noKeepAlive);
+            if (dup.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef already used with a different payload' }, corsHeaders);
+            return sendJson(res, 200, { ...dup.result, deduped: true }, corsHeaders);
         }
         const inflight = inflightByRef.get(body.orderRef);
         if (inflight) {
-            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, noKeepAlive);
+            if (inflight.sig !== sig) return sendJson(res, 409, { ok: false, error: 'orderRef in flight with a different payload' }, corsHeaders);
             const out = await inflight.work;
-            return sendJson(res, 200, { ...out, deduped: true }, noKeepAlive);
+            return sendJson(res, 200, { ...out, deduped: true }, corsHeaders);
         }
         const work = (async () => {
             const deadline = Date.now() + batchDeadlineMs(body.orders.length);
@@ -1356,7 +1350,7 @@ const server = http.createServer(async (req, res) => {
         })();
         const out = await dedupeInflight(body.orderRef, sig, work);
         if (out.results) recordDedupe(body.orderRef, out, sig);
-        return sendJson(res, 200, out, noKeepAlive);
+        return sendJson(res, 200, out, corsHeaders);
     }
 
     // POST /cancel — {orderId}
